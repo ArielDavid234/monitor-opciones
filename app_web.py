@@ -98,6 +98,33 @@ def _fmt_lado(lado):
     return "➖ N/A"
 
 
+def determinar_sentimiento(tipo_opcion, lado):
+    """
+    Determina el sentimiento de la operación según el tipo de opción y lado de ejecución.
+    
+    Alcista (Verde) - Apuesta a que el precio suba:
+    - CALL + Ask (compra de CALL)
+    - PUT + Bid (venta de PUT)
+    
+    Bajista (Rojo) - Apuesta a que el precio baje:
+    - PUT + Ask (compra de PUT)
+    - CALL + Bid (venta de CALL)
+    
+    Returns:
+        tuple: (sentimiento_texto, emoji, color_hex)
+    """
+    if tipo_opcion == "CALL" and lado == "Ask":
+        return "ALCISTA", "🟢", "#10b981"
+    elif tipo_opcion == "PUT" and lado == "Bid":
+        return "ALCISTA", "🟢", "#10b981"
+    elif tipo_opcion == "PUT" and lado == "Ask":
+        return "BAJISTA", "🔴", "#ef4444"
+    elif tipo_opcion == "CALL" and lado == "Bid":
+        return "BAJISTA", "🔴", "#ef4444"
+    else:
+        return "NEUTRAL", "⚪", "#94a3b8"
+
+
 # ============================================================================
 #                    SISTEMA DE FAVORITOS (persistencia JSON)
 # ============================================================================
@@ -733,6 +760,11 @@ with tab_scanner:
                 emoji = "🟠"
                 etiqueta = "PRIMA ALTA"
 
+            # Determinar sentimiento para colorear
+            sentimiento_txt, sentimiento_emoji, sentimiento_color = determinar_sentimiento(
+                alerta["Tipo_Opcion"], alerta.get("Lado", "N/A")
+            )
+
             razones = []
             if alerta["Volumen"] >= umbral_vol:
                 razones.append(f"Vol {alerta['Volumen']:,} ≥ {umbral_vol:,}")
@@ -784,11 +816,18 @@ with tab_scanner:
 
                 st.markdown(
                     f"""
-                    <div class="{css_class}" style="margin-bottom: 0;">
-                        <strong>{emoji} {etiqueta}</strong> — 
-                        <b>{alerta['Tipo_Opcion']}</b> | 
-                        Strike: <b>${alerta['Strike']}</b> | 
-                        Venc: <b>{alerta['Vencimiento']}</b><br>
+                    <div class="{css_class}" style="margin-bottom: 0; border-left: 5px solid {sentimiento_color} !important;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>{emoji} {etiqueta}</strong> — 
+                                <b>{alerta['Tipo_Opcion']}</b> | 
+                                Strike: <b>${alerta['Strike']}</b> | 
+                                Venc: <b>{alerta['Vencimiento']}</b>
+                            </div>
+                            <div style="padding: 4px 12px; border-radius: 8px; background: {sentimiento_color}20; border: 1px solid {sentimiento_color}; font-size: 0.75rem; font-weight: 700;">
+                                {sentimiento_emoji} {sentimiento_txt}
+                            </div>
+                        </div>
                         Vol: <b>{alerta['Volumen']:,}</b> | 
                         Prima Total: <b>{prima_vol_fmt}</b> |
                         Ask: ${alerta['Ask']} | Bid: ${alerta['Bid']} | Último: ${alerta['Ultimo']} |
@@ -885,7 +924,12 @@ with tab_scanner:
             else:
                 return "🟠 PRIMA ALTA"
 
+        def asignar_sentimiento(row):
+            sent_txt, sent_emoji, _ = determinar_sentimiento(row["Tipo_Opcion"], row.get("Lado", "N/A"))
+            return f"{sent_emoji} {sent_txt}"
+
         alertas_df.insert(0, "Prioridad", alertas_df.apply(asignar_prioridad, axis=1))
+        alertas_df.insert(1, "Sentimiento", alertas_df.apply(asignar_sentimiento, axis=1))
         if "Lado" in alertas_df.columns:
             alertas_df["Lado"] = alertas_df["Lado"].apply(_fmt_lado)
         alertas_df["Prima_Volumen"] = alertas_df["Prima_Volumen"].apply(_fmt_dolar)
@@ -1218,6 +1262,13 @@ with tab_historial:
     # --- SECCIÓN 1: HISTORIAL CSV ---
     st.markdown("#### 📁 Historial de Alertas Guardadas")
     historial_df = cargar_historial_csv(csv_carpeta)
+    
+    # Agregar columna de sentimiento al historial
+    if not historial_df.empty and "Tipo_Opcion" in historial_df.columns and "Lado" in historial_df.columns:
+        historial_df.insert(0, "Sentimiento", historial_df.apply(
+            lambda row: f"{determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[0]}",
+            axis=1
+        ))
 
     if historial_df.empty:
         st.info(
@@ -1356,8 +1407,15 @@ with tab_historial:
             if 'Lado' in display_scan.columns:
                 display_scan["Lado_F"] = display_scan["Lado"].apply(_fmt_lado)
             
+            # Agregar columna de sentimiento
+            if 'Tipo' in display_scan.columns and 'Lado' in display_scan.columns:
+                display_scan["Sentimiento"] = display_scan.apply(
+                    lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
+                    axis=1
+                )
+            
             # Seleccionar columnas relevantes para mostrar
-            cols_mostrar = ['Tipo', 'Strike', 'Vencimiento', 'Volumen', 'Ask', 'Bid', 'Spread_%', 
+            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'Ask', 'Bid', 'Spread_%', 
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
             
@@ -1611,18 +1669,19 @@ with tab_historial:
                 run_d.font.name = "Calibri"
 
                 headers = ["#", "Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI Chg",
-                           "Ask", "Bid", "Spread %", "Último", "Lado", "Moneyness", "Prima Total", "Liquidity", "Contrato", "Hora"]
+                           "Ask", "Bid", "Spread %", "Último", "Sentimiento", "Lado", "Moneyness", "Prima Total", "Liquidity", "Contrato", "Hora"]
                 rows = []
                 # Enriquecer datos con métricas derivadas
                 principales_enriq = _enriquecer_datos_opcion(principales, precio_subyacente=st.session_state.get('precio_subyacente'))
                 
                 for i, a in enumerate(principales_enriq, 1):
                     prima_max = a.get("Prima_Volumen", 0)
+                    sent_txt, sent_emoji, _ = determinar_sentimiento(a["Tipo_Opcion"], a.get("Lado", "N/A"))
                     rows.append([
                         i, a["Tipo_Opcion"], _fmt_precio(a['Strike']), a["Vencimiento"],
                         _fmt_entero(a['Volumen']), _fmt_entero(a['OI']), _fmt_oi_chg(a.get('OI_Chg', 0)),
                         _fmt_precio(a['Ask']), _fmt_precio(a['Bid']), f"{a.get('Spread_Pct', 0):.1f}%", _fmt_precio(a['Ultimo']),
-                        _fmt_lado(a.get('Lado', 'N/A')), a.get('Moneyness', 'N/A'), _fmt_monto(a['Prima_Volumen']),
+                        f"{sent_emoji} {sent_txt}", _fmt_lado(a.get('Lado', 'N/A')), a.get('Moneyness', 'N/A'), _fmt_monto(a['Prima_Volumen']),
                         f"{a.get('Liquidity_Score', 0):.0f}", a.get("Contrato", "N/A"), a.get("Fecha_Hora", ""),
                     ])
                 _tabla_datos(doc, headers, rows)
@@ -1639,18 +1698,19 @@ with tab_historial:
                 run_d.font.name = "Calibri"
 
                 headers = ["#", "Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI Chg",
-                           "Ask", "Bid", "Spread %", "Último", "Lado", "Moneyness", "Prima Total", "Vol/OI"]
+                           "Ask", "Bid", "Spread %", "Último", "Sentimiento", "Lado", "Moneyness", "Prima Total", "Vol/OI"]
                 rows = []
                 # Enriquecer datos con métricas derivadas
                 prima_alta_enriq = _enriquecer_datos_opcion(prima_alta, precio_subyacente=st.session_state.get('precio_subyacente'))
                 
                 for i, a in enumerate(prima_alta_enriq, 1):
                     vol_oi_ratio = a.get('Vol_OI_Ratio', 0)
+                    sent_txt, sent_emoji, _ = determinar_sentimiento(a["Tipo_Opcion"], a.get("Lado", "N/A"))
                     rows.append([
                         i, a["Tipo_Opcion"], _fmt_precio(a['Strike']), a["Vencimiento"],
                         _fmt_entero(a['Volumen']), _fmt_entero(a['OI']), _fmt_oi_chg(a.get('OI_Chg', 0)),
                         _fmt_precio(a['Ask']), _fmt_precio(a['Bid']), f"{a.get('Spread_Pct', 0):.1f}%", _fmt_precio(a['Ultimo']),
-                        _fmt_lado(a.get('Lado', 'N/A')), a.get('Moneyness', 'N/A'), _fmt_monto(a['Prima_Volumen']),
+                        f"{sent_emoji} {sent_txt}", _fmt_lado(a.get('Lado', 'N/A')), a.get('Moneyness', 'N/A'), _fmt_monto(a['Prima_Volumen']),
                         f"{vol_oi_ratio:.2f}",
                     ])
                 _tabla_datos(doc, headers, rows)
@@ -2174,25 +2234,39 @@ with tab_analisis:
             st.bar_chart(vol_by_date)
 
         st.markdown("#### 🎯 Top 20 Strikes por Volumen")
-        vol_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol"]
+        vol_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
         top_vol = (
-            df_analisis.nlargest(20, "Volumen")[vol_cols]
+            df_analisis.nlargest(20, "Volumen")[[c for c in vol_cols if c in df_analisis.columns]]
             .reset_index(drop=True)
         )
         top_vol_display = top_vol.copy()
         top_vol_display = top_vol_display.rename(columns={"Prima_Vol": "Prima Total"})
+        if "Tipo" in top_vol_display.columns and "Lado" in top_vol_display.columns:
+            top_vol_display.insert(0, "Sentimiento", top_vol_display.apply(
+                lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
+                axis=1
+            ))
         top_vol_display["Prima Total"] = top_vol_display["Prima Total"].apply(_fmt_dolar)
+        if "Lado" in top_vol_display.columns:
+            top_vol_display["Lado"] = top_vol_display["Lado"].apply(_fmt_lado)
         st.dataframe(top_vol_display, width="stretch", hide_index=True)
 
         st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
-        oi_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol"]
+        oi_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
         top_oi = (
-            df_analisis.nlargest(20, "OI")[oi_cols]
+            df_analisis.nlargest(20, "OI")[[c for c in oi_cols if c in df_analisis.columns]]
             .reset_index(drop=True)
         )
         top_oi_display = top_oi.copy()
         top_oi_display = top_oi_display.rename(columns={"Prima_Vol": "Prima Total"})
+        if "Tipo" in top_oi_display.columns and "Lado" in top_oi_display.columns:
+            top_oi_display.insert(0, "Sentimiento", top_oi_display.apply(
+                lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
+                axis=1
+            ))
         top_oi_display["Prima Total"] = top_oi_display["Prima Total"].apply(_fmt_dolar)
+        if "Lado" in top_oi_display.columns:
+            top_oi_display["Lado"] = top_oi_display["Lado"].apply(_fmt_lado)
         st.dataframe(top_oi_display, width="stretch", hide_index=True)
 
         col_iv1, col_iv2 = st.columns(2)
@@ -2253,17 +2327,25 @@ with tab_analisis:
         # Top strikes donde se concentra el dinero
         st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Total Ejecutada")
         df_prima_strike = df_analisis.copy()
+        prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "IV", "Ultimo", "Lado"]
         top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
-            ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "IV", "Ultimo"]
+            [c for c in prima_cols if c in df_prima_strike.columns]
         ].reset_index(drop=True)
 
         top_prima_display = top_prima.copy()
         top_prima_display = top_prima_display.rename(columns={"Prima_Vol": "Prima Total"})
+        if "Tipo" in top_prima_display.columns and "Lado" in top_prima_display.columns:
+            top_prima_display.insert(0, "Sentimiento", top_prima_display.apply(
+                lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
+                axis=1
+            ))
         top_prima_display["Prima Total"] = top_prima_display["Prima Total"].apply(_fmt_dolar)
         top_prima_display["Volumen"] = top_prima_display["Volumen"].apply(_fmt_entero)
         top_prima_display["IV"] = top_prima_display["IV"].apply(_fmt_iv)
         top_prima_display["Ultimo"] = top_prima_display["Ultimo"].apply(_fmt_precio)
         top_prima_display["Strike"] = top_prima_display["Strike"].apply(lambda x: f"${x:,.1f}")
+        if "Lado" in top_prima_display.columns:
+            top_prima_display["Lado"] = top_prima_display["Lado"].apply(_fmt_lado)
 
         st.dataframe(top_prima_display, width="stretch", hide_index=True)
 
@@ -2322,6 +2404,11 @@ with tab_favoritos:
                           "Volumen", "OI", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
         cols_disp_fav = [c for c in cols_tabla_fav if c in fav_df.columns]
         display_fav_df = fav_df[cols_disp_fav].copy()
+        if "Tipo_Opcion" in display_fav_df.columns and "Lado" in display_fav_df.columns:
+            display_fav_df.insert(0, "Sentimiento", display_fav_df.apply(
+                lambda row: f"{determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[0]}",
+                axis=1
+            ))
         if "Lado" in display_fav_df.columns:
             display_fav_df["Lado"] = display_fav_df["Lado"].apply(_fmt_lado)
         if "Prima_Volumen" in display_fav_df.columns:
