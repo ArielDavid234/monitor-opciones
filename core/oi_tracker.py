@@ -37,7 +37,7 @@ def calcular_cambios_oi(datos_actuales, datos_anteriores):
     # Merge por contrato
     merged = pd.merge(
         df_anterior[key_cols + ["OI"]].rename(columns={"OI": "OI_Anterior"}),
-        df_actual[key_cols + ["OI", "Volumen", "Ask", "Bid", "Ultimo", "IV", "Prima_OI"]],
+        df_actual[key_cols + ["OI", "Volumen", "Ask", "Bid", "Ultimo", "IV"]],
         on=key_cols,
         how="outer",
         suffixes=("_ant", "_act"),

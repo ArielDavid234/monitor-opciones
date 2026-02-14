@@ -124,15 +124,8 @@ def ejecutar_escaneo(
                     price_volume = (
                         ask_val if ask_val > 0 else (last_val if last_val > 0 else 0)
                     )
-                    if last_val > 0:
-                        price_oi = last_val
-                    elif bid_val > 0 and ask_val > 0:
-                        price_oi = (bid_val + ask_val) / 2
-                    else:
-                        price_oi = 0
 
                     volume_premium = vol * price_volume * 100
-                    oi_premium = oi * price_oi * 100
 
                     lado = _clasificar_lado(last_val, bid_val, ask_val)
 
@@ -147,8 +140,7 @@ def ejecutar_escaneo(
                             "Bid": round(bid_val, 2),
                             "Ultimo": round(last_val, 2),
                             "IV": round(iv * 100, 2) if iv else 0,
-                            "Prima_Vol": round(volume_premium, 0),
-                            "Prima_OI": round(oi_premium, 0),
+                            "Prima_Volumen": round(volume_premium, 0),
                             "Lado": lado,
                         }
                     )
@@ -157,7 +149,7 @@ def ejecutar_escaneo(
                         continue
 
                     tipo_alerta = None
-                    if volume_premium >= u_prima or oi_premium >= u_prima:
+                    if volume_premium >= u_prima:
                         tipo_alerta = "PRINCIPAL"
                     else:
                         tipo_alerta = "PRIMA_ALTA"
@@ -178,7 +170,6 @@ def ejecutar_escaneo(
                             "Volumen": vol,
                             "OI": oi,
                             "Prima_Volumen": round(volume_premium, 0),
-                            "Prima_OI": round(oi_premium, 0),
                             "Ask": round(ask_val, 2),
                             "Bid": round(bid_val, 2),
                             "Ultimo": round(last_val, 2),
@@ -210,7 +201,7 @@ def guardar_alerta_csv(carpeta, ticker_sym, alerta):
                 fieldnames=[
                     "Fecha_Hora", "Ticker", "Tipo_Alerta", "Tipo_Opcion",
                     "Vencimiento", "Strike", "Volumen", "OI",
-                    "Prima_Volumen", "Prima_OI", "Ask", "Bid", "Ultimo",
+                    "Prima_Volumen", "Ask", "Bid", "Ultimo",
                 ],
             )
             if escribir_header:

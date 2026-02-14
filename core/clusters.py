@@ -56,7 +56,7 @@ def detectar_compras_continuas(alertas, umbral_prima_ref, tolerancia_pct=CLUSTER
             j = i + 1
             while j < len(grupo_sorted):
                 diff_strike = abs(grupo_sorted[j]["Strike"] - subgrupo[-1]["Strike"])
-                prima_j = max(grupo_sorted[j]["Prima_Volumen"], grupo_sorted[j]["Prima_OI"])
+                prima_j = grupo_sorted[j]["Prima_Volumen"]
 
                 if diff_strike <= CLUSTER_MAX_STRIKE_DIFF:
                     subgrupo.append(grupo_sorted[j])
@@ -65,7 +65,7 @@ def detectar_compras_continuas(alertas, umbral_prima_ref, tolerancia_pct=CLUSTER
                     break
 
             if len(subgrupo) >= 2:
-                primas = [max(a["Prima_Volumen"], a["Prima_OI"]) for a in subgrupo]
+                primas = [a["Prima_Volumen"] for a in subgrupo]
                 primas_en_rango = sum(
                     1 for p in primas if p >= prima_min
                 )
