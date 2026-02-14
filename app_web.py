@@ -10,6 +10,7 @@ import logging
 import time
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -547,10 +548,17 @@ with st.sidebar:
 # ============================================================================
 #                    ENCABEZADO PRINCIPAL
 # ============================================================================
+# Header superior: search + upgrade
+col_search, col_upgrade = st.columns([5, 1])
+with col_search:
+    _search_query = st.text_input("🔍 Search...", placeholder="Buscar ticker, contrato, strike...", label_visibility="collapsed")
+with col_upgrade:
+    st.button("Upgrade 💎", type="primary", use_container_width=True)
+
 st.markdown(
     f"""
     <div class="scanner-header">
-        <h1>� OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
+        <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
         <p class="subtitle">
             Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
         </p>
@@ -2098,65 +2106,60 @@ with tab_analisis:
             else:
                 net_fill = f"right:50%;width:{net_bar_w:.1f}%;background:linear-gradient(270deg,rgba(239,68,68,.8),rgba(185,28,28,.3));border-radius:6px 0 0 6px"
 
-            # --- OKA Sentiment Gauge ---
+            # --- OKA Sentiment Gauge (Plotly) ---
             gauge_score = max(0, min(100, 50 + net_pct / 2))  # Normalizar a 0-100
-            # Arc math: semicircle r=90, cx=120 cy=110, from 180° to 0°
-            arc_len = 3.14159 * 90  # ~282.7
-            arc_offset = arc_len * (1 - gauge_score / 100)
             if net_pct >= 10:
-                gauge_cls = "bullish"
                 gauge_lbl = "ALCISTA"
             elif net_pct <= -10:
-                gauge_cls = "bearish"
                 gauge_lbl = "BAJISTA"
             else:
-                gauge_cls = "neutral"
                 gauge_lbl = "NEUTRAL"
-            # Needle angle: 180° (left/0) to 0° (right/100)
-            needle_angle = 180 - (gauge_score / 100) * 180
-            import math as _m
-            _nx = 120 + 70 * _m.cos(_m.radians(needle_angle))
-            _ny = 110 - 70 * _m.sin(_m.radians(needle_angle))
+
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=gauge_score,
+                domain={"x": [0, 1], "y": [0, 1]},
+                title={"text": f"OKA Sentiment Index — {gauge_lbl}", "font": {"size": 16, "color": "white"}},
+                number={"font": {"size": 42, "color": "white"}, "suffix": "/100"},
+                delta={"reference": 50, "increasing": {"color": "#00ff88"}, "decreasing": {"color": "#ef4444"}},
+                gauge={
+                    "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#475569", "tickfont": {"color": "#94a3b8", "size": 11}},
+                    "bar": {"color": "#00ff88", "thickness": 0.3},
+                    "bgcolor": "#0f172a",
+                    "borderwidth": 0,
+                    "steps": [
+                        {"range": [0, 30], "color": "rgba(239, 68, 68, 0.25)"},
+                        {"range": [30, 50], "color": "rgba(245, 158, 11, 0.15)"},
+                        {"range": [50, 70], "color": "rgba(16, 185, 129, 0.15)"},
+                        {"range": [70, 100], "color": "rgba(0, 255, 136, 0.2)"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "white", "width": 3},
+                        "thickness": 0.8,
+                        "value": gauge_score,
+                    },
+                },
+            ))
+            fig_gauge.update_layout(
+                paper_bgcolor="#1e293b",
+                plot_bgcolor="#1e293b",
+                font={"color": "white", "family": "Inter, sans-serif"},
+                height=300,
+                margin=dict(l=30, r=30, t=60, b=10),
+            )
+            st.plotly_chart(fig_gauge, use_container_width=True)
+
+            # Footer stats below gauge
             st.markdown(
-                f'<div class="gauge-container">'
-                f'<div class="gauge-header">'
-                f'<div class="gauge-header-icon">'
-                f'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0a0d14" stroke-width="2.5">'
-                f'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>'
-                f'<div class="gauge-title">OKA Sentiment Index</div></div>'
-                f'<div class="gauge-wrap">'
-                f'<svg class="gauge-svg" viewBox="0 0 240 135">'
-                f'<defs>'
-                f'<linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">'
-                f'<stop offset="0%" stop-color="#ef4444"/>'
-                f'<stop offset="35%" stop-color="#f59e0b"/>'
-                f'<stop offset="65%" stop-color="#22c55e"/>'
-                f'<stop offset="100%" stop-color="#00ff88"/>'
-                f'</linearGradient></defs>'
-                f'<path class="gauge-track" d="M 30 110 A 90 90 0 0 1 210 110"/>'
-                f'<path class="gauge-arc" d="M 30 110 A 90 90 0 0 1 210 110" '
-                f'stroke="url(#gaugeGrad)" '
-                f'stroke-dasharray="{arc_len:.1f}" stroke-dashoffset="{arc_offset:.1f}"/>'
-                f'<circle cx="{_nx:.1f}" cy="{_ny:.1f}" r="5" fill="#f1f5f9" '
-                f'stroke="#0a0d14" stroke-width="2"/>'
-                f'<text class="gauge-tick-labels" x="24" y="128" text-anchor="middle">0</text>'
-                f'<text class="gauge-tick-labels" x="72" y="40" text-anchor="middle">25</text>'
-                f'<text class="gauge-tick-labels" x="120" y="24" text-anchor="middle">50</text>'
-                f'<text class="gauge-tick-labels" x="168" y="40" text-anchor="middle">75</text>'
-                f'<text class="gauge-tick-labels" x="216" y="128" text-anchor="middle">100</text>'
-                f'</svg>'
-                f'<div class="gauge-center">'
-                f'<div class="gauge-value">{gauge_score:.0f}</div>'
-                f'<div class="gauge-label {gauge_cls}">{gauge_lbl}</div>'
-                f'</div></div>'
-                f'<div class="gauge-footer">'
-                f'<div class="gauge-stat"><div class="gauge-stat-label">Bullish</div>'
-                f'<div class="gauge-stat-val g">{bull_pct:.1f}%</div></div>'
-                f'<div class="gauge-stat"><div class="gauge-stat-label">Score</div>'
-                f'<div class="gauge-stat-val w">{gauge_score:.0f}/100</div></div>'
-                f'<div class="gauge-stat"><div class="gauge-stat-label">Bearish</div>'
-                f'<div class="gauge-stat-val r">{bear_pct:.1f}%</div></div>'
-                f'</div></div>',
+                f'<div style="display:flex;justify-content:space-around;padding:8px 0 12px;'
+                f'background:#1e293b;border-radius:0 0 12px 12px;margin-top:-10px;">'
+                f'<div style="text-align:center"><div style="color:#94a3b8;font-size:.75rem">Bullish</div>'
+                f'<div style="color:#10b981;font-weight:700">{bull_pct:.1f}%</div></div>'
+                f'<div style="text-align:center"><div style="color:#94a3b8;font-size:.75rem">Score</div>'
+                f'<div style="color:white;font-weight:700">{gauge_score:.0f}/100</div></div>'
+                f'<div style="text-align:center"><div style="color:#94a3b8;font-size:.75rem">Bearish</div>'
+                f'<div style="color:#ef4444;font-weight:700">{bear_pct:.1f}%</div></div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
