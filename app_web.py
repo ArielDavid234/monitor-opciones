@@ -360,8 +360,8 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
 #                    CONFIGURACIÓN DE PÁGINA
 # ============================================================================
 st.set_page_config(
-    page_title="Monitor de Opciones",
-    page_icon="📊",
+    page_title="OPTIONSKING Analytics",
+    page_icon="👑",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -413,6 +413,19 @@ if not st.session_state.favoritos:
 #                    SIDEBAR - CONFIGURACIÓN
 # ============================================================================
 with st.sidebar:
+    # -- OPTIONSKING Analytics branding --
+    st.markdown(
+        """
+        <div style="padding: 20px 10px 12px 10px; text-align: center; border-bottom: 1px solid rgba(148,163,184,0.08); margin-bottom: 16px;">
+            <div style="font-size: 1.8rem; line-height: 1;">👑</div>
+            <div style="font-size: 1.05rem; font-weight: 800; color: #f1f5f9; letter-spacing: -0.02em; margin-top: 4px;">
+                OPTIONS<span style="color: #00ff88;">KING</span>
+            </div>
+            <div style="font-size: 0.62rem; color: #64748b; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 2px;">Analytics</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown("## ⚙️ Configuración")
 
     ticker_symbol = st.text_input(
@@ -480,11 +493,11 @@ with st.sidebar:
 st.markdown(
     f"""
     <div class="scanner-header">
-        <h1>📊 Monitor de Opciones</h1>
+        <h1>� OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
         <p class="subtitle">
-            Escáner de actividad inusual en opciones — <b style="color: #60a5fa;">{ticker_symbol}</b>
+            Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
         </p>
-        <span class="badge">Tiempo Real • Anti-Ban • Análisis Avanzado</span>
+        <span class="badge">● LIVE • Anti-Ban • Análisis Avanzado</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1989,33 +2002,33 @@ with tab_analisis:
             else:
                 net_fill = f"right:50%;width:{net_bar_w:.1f}%;background:linear-gradient(270deg,rgba(239,68,68,.8),rgba(185,28,28,.3));border-radius:6px 0 0 6px"
 
+            # --- Gauge de sentimiento ---
+            gauge_score = max(0, min(100, 50 + net_pct / 2))  # Normalizar a 0-100
+            gauge_arc = 251.2 * (1 - gauge_score / 100)  # circunferencia del arco
+            if net_pct >= 10:
+                gauge_cls = "bullish"
+                gauge_lbl = "ALCISTA"
+            elif net_pct <= -10:
+                gauge_cls = "bearish"
+                gauge_lbl = "BAJISTA"
+            else:
+                gauge_cls = "neutral"
+                gauge_lbl = "NEUTRAL"
             st.markdown(
-                '<style>'
-                '.sp0{background:#1a1f2e;border-radius:14px;padding:22px 26px;border:1px solid #1e293b}'
-                '.sp0 .tt{font-size:1.1rem;font-weight:700;color:#f1f5f9;margin-bottom:2px}'
-                '.sp0 .ts{font-size:.75rem;color:#64748b;margin-bottom:20px}'
-                '.sr{display:flex;align-items:center;margin-bottom:6px;height:44px}'
-                '.sl{width:115px;z-index:2}'
-                '.slt{font-size:.82rem;font-weight:600;color:#e2e8f0}'
-                '.sld{font-size:.65rem;color:#64748b}'
-                '.sa{width:80px;font-size:.9rem;font-weight:700;z-index:2}'
-                '.sb{flex:1;height:32px;background:#0f172a;border-radius:8px;position:relative;overflow:hidden}'
-                '.sm{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#334155;z-index:1}'
-                '.sf{position:absolute;height:100%;z-index:0}'
-                '.sp{width:72px;text-align:right;font-size:.88rem;font-weight:700;z-index:2;padding-left:8px}'
-                '.g{color:#10b981}.r{color:#ef4444}'
-                '.sn{border-top:1px solid #1e293b;padding:14px 0}'
-                '.snr{display:flex;align-items:center;height:44px}'
-                '.snl{width:115px;z-index:2}'
-                '.snt{font-size:.85rem;font-weight:700;color:#f1f5f9}'
-                '.snd{font-size:.65rem}'
-                '.ssum{display:flex;justify-content:space-between;padding-top:14px;border-top:1px solid #1e293b}'
-                '.ssi{text-align:center}'
-                '.ssh{font-size:.7rem;color:#64748b}'
-                '.ssv{font-size:1rem;font-weight:700}'
-                '.ssp{font-size:.72rem}'
-                '.gy{color:#94a3b8}.w{color:#f1f5f9}'
-                '</style>'
+                f'<div class="gauge-container">'
+                f'<div class="gauge-title">Sentiment Index</div>'
+                f'<svg class="gauge-svg" viewBox="0 0 200 120">'
+                f'<path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />'
+                f'<path class="gauge-fill {gauge_cls}" d="M 20 100 A 80 80 0 0 1 180 100" '
+                f'stroke-dasharray="251.2" stroke-dashoffset="{gauge_arc:.1f}" />'
+                f'</svg>'
+                f'<div class="gauge-value">{gauge_score:.0f}</div>'
+                f'<div class="gauge-label {gauge_cls}">{gauge_lbl}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
                 f'<div class="sp0">'
                 f'<div class="tt">💰 Desglose de Sentimiento por Primas</div>'
                 f'<div class="ts">Prima ejecutada por lado del order book — Compras vs Ventas agresivas</div>'
@@ -3086,7 +3099,7 @@ with tab_calendario:
 st.markdown(
     """
     <div class="footer-pro">
-        <div>Monitor de Opciones v5.0 — Datos de Yahoo Finance</div>
+        <div>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics v5.0 — Datos de Yahoo Finance</div>
         <div class="footer-badges">
             <span class="footer-badge">🔒 curl_cffi TLS</span>
             <span class="footer-badge">📊 Yahoo Finance</span>
