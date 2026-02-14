@@ -201,12 +201,16 @@ def guardar_alerta_csv(carpeta, ticker_sym, alerta):
                 fieldnames=[
                     "Fecha_Hora", "Ticker", "Tipo_Alerta", "Tipo_Opcion",
                     "Vencimiento", "Strike", "Volumen", "OI",
-                    "Prima_Volumen", "Ask", "Bid", "Ultimo",
+                    "Prima_Total", "Ask", "Bid", "Ultimo", "Lado",
                 ],
             )
             if escribir_header:
                 writer.writeheader()
-            writer.writerow(alerta)
+            # Renombrar Prima_Volumen a Prima_Total para el CSV (claridad para el usuario)
+            alerta_csv = alerta.copy()
+            if "Prima_Volumen" in alerta_csv:
+                alerta_csv["Prima_Total"] = alerta_csv.pop("Prima_Volumen")
+            writer.writerow(alerta_csv)
     except Exception as e:
         logger.error("Error guardando alerta CSV: %s", e)
 
@@ -232,4 +236,11 @@ def cargar_historial_csv(carpeta):
 
     if not dfs:
         return pd.DataFrame()
-    return pd.concat(dfs, ignore_index=True)
+    
+    result_df = pd.concat(dfs, ignore_index=True)
+    
+    # Compatibilidad: renombrar Prima_Volumen a Prima_Total si existe (CSVs antiguos)
+    if "Prima_Volumen" in result_df.columns:
+        result_df = result_df.rename(columns={"Prima_Volumen": "Prima_Total"})
+    
+    return result_df

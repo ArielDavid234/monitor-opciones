@@ -932,7 +932,9 @@ with tab_scanner:
         alertas_df.insert(1, "Sentimiento", alertas_df.apply(asignar_sentimiento, axis=1))
         if "Lado" in alertas_df.columns:
             alertas_df["Lado"] = alertas_df["Lado"].apply(_fmt_lado)
-        alertas_df["Prima_Volumen"] = alertas_df["Prima_Volumen"].apply(_fmt_dolar)
+        # Renombrar Prima_Volumen a Prima Total para claridad
+        alertas_df = alertas_df.rename(columns={"Prima_Volumen": "Prima Total"})
+        alertas_df["Prima Total"] = alertas_df["Prima Total"].apply(_fmt_dolar)
         cols_ocultar = [c for c in ["OI", "OI_Chg"] if c in alertas_df.columns]
         st.dataframe(alertas_df.drop(columns=cols_ocultar, errors="ignore"), width="stretch", hide_index=True)
 
@@ -1028,7 +1030,10 @@ with tab_scanner:
                 df_filtered = df_filtered[df_filtered["Volumen"] >= min_vol_filtro]
 
             display_df = df_filtered.copy()
-            display_df["Prima_Vol"] = display_df["Prima_Vol"].apply(_fmt_dolar)
+            # Renombrar Prima_Vol a Prima Total para claridad
+            if "Prima_Vol" in display_df.columns:
+                display_df = display_df.rename(columns={"Prima_Vol": "Prima Total"})
+                display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
             display_df["IV"] = display_df["IV"].apply(_fmt_iv)
 
             cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
@@ -1269,6 +1274,14 @@ with tab_historial:
             lambda row: f"{determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[0]}",
             axis=1
         ))
+    
+    # Renombrar Prima_Total (CSV) a "Prima Total" (UI con espacio) para mejor visualización
+    # También maneja CSVs antiguos que puedan tener Prima_Volumen
+    if not historial_df.empty:
+        if "Prima_Total" in historial_df.columns:
+            historial_df = historial_df.rename(columns={"Prima_Total": "Prima Total"})
+        elif "Prima_Volumen" in historial_df.columns:
+            historial_df = historial_df.rename(columns={"Prima_Volumen": "Prima Total"})
 
     if historial_df.empty:
         st.info(
@@ -2411,8 +2424,10 @@ with tab_favoritos:
             ))
         if "Lado" in display_fav_df.columns:
             display_fav_df["Lado"] = display_fav_df["Lado"].apply(_fmt_lado)
+        # Renombrar Prima_Volumen a Prima Total para claridad
         if "Prima_Volumen" in display_fav_df.columns:
-            display_fav_df["Prima_Volumen"] = display_fav_df["Prima_Volumen"].apply(_fmt_monto)
+            display_fav_df = display_fav_df.rename(columns={"Prima_Volumen": "Prima Total"})
+            display_fav_df["Prima Total"] = display_fav_df["Prima Total"].apply(_fmt_monto)
         st.dataframe(display_fav_df, width="stretch", hide_index=True)
 
         st.markdown("---")
