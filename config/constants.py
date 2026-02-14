@@ -29,7 +29,7 @@ RSS_MAX_DESC_LEN = 300             # Longitud máxima de descripción
 # --- Tiempos ---
 SCAN_SLEEP_RANGE = (2.0, 4.5)      # Pausa entre llamadas API en escaneo
 ANALYSIS_SLEEP_RANGE = (1.0, 2.5)  # Pausa entre análisis de proyecciones
-AUTO_REFRESH_INTERVAL = 300        # Intervalo auto-refresco en segundos (5 min)
+AUTO_REFRESH_INTERVAL = 600        # Intervalo auto-refresco en segundos (10 min)
 
 # --- Score de proyección ---
 SCORE_THRESHOLD_ALTA = 65

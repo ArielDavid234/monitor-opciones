@@ -118,7 +118,10 @@ def ejecutar_escaneo(
     if not options_dates:
         return [], [], "No se encontraron fechas de vencimiento", perfil, []
 
-    dates_to_scan = list(options_dates)
+    # Limitar a las 12 fechas más cercanas para evitar rate-limiting
+    # (SPY puede tener 30+ fechas, provocando 30+ API calls)
+    MAX_DATES = 12
+    dates_to_scan = list(options_dates)[:MAX_DATES]
     max_retries = 3
 
     for idx, exp_date in enumerate(dates_to_scan):
@@ -235,7 +238,7 @@ def ejecutar_escaneo(
         except Exception:
             continue
 
-    return alertas, datos, None, perfil, dates_to_scan
+    return alertas, datos, None, perfil, list(options_dates)
 
 
 def guardar_alerta_csv(carpeta, ticker_sym, alerta):

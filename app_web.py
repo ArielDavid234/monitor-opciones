@@ -662,20 +662,14 @@ if pagina == "🔍 Escaneo en Vivo":
                 st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
                 
                 # Capturar precio subyacente para cálculos de reportes
+                # Reusar la sesión anti-ban del scanner en vez de crear Ticker sin protección
                 try:
-                    ticker_info = yf.Ticker(ticker_symbol)
-                    hist = ticker_info.history(period="1d")
+                    session_precio, _ = crear_sesion_nueva()
+                    ticker_precio = yf.Ticker(ticker_symbol, session=session_precio)
+                    hist = ticker_precio.history(period="1d")
                     if not hist.empty:
                         st.session_state.precio_subyacente = hist['Close'].iloc[-1]
-                    else:
-                        # Fallback: usar precio de las opciones si está disponible
-                        if datos and len(datos) > 0:
-                            # Buscar en los datos si hay algún precio underlyingPrice
-                            prices = [d.get('underlyingPrice') for d in datos if d.get('underlyingPrice')]
-                            if prices:
-                                st.session_state.precio_subyacente = prices[0]
                 except Exception:
-                    # Si no se puede obtener, mantener el anterior o None
                     pass
                 st.session_state.last_perfil = perfil
                 st.session_state.scan_error = None
@@ -2746,13 +2740,15 @@ elif pagina == "📐 Range":
 
     st.markdown("")
 
-    fechas_exp_disponibles = []
-    try:
-        session_rango, _ = crear_sesion_nueva()
-        ticker_rango = yf.Ticker(ticker_symbol, session=session_rango)
-        fechas_exp_disponibles = list(ticker_rango.options)
-    except Exception as e:
-        logger.warning("Error obteniendo fechas de expiración para rango: %s", e)
+    # Reusar fechas ya cargadas del último escaneo para evitar llamada extra
+    fechas_exp_disponibles = list(st.session_state.get("fechas_escaneadas", []))
+    if not fechas_exp_disponibles:
+        try:
+            session_rango, _ = crear_sesion_nueva()
+            ticker_rango = yf.Ticker(ticker_symbol, session=session_rango)
+            fechas_exp_disponibles = list(ticker_rango.options)
+        except Exception as e:
+            logger.warning("Error obteniendo fechas de expiración para rango: %s", e)
 
     col_r1, col_r2, col_r3 = st.columns([2, 2, 1])
     with col_r1:
