@@ -245,8 +245,8 @@ CSS_STYLES = """
     }
 
     .ok-metric-card {
-        background: linear-gradient(145deg, #0f1520, #131a2a);
-        border: 1px solid rgba(255,255,255,0.06);
+        background: #1e293b;
+        border: 1px solid #334155;
         border-radius: 14px;
         padding: 20px 22px 16px;
         display: flex;
@@ -256,26 +256,27 @@ CSS_STYLES = """
         position: relative;
         overflow: hidden;
         min-height: 100px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }
     .ok-metric-card::before {
         content: '';
         position: absolute;
         top: 0; left: 0; right: 0;
         height: 2px;
-        background: linear-gradient(90deg, var(--neon-green), var(--accent-blue));
+        background: linear-gradient(90deg, #00ff88, #10b981);
         opacity: 0;
         transition: opacity 0.25s ease;
     }
     .ok-metric-card:hover {
-        border-color: rgba(0,255,136,0.18);
+        border-color: rgba(0,255,136,0.25);
         transform: translateY(-2px);
-        box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 20px rgba(0,255,136,0.05);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.45), 0 0 24px rgba(0,255,136,0.08);
     }
     .ok-metric-card:hover::before { opacity: 1; }
 
     .ok-metric-title {
-        color: #64748b;
-        font-size: 0.7rem;
+        color: #94a3b8;
+        font-size: 0.72rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.08em;
@@ -285,29 +286,32 @@ CSS_STYLES = """
         text-overflow: ellipsis;
     }
     .ok-metric-value {
-        color: #f1f5f9;
-        font-size: 1.6rem;
+        color: #ffffff;
+        font-size: 1.8rem;
         font-weight: 700;
         font-family: var(--font-mono);
         line-height: 1.15;
         letter-spacing: -0.02em;
     }
     .ok-metric-delta {
-        font-size: 0.78rem;
-        font-weight: 600;
+        font-size: 0.8rem;
+        font-weight: 700;
         font-family: var(--font-mono);
         display: inline-flex;
         align-items: center;
         gap: 3px;
         margin-top: 4px;
     }
-    .ok-delta-up  { color: #00ff88; }
-    .ok-delta-down { color: #ef4444; }
+    .ok-delta-up  { color: #00ff88; text-shadow: 0 0 8px rgba(0,255,136,0.3); }
+    .ok-delta-down { color: #ef4444; text-shadow: 0 0 8px rgba(239,68,68,0.3); }
     .ok-metric-sparkline {
         margin-top: 8px;
         height: 32px;
         width: 100%;
-        opacity: 0.85;
+        opacity: 0.9;
+    }
+    .ok-metric-sparkline-plotly {
+        margin-top: 6px;
     }
 
     /* Legacy st.metric fallback */
@@ -552,11 +556,11 @@ CSS_STYLES = """
 
     /* ====== HTML PRO TABLE (ok-table) ====== */
     .ok-table-wrap {
-        background: linear-gradient(145deg, #0c1018, #0f1520);
-        border: 1px solid rgba(255,255,255,0.06);
+        background: #1e293b;
+        border: 1px solid #334155;
         border-radius: 14px;
         overflow: hidden;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         margin-bottom: 18px;
     }
     .ok-table-header {
@@ -580,31 +584,34 @@ CSS_STYLES = """
         font-size: 0.78rem;
     }
     .ok-tbl thead th {
-        background: #080b11;
-        color: #64748b;
-        font-size: 0.68rem;
+        background: #0f172a;
+        color: #94a3b8;
+        font-size: 0.7rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         padding: 12px 14px;
         text-align: left;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
+        border-bottom: 1px solid #334155;
         white-space: nowrap;
         position: sticky; top: 0; z-index: 2;
     }
     .ok-tbl tbody tr {
-        transition: background 0.15s ease;
+        transition: background 0.18s ease;
     }
     .ok-tbl tbody tr:nth-child(even) {
-        background: rgba(255,255,255,0.015);
+        background: rgba(255,255,255,0.025);
+    }
+    .ok-tbl tbody tr:nth-child(odd) {
+        background: transparent;
     }
     .ok-tbl tbody tr:hover {
-        background: rgba(0,255,136,0.04) !important;
+        background: #334155 !important;
     }
     .ok-tbl tbody td {
         padding: 10px 14px;
-        color: #cbd5e1;
-        border-bottom: 1px solid rgba(255,255,255,0.03);
+        color: #e2e8f0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
         white-space: nowrap;
     }
     /* Ticker column bold */

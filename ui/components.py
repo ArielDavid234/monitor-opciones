@@ -6,6 +6,7 @@ import time
 import logging
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from random import uniform
 
 from config.constants import ANALYSIS_SLEEP_RANGE
@@ -79,7 +80,7 @@ def render_metric_card(title, value, delta=None, delta_suffix="%",
         value: Large main value string.
         delta: Numeric change (positive → green ▲, negative → red ▼) or custom str.
         delta_suffix: Suffix after numeric delta (default "%").
-        sparkline_data: List of numbers for the mini line chart.
+        sparkline_data: List of numbers for the mini line chart (Plotly or SVG fallback).
         color_override: Force a specific color for delta & sparkline.
     """
     delta_html = ""
@@ -111,6 +112,39 @@ def render_metric_card(title, value, delta=None, delta_suffix="%",
         f'{sparkline_html}'
         f'</div>'
     )
+
+
+def render_plotly_sparkline(data, color="#00ff88", height=60):
+    """Render a tiny Plotly area sparkline chart for embedding in metric sections.
+
+    Call this via st.plotly_chart() separately after rendering the card HTML.
+    Returns a Plotly figure object.
+    """
+    if not data or len(data) < 2:
+        return None
+    fill_color = color.replace(")", ",0.15)").replace("rgb", "rgba") if color.startswith("rgb") else color + "26"
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        y=list(data),
+        mode="lines",
+        fill="tozeroy",
+        line=dict(color=color, width=2, shape="spline"),
+        fillcolor=fill_color,
+        hovertemplate="%{y:,.0f}<extra></extra>",
+    ))
+    fig.update_layout(
+        height=height,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        showlegend=False,
+        hovermode="x unified",
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    return fig
 
 
 def render_metric_row(cards_html):
@@ -468,7 +502,7 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
         f'<div class="ok-table-wrap">'
         f'{header_html}'
         f'<div class="ok-table-scroll"{style_attr}>'
-        f'<table class="ok-tbl">{thead}{tbody}</table>'
+        f'<table class="ok-tbl table-zebra">{thead}{tbody}</table>'
         f'</div>'
         f'{footer_html}'
         f'</div>'

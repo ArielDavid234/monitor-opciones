@@ -48,7 +48,7 @@ from ui.styles import CSS_STYLES
 from ui.components import (
     format_market_cap, render_empresa_card, render_tabla_comparativa,
     analizar_watchlist, render_watchlist_preview, render_empresa_descriptions,
-    render_metric_card, render_metric_row,
+    render_metric_card, render_metric_row, render_plotly_sparkline,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge, _badge_html,
 )
 
@@ -469,10 +469,22 @@ with st.sidebar:
     # -- OPTIONSKING Analytics Logo --
     st.markdown("""
         <div style="text-align: center; padding: 2rem 0;">
-            <h1 style="color: #00ff88; font-size: 32px; margin:0;">👑 OPTIONSKING</h1>
-            <p style="color: white; font-size: 20px; margin:4px 0 0 0;">Analytics</p>
+            <div style="display:inline-block;width:48px;height:48px;margin-bottom:8px;">
+                <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#00ff88"/><stop offset="100%" stop-color="#10b981"/>
+                    </linearGradient></defs>
+                    <path d="M8 48h48l-6-28-10 12-10-20-10 20-10-12z" fill="url(#cg)" stroke="#00ff88" stroke-width="1.5"/>
+                    <rect x="8" y="48" width="48" height="6" rx="2" fill="url(#cg)"/>
+                    <circle cx="32" cy="12" r="3" fill="#00ff88"/>
+                    <circle cx="12" cy="22" r="2.5" fill="#10b981"/>
+                    <circle cx="52" cy="22" r="2.5" fill="#10b981"/>
+                </svg>
+            </div>
+            <h1 style="color: #00ff88; font-size: 28px; margin:0; font-weight:800; letter-spacing:-0.02em;">OPTIONSKING</h1>
+            <p style="color: #94a3b8; font-size: 16px; margin:4px 0 0 0; font-weight:500; letter-spacing:0.1em; text-transform:uppercase;">Analytics</p>
         </div>
-        <hr style="border-color: #334155; margin: 1.5rem 0;">
+        <hr style="border-color: #334155; margin: 0 0 1rem 0;">
     """, unsafe_allow_html=True)
 
     st.markdown("---")
@@ -786,6 +798,7 @@ with tab_scanner:
         _call_pct = (_n_calls / _total * 100) if _total else 0
         _put_pct = (_n_puts / _total * 100) if _total else 0
         _spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
+        _spk_oi = sorted(datos_df["OI"].dropna().tail(12).tolist()) if "OI" in datos_df.columns else None
         st.markdown(render_metric_row([
             render_metric_card("Opciones Analizadas", f"{_total:,}", sparkline_data=_spk),
             render_metric_card("Calls", f"{_n_calls:,}", delta=_call_pct),
@@ -793,6 +806,17 @@ with tab_scanner:
             render_metric_card("Alertas", f"{_n_alertas}"),
             render_metric_card("Clusters", f"{_n_clusters}"),
         ]), unsafe_allow_html=True)
+
+        # Mini sparkline charts en fila
+        _spark_cols = st.columns(5)
+        _vol_spark = render_plotly_sparkline(_spk, color="#00ff88", height=50)
+        _oi_spark = render_plotly_sparkline(_spk_oi, color="#3b82f6", height=50)
+        if _vol_spark:
+            with _spark_cols[0]:
+                st.plotly_chart(_vol_spark, use_container_width=True, config={"displayModeBar": False})
+        if _oi_spark:
+            with _spark_cols[1]:
+                st.plotly_chart(_oi_spark, use_container_width=True, config={"displayModeBar": False})
 
     # --- Mostrar alertas ---
     if st.session_state.alertas_actuales:
@@ -1136,15 +1160,28 @@ with tab_scanner:
             )
             st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
 
-    # Auto-refresh
+    # Auto-refresh con countdown visual
     if auto_scan and st.session_state.scan_count > 0:
+        countdown = AUTO_REFRESH_INTERVAL  # Configurable desde constants.py
         placeholder = st.empty()
-        countdown = 300
+        progress_bar = st.progress(1.0)
         for remaining in range(countdown, 0, -1):
             mins, secs = divmod(remaining, 60)
-            placeholder.info(f"🔄 Próximo escaneo automático en **{mins}:{secs:02d}**")
+            pct = remaining / countdown
+            placeholder.markdown(
+                f'<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;'
+                f'padding:10px 18px;display:flex;align-items:center;gap:12px;font-size:0.85rem;">'
+                f'<span style="color:#00ff88;font-size:1.1rem;">🔄</span>'
+                f'<span style="color:#94a3b8;">Próximo escaneo en</span>'
+                f'<span style="color:#ffffff;font-weight:700;font-family:JetBrains Mono,monospace;">'
+                f'{mins}:{secs:02d}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            progress_bar.progress(pct)
             time.sleep(1)
         placeholder.empty()
+        progress_bar.empty()
         st.rerun()
 
 
