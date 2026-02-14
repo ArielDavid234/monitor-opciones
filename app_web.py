@@ -706,6 +706,7 @@ with tab_scanner:
             """,
             unsafe_allow_html=True,
         )
+        st.info("💡 **Prima Total** = Volumen × Precio × 100 — Representa el flujo de dinero total del contrato basado en el volumen transaccionado del día (no del Open Interest).")
 
         alertas_sorted = sorted(
             st.session_state.alertas_actuales,
