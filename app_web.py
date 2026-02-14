@@ -1965,6 +1965,187 @@ with tab_analisis:
 
         st.markdown("---")
 
+        # ================================================================
+        # SOPORTES Y RESISTENCIAS POR VOLUMEN DE OPCIONES
+        # ================================================================
+        st.markdown("### 🛡️ Soportes y Resistencias por Opciones")
+        st.markdown(
+            """
+            <div style="background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.15); 
+                 border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #93c5fd;">
+                📊 <b>¿Cómo se determinan?</b> Los strikes con mayor volumen en <b>CALLs</b> actúan como 
+                <b style="color:#ef4444">resistencias</b> (techos) y los strikes con mayor volumen en <b>PUTs</b> 
+                actúan como <b style="color:#10b981">soportes</b> (pisos). Donde se concentra el volumen, 
+                hay mayor interés institucional y es probable que el precio reaccione.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Obtener precio actual
+        precio_actual = st.session_state.get('precio_subyacente', None)
+
+        # Separar CALLs y PUTs con volumen > 0
+        df_calls_sr = df_analisis[(df_analisis["Tipo"] == "CALL") & (df_analisis["Volumen"] > 0)].copy()
+        df_puts_sr = df_analisis[(df_analisis["Tipo"] == "PUT") & (df_analisis["Volumen"] > 0)].copy()
+
+        if not df_calls_sr.empty and not df_puts_sr.empty:
+            # Top 5 strikes con más volumen en CALLs → Resistencias
+            top_calls = df_calls_sr.groupby("Strike").agg(
+                Vol_Total=("Volumen", "sum"),
+                OI_Total=("OI", "sum"),
+                Prima_Total=("Prima_Vol", "sum"),
+                Contratos=("Volumen", "count"),
+            ).sort_values("Vol_Total", ascending=False).head(5).reset_index()
+
+            # Top 5 strikes con más volumen en PUTs → Soportes
+            top_puts = df_puts_sr.groupby("Strike").agg(
+                Vol_Total=("Volumen", "sum"),
+                OI_Total=("OI", "sum"),
+                Prima_Total=("Prima_Vol", "sum"),
+                Contratos=("Volumen", "count"),
+            ).sort_values("Vol_Total", ascending=False).head(5).reset_index()
+
+            col_sr1, col_sr2 = st.columns(2)
+
+            with col_sr1:
+                st.markdown("#### 🔴 Resistencias (CALLs más tradeados)")
+                for idx_r, row_r in top_calls.iterrows():
+                    pct_dist = ""
+                    if precio_actual and precio_actual > 0:
+                        dist = ((row_r["Strike"] - precio_actual) / precio_actual) * 100
+                        pct_dist = f" ({'+' if dist >= 0 else ''}{dist:.1f}%)"
+                    st.markdown(
+                        f"""
+                        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); 
+                             border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">
+                                        R{idx_r + 1}: ${row_r['Strike']:,.1f}
+                                    </span>
+                                    <span style="font-size: 0.8rem; color: #94a3b8;">{pct_dist}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-size: 0.82rem; color: #f1f5f9;">
+                                        Vol: <b>{row_r['Vol_Total']:,.0f}</b>
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+                                OI: {row_r['OI_Total']:,.0f} | Prima: {_fmt_monto(row_r['Prima_Total'])} | {int(row_r['Contratos'])} contratos
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+            with col_sr2:
+                st.markdown("#### 🟢 Soportes (PUTs más tradeados)")
+                for idx_s, row_s in top_puts.iterrows():
+                    pct_dist = ""
+                    if precio_actual and precio_actual > 0:
+                        dist = ((row_s["Strike"] - precio_actual) / precio_actual) * 100
+                        pct_dist = f" ({'+' if dist >= 0 else ''}{dist:.1f}%)"
+                    st.markdown(
+                        f"""
+                        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); 
+                             border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span style="font-size: 1.1rem; font-weight: 700; color: #10b981;">
+                                        S{idx_s + 1}: ${row_s['Strike']:,.1f}
+                                    </span>
+                                    <span style="font-size: 0.8rem; color: #94a3b8;">{pct_dist}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-size: 0.82rem; color: #f1f5f9;">
+                                        Vol: <b>{row_s['Vol_Total']:,.0f}</b>
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+                                OI: {row_s['OI_Total']:,.0f} | Prima: {_fmt_monto(row_s['Prima_Total'])} | {int(row_s['Contratos'])} contratos
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+            # Barra visual de niveles
+            if precio_actual and precio_actual > 0:
+                st.markdown("---")
+                st.markdown("#### 📍 Mapa de Niveles vs Precio Actual")
+
+                # Combinar todos los niveles
+                niveles_r = [(s, "R", v) for s, v in zip(top_calls["Strike"], top_calls["Vol_Total"])]
+                niveles_s = [(s, "S", v) for s, v in zip(top_puts["Strike"], top_puts["Vol_Total"])]
+                todos_niveles = sorted(niveles_r + niveles_s, key=lambda x: x[0])
+
+                max_vol_nivel = max(n[2] for n in todos_niveles) if todos_niveles else 1
+                all_strikes = [n[0] for n in todos_niveles] + [precio_actual]
+                rango_min = min(all_strikes) * 0.998
+                rango_max = max(all_strikes) * 1.002
+                rango_total = rango_max - rango_min if rango_max > rango_min else 1
+
+                mapa_html = '<div style="position:relative; height:60px; background:#0f172a; border-radius:10px; margin:10px 0 20px 0; border:1px solid #1e293b;">'
+
+                # Líneas de niveles
+                for strike_n, tipo_n, vol_n in todos_niveles:
+                    pos_pct = ((strike_n - rango_min) / rango_total) * 100
+                    pos_pct = max(2, min(98, pos_pct))
+                    color = "#ef4444" if tipo_n == "R" else "#10b981"
+                    opacity = 0.4 + 0.6 * (vol_n / max_vol_nivel)
+                    label = tipo_n
+                    mapa_html += (
+                        f'<div style="position:absolute; left:{pos_pct:.1f}%; top:0; bottom:0; '
+                        f'width:2px; background:{color}; opacity:{opacity:.2f};"></div>'
+                        f'<div style="position:absolute; left:{pos_pct:.1f}%; top:2px; transform:translateX(-50%); '
+                        f'font-size:0.65rem; font-weight:700; color:{color};">{label} ${strike_n:,.0f}</div>'
+                        f'<div style="position:absolute; left:{pos_pct:.1f}%; bottom:2px; transform:translateX(-50%); '
+                        f'font-size:0.6rem; color:#64748b;">{vol_n:,.0f}</div>'
+                    )
+
+                # Línea del precio actual
+                pos_precio = ((precio_actual - rango_min) / rango_total) * 100
+                pos_precio = max(2, min(98, pos_precio))
+                mapa_html += (
+                    f'<div style="position:absolute; left:{pos_precio:.1f}%; top:0; bottom:0; '
+                    f'width:3px; background:#f59e0b; z-index:5;"></div>'
+                    f'<div style="position:absolute; left:{pos_precio:.1f}%; top:50%; transform:translate(-50%,-50%); '
+                    f'background:#f59e0b; color:#000; font-size:0.7rem; font-weight:800; padding:2px 6px; '
+                    f'border-radius:4px; z-index:6; white-space:nowrap;">📍 ${precio_actual:,.2f}</div>'
+                )
+
+                mapa_html += '</div>'
+                st.markdown(mapa_html, unsafe_allow_html=True)
+
+                # Resumen de niveles cercanos
+                resistencias_arriba = sorted([n for n in niveles_r if n[0] > precio_actual], key=lambda x: x[0])
+                soportes_abajo = sorted([n for n in niveles_s if n[0] < precio_actual], key=lambda x: x[0], reverse=True)
+
+                col_near1, col_near2 = st.columns(2)
+                with col_near1:
+                    if resistencias_arriba:
+                        r_cercana = resistencias_arriba[0]
+                        dist_r = ((r_cercana[0] - precio_actual) / precio_actual) * 100
+                        st.metric("🔴 Resistencia más cercana", f"${r_cercana[0]:,.1f}", 
+                                 delta=f"+{dist_r:.2f}% arriba", delta_color="inverse")
+                    else:
+                        st.info("Sin resistencias por encima del precio actual")
+                with col_near2:
+                    if soportes_abajo:
+                        s_cercano = soportes_abajo[0]
+                        dist_s = ((s_cercano[0] - precio_actual) / precio_actual) * 100
+                        st.metric("🟢 Soporte más cercano", f"${s_cercano[0]:,.1f}", 
+                                 delta=f"{dist_s:.2f}% abajo", delta_color="normal")
+                    else:
+                        st.info("Sin soportes por debajo del precio actual")
+        else:
+            st.info("No hay suficientes datos de CALLs y PUTs para calcular soportes y resistencias.")
+
+        st.markdown("---")
+
         col_a1, col_a2 = st.columns(2)
 
         with col_a1:
