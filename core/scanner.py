@@ -74,15 +74,30 @@ def construir_simbolo_contrato(ticker_sym, exp_date, opt_type, strike):
 
 def obtener_historial_contrato(contract_symbol):
     """Obtiene el historial de precios de un contrato de opción."""
-    try:
-        session, _ = crear_sesion_nueva()
-        contract = yf.Ticker(contract_symbol, session=session)
-        hist = contract.history(period="1mo")
-        if hist.empty:
-            hist = contract.history(period="5d")
-        return hist, None
-    except Exception as e:
-        return pd.DataFrame(), str(e)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            session, _ = crear_sesion_nueva()
+            contract = yf.Ticker(contract_symbol, session=session)
+            hist = contract.history(period="1mo")
+            if hist.empty:
+                hist = contract.history(period="5d")
+            return hist, None
+        except Exception as e:
+            error_msg = str(e).lower()
+            is_rate_limit = any(
+                kw in error_msg
+                for kw in ["429", "rate limit", "too many requests"]
+            )
+            if attempt < max_retries - 1:
+                wait = 5 * (3 ** attempt) if is_rate_limit else uniform(1.5, 3.0)
+                logger.warning(
+                    "Error en historial %s (intento %d/%d): %s. Esperando %.1fs...",
+                    contract_symbol, attempt + 1, max_retries, e, wait,
+                )
+                time.sleep(wait)
+            else:
+                return pd.DataFrame(), str(e)
 
 
 def ejecutar_escaneo(
@@ -104,14 +119,50 @@ def ejecutar_escaneo(
         return [], [], "No se encontraron fechas de vencimiento", perfil, []
 
     dates_to_scan = list(options_dates)
+    max_retries = 3
 
     for idx, exp_date in enumerate(dates_to_scan):
         if idx > 0:
             time.sleep(uniform(*SCAN_SLEEP_RANGE))
 
-        try:
-            chain = ticker.option_chain(exp_date)
+        # Retry con backoff exponencial
+        for attempt in range(max_retries):
+            try:
+                chain = ticker.option_chain(exp_date)
+                break  # éxito, salir del retry
+            except Exception as e:
+                error_msg = str(e).lower()
+                is_rate_limit = any(
+                    kw in error_msg
+                    for kw in ["429", "rate limit", "too many requests"]
+                )
+                if attempt < max_retries - 1:
+                    if is_rate_limit:
+                        # Backoff exponencial: 5s, 15s, 45s
+                        wait = 5 * (3 ** attempt)
+                        logger.warning(
+                            "Rate limited en %s (intento %d/%d). "
+                            "Esperando %ds y rotando sesión...",
+                            exp_date, attempt + 1, max_retries, wait,
+                        )
+                        time.sleep(wait)
+                        # Rotar sesión/perfil
+                        session, perfil = crear_sesion_nueva()
+                        ticker = yf.Ticker(ticker_sym, session=session)
+                    else:
+                        # Error genérico: espera corta
+                        time.sleep(uniform(1.5, 3.0))
+                else:
+                    logger.warning(
+                        "Falló después de %d intentos en %s: %s",
+                        max_retries, exp_date, e,
+                    )
+                    chain = None
 
+        if chain is None:
+            continue
+
+        try:
             for opt_type, df in [("CALL", chain.calls), ("PUT", chain.puts)]:
                 for _, row in df.iterrows():
                     vol = int(_safe_num(row["volume"])) if _safe_num(row["volume"]) > 0 else 0

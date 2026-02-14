@@ -498,29 +498,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # -- Ticker Input --
-    ticker_symbol = st.text_input(
-        "🔍 Símbolo del Ticker", value="SPY", max_chars=10,
-        help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)"
-    ).strip().upper()
-
-    # Detectar cambio de ticker → auto-escanear
-    if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
-        st.session_state.ticker_anterior = ticker_symbol
-        st.session_state.alertas_actuales = []
-        st.session_state.datos_completos = []
-        st.session_state.datos_anteriores = []
-        st.session_state.oi_cambios = None
-        st.session_state.barchart_data = None
-        st.session_state.barchart_error = None
-        st.session_state.clusters_detectados = []
-        st.session_state.rango_resultado = None
-        st.session_state.rango_error = None
-        st.session_state.scan_error = None
-        st.session_state.fechas_escaneadas = []
-        st.session_state.trigger_scan = True
-        st.rerun()
-
     # Valores por defecto de umbrales (se configuran en Escaneo en Vivo)
     if "umbral_vol" not in st.session_state:
         st.session_state.umbral_vol = DEFAULT_MIN_VOLUME
@@ -540,20 +517,6 @@ with st.sidebar:
         st.session_state.rango_delta = DEFAULT_TARGET_DELTA
     rango_delta = st.session_state.rango_delta
 
-    with st.expander("🛡️ Anti-Ban", expanded=False):
-        st.markdown(
-            f"""
-            <div class="info-card">
-                <div style="font-size: 0.82rem; color: #94a3b8;">
-                    <b style="color: #10b981;">{len(BROWSER_PROFILES)}</b> perfiles TLS<br>
-                    <span style="font-size: 0.72rem;">Chrome · Edge · Safari<br>
-                    JA3/JA4 fingerprinting via curl_cffi</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
     # -- Avatar / User Section --
     st.markdown(
         '<div style="text-align:center; margin-top:2rem; padding:1rem 0;">'
@@ -569,12 +532,30 @@ with st.sidebar:
 # ============================================================================
 #                    ENCABEZADO PRINCIPAL
 # ============================================================================
-# Header superior: search + upgrade
-col_search, col_upgrade = st.columns([5, 1])
-with col_search:
-    _search_query = st.text_input("🔍 Search...", placeholder="Buscar ticker, contrato, strike...", label_visibility="collapsed")
-with col_upgrade:
-    st.button("Upgrade 💎", type="primary", use_container_width=True)
+# Header superior: ticker input
+ticker_symbol = st.text_input(
+    "🔍 Símbolo del Ticker", value="SPY", max_chars=10,
+    help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
+    placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
+    label_visibility="collapsed",
+).strip().upper()
+
+# Detectar cambio de ticker → auto-escanear
+if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
+    st.session_state.ticker_anterior = ticker_symbol
+    st.session_state.alertas_actuales = []
+    st.session_state.datos_completos = []
+    st.session_state.datos_anteriores = []
+    st.session_state.oi_cambios = None
+    st.session_state.barchart_data = None
+    st.session_state.barchart_error = None
+    st.session_state.clusters_detectados = []
+    st.session_state.rango_resultado = None
+    st.session_state.rango_error = None
+    st.session_state.scan_error = None
+    st.session_state.fechas_escaneadas = []
+    st.session_state.trigger_scan = True
+    st.rerun()
 
 st.markdown(
     f"""
@@ -583,7 +564,7 @@ st.markdown(
         <p class="subtitle">
             Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
         </p>
-        <span class="badge">● LIVE • Anti-Ban • Análisis Avanzado</span>
+        <span class="badge">● LIVE • Análisis Avanzado</span>
     </div>
     """,
     unsafe_allow_html=True,
