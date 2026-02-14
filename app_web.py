@@ -48,6 +48,7 @@ from ui.components import (
     format_market_cap, render_empresa_card, render_tabla_comparativa,
     analizar_watchlist, render_watchlist_preview, render_empresa_descriptions,
     render_metric_card, render_metric_row,
+    render_pro_table, _sentiment_badge, _type_badge, _priority_badge, _badge_html,
 )
 
 
@@ -979,31 +980,40 @@ with tab_scanner:
                     st.info("ℹ️ No se encontró el símbolo del contrato.")
 
         # Tabla resumen de alertas
-        st.markdown("#### 📋 Tabla de Alertas (ordenada por prima)")
         alertas_df = pd.DataFrame(alertas_sorted)
 
         def asignar_prioridad(row):
             prima_m = row["Prima_Volumen"]
             if prima_m == max_prima:
-                return "🟢 TOP"
+                return "TOP"
             elif row["Tipo_Alerta"] == "PRINCIPAL":
-                return "🔴 INSTITUCIONAL"
+                return "INSTITUCIONAL"
             else:
-                return "🟠 PRIMA ALTA"
+                return "PRIMA ALTA"
 
-        def asignar_sentimiento(row):
-            sent_txt, sent_emoji, _ = determinar_sentimiento(row["Tipo_Opcion"], row.get("Lado", "N/A"))
-            return f"{sent_emoji} {sent_txt}"
+        def _sent_badge_row(row):
+            return _sentiment_badge(row["Tipo_Opcion"], row.get("Lado", "N/A"))
 
         alertas_df.insert(0, "Prioridad", alertas_df.apply(asignar_prioridad, axis=1))
-        alertas_df.insert(1, "Sentimiento", alertas_df.apply(asignar_sentimiento, axis=1))
+        alertas_df.insert(1, "Sentimiento", alertas_df.apply(_sent_badge_row, axis=1))
+        if "Tipo_Opcion" in alertas_df.columns:
+            alertas_df["Tipo_Opcion"] = alertas_df["Tipo_Opcion"].apply(_type_badge)
         if "Lado" in alertas_df.columns:
             alertas_df["Lado"] = alertas_df["Lado"].apply(_fmt_lado)
-        # Renombrar Prima_Volumen a Prima Total para claridad
         alertas_df = alertas_df.rename(columns={"Prima_Volumen": "Prima Total"})
         alertas_df["Prima Total"] = alertas_df["Prima Total"].apply(_fmt_dolar)
         cols_ocultar = [c for c in ["OI", "OI_Chg"] if c in alertas_df.columns]
-        st.dataframe(alertas_df.drop(columns=cols_ocultar, errors="ignore"), width="stretch", hide_index=True)
+        _tbl_df = alertas_df.drop(columns=cols_ocultar, errors="ignore")
+        st.markdown(
+            render_pro_table(
+                _tbl_df,
+                title="📋 Unusual Activity — Alertas",
+                badge_count=f"{len(_tbl_df)} alertas",
+                footer_text=f"Ordenadas por prima · {len(_tbl_df)} resultados",
+                special_format={"Prioridad": _priority_badge},
+            ),
+            unsafe_allow_html=True,
+        )
 
         # --- ALERTA DE COMPRA CONTINUA (CLUSTERS) ---
         if st.session_state.clusters_detectados:
@@ -1062,7 +1072,12 @@ with tab_scanner:
                         "Prima Prom.": f"${c['Prima_Promedio']:,.0f}",
                         "Vol Total": f"{c['Vol_Total']:,}",
                     })
-                st.dataframe(pd.DataFrame(clusters_table), width="stretch", hide_index=True)
+                st.markdown(
+                    render_pro_table(pd.DataFrame(clusters_table),
+                                     title="🔗 Clusters Detectados",
+                                     badge_count=f"{len(clusters_table)}"),
+                    unsafe_allow_html=True,
+                )
 
     elif st.session_state.scan_count > 0 and not st.session_state.scan_error:
         st.success("✅ Sin alertas relevantes en este ciclo.")
@@ -1426,16 +1441,30 @@ with tab_historial:
                 df_hist_filtered["Ticker"] == filtro_ticker_hist
             ]
 
-        st.dataframe(
-            df_hist_filtered.sort_values(
-                "Fecha_Hora", ascending=False
-            ) if "Fecha_Hora" in df_hist_filtered.columns else df_hist_filtered,
-            width="stretch",
-            hide_index=True,
-            height=500,
+        _hist_sorted = (
+            df_hist_filtered.sort_values("Fecha_Hora", ascending=False)
+            if "Fecha_Hora" in df_hist_filtered.columns else df_hist_filtered
         )
-        st.caption(
-            f"Mostrando {len(df_hist_filtered):,} de {len(historial_df):,} alertas"
+        # Format columns for pro table
+        _hist_show = _hist_sorted.copy()
+        if "Tipo_Opcion" in _hist_show.columns:
+            _hist_show["Tipo_Opcion"] = _hist_show["Tipo_Opcion"].apply(_type_badge)
+        if "Tipo_Alerta" in _hist_show.columns:
+            _hist_show["Tipo_Alerta"] = _hist_show["Tipo_Alerta"].apply(_priority_badge)
+        if "Prima Total" in _hist_show.columns:
+            _hist_show["Prima Total"] = _hist_show["Prima Total"].apply(
+                lambda x: _fmt_dolar(x) if isinstance(x, (int, float)) else x
+            )
+        if "Lado" in _hist_show.columns:
+            _hist_show["Lado"] = _hist_show["Lado"].apply(_fmt_lado)
+        st.markdown(
+            render_pro_table(
+                _hist_show,
+                title="📜 Historial de Alertas",
+                badge_count=f"{len(df_hist_filtered):,} de {len(historial_df):,}",
+                footer_text=f"Mostrando {len(df_hist_filtered):,} de {len(historial_df):,} alertas",
+            ),
+            unsafe_allow_html=True,
         )
 
         csv_download = df_hist_filtered.to_csv(index=False).encode("utf-8")
@@ -1539,7 +1568,12 @@ with tab_historial:
                     "OI Total": _fmt_entero(c['OI_Total']),
                     "OI Chg": _fmt_oi_chg(c.get('OI_Chg_Total', 0)),
                 })
-            st.dataframe(pd.DataFrame(clusters_table), width="stretch", hide_index=True)
+            st.markdown(
+                render_pro_table(pd.DataFrame(clusters_table),
+                                 title="🔗 Clusters de Compra Continua",
+                                 badge_count=f"{len(clusters_table)}"),
+                unsafe_allow_html=True,
+            )
 
         # --- Rango esperado ---
         if st.session_state.rango_resultado:
@@ -1571,7 +1605,10 @@ with tab_historial:
                     r["dias_restantes"] if r["dias_restantes"] else "N/A",
                 ]
             })
-            st.dataframe(rango_table, width="stretch", hide_index=True)
+            st.markdown(
+                render_pro_table(rango_table, title="📐 Rango Esperado Calculado"),
+                unsafe_allow_html=True,
+            )
 
         # --- BOTÓN DE DESCARGA COMPLETA ---
         st.markdown("---")
@@ -2363,13 +2400,17 @@ with tab_analisis:
         top_vol_display = top_vol_display.rename(columns={"Prima_Vol": "Prima Total"})
         if "Tipo" in top_vol_display.columns and "Lado" in top_vol_display.columns:
             top_vol_display.insert(0, "Sentimiento", top_vol_display.apply(
-                lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
-                axis=1
+                lambda row: _sentiment_badge(row["Tipo"], row.get("Lado", "N/A")), axis=1
             ))
+        if "Tipo" in top_vol_display.columns:
+            top_vol_display["Tipo"] = top_vol_display["Tipo"].apply(_type_badge)
         top_vol_display["Prima Total"] = top_vol_display["Prima Total"].apply(_fmt_dolar)
         if "Lado" in top_vol_display.columns:
             top_vol_display["Lado"] = top_vol_display["Lado"].apply(_fmt_lado)
-        st.dataframe(top_vol_display, width="stretch", hide_index=True)
+        st.markdown(
+            render_pro_table(top_vol_display, title="🎯 Top 20 por Volumen", badge_count="20"),
+            unsafe_allow_html=True,
+        )
 
         st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
         oi_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
@@ -2381,13 +2422,17 @@ with tab_analisis:
         top_oi_display = top_oi_display.rename(columns={"Prima_Vol": "Prima Total"})
         if "Tipo" in top_oi_display.columns and "Lado" in top_oi_display.columns:
             top_oi_display.insert(0, "Sentimiento", top_oi_display.apply(
-                lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
-                axis=1
+                lambda row: _sentiment_badge(row["Tipo"], row.get("Lado", "N/A")), axis=1
             ))
+        if "Tipo" in top_oi_display.columns:
+            top_oi_display["Tipo"] = top_oi_display["Tipo"].apply(_type_badge)
         top_oi_display["Prima Total"] = top_oi_display["Prima Total"].apply(_fmt_dolar)
         if "Lado" in top_oi_display.columns:
             top_oi_display["Lado"] = top_oi_display["Lado"].apply(_fmt_lado)
-        st.dataframe(top_oi_display, width="stretch", hide_index=True)
+        st.markdown(
+            render_pro_table(top_oi_display, title="🏛️ Top 20 por Open Interest", badge_count="20"),
+            unsafe_allow_html=True,
+        )
 
         col_iv1, col_iv2 = st.columns(2)
         with col_iv1:
@@ -2424,7 +2469,10 @@ with tab_analisis:
                 display_pc = prima_calls_venc.copy()
                 display_pc["Prima_Total"] = display_pc["Prima_Total"].apply(_fmt_dolar)
                 display_pc["Volumen_Total"] = display_pc["Volumen_Total"].apply(_fmt_entero)
-                st.dataframe(display_pc, width="stretch", hide_index=True)
+                st.markdown(
+                    render_pro_table(display_pc, title="📞 CALLs por Vencimiento"),
+                    unsafe_allow_html=True,
+                )
             else:
                 st.info("Sin datos de CALLs.")
 
@@ -2440,7 +2488,10 @@ with tab_analisis:
                 display_pp = prima_puts_venc.copy()
                 display_pp["Prima_Total"] = display_pp["Prima_Total"].apply(_fmt_dolar)
                 display_pp["Volumen_Total"] = display_pp["Volumen_Total"].apply(_fmt_entero)
-                st.dataframe(display_pp, width="stretch", hide_index=True)
+                st.markdown(
+                    render_pro_table(display_pp, title="📋 PUTs por Vencimiento"),
+                    unsafe_allow_html=True,
+                )
             else:
                 st.info("Sin datos de PUTs.")
 
@@ -2456,9 +2507,10 @@ with tab_analisis:
         top_prima_display = top_prima_display.rename(columns={"Prima_Vol": "Prima Total"})
         if "Tipo" in top_prima_display.columns and "Lado" in top_prima_display.columns:
             top_prima_display.insert(0, "Sentimiento", top_prima_display.apply(
-                lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
-                axis=1
+                lambda row: _sentiment_badge(row["Tipo"], row.get("Lado", "N/A")), axis=1
             ))
+        if "Tipo" in top_prima_display.columns:
+            top_prima_display["Tipo"] = top_prima_display["Tipo"].apply(_type_badge)
         top_prima_display["Prima Total"] = top_prima_display["Prima Total"].apply(_fmt_dolar)
         top_prima_display["Volumen"] = top_prima_display["Volumen"].apply(_fmt_entero)
         top_prima_display["IV"] = top_prima_display["IV"].apply(_fmt_iv)
@@ -2467,7 +2519,10 @@ with tab_analisis:
         if "Lado" in top_prima_display.columns:
             top_prima_display["Lado"] = top_prima_display["Lado"].apply(_fmt_lado)
 
-        st.dataframe(top_prima_display, width="stretch", hide_index=True)
+        st.markdown(
+            render_pro_table(top_prima_display, title="🎯 Top 15 Mayor Prima Ejecutada", badge_count="15"),
+            unsafe_allow_html=True,
+        )
 
         # Gráfica de prima por strike
         st.markdown("#### 📊 Flujo de Prima por Strike (CALL vs PUT)")
@@ -2504,21 +2559,17 @@ with tab_favoritos:
         st.info("No hay contratos en favoritos. Ejecutá un escaneo y usá el botón ☆ **Guardar en Favoritos** en cualquier alerta.")
     else:
         # Métricas rápidas
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         n_calls_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "CALL")
         n_puts_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "PUT")
         prima_total_fav = sum(f.get("Prima_Volumen", 0) for f in favoritos)
-        with col_f1:
-            st.metric("⭐ Total Favoritos", len(favoritos))
-        with col_f2:
-            st.metric("📞 Calls", n_calls_fav)
-        with col_f3:
-            st.metric("📋 Puts", n_puts_fav)
-        with col_f4:
-            st.metric("💰 Prima Total", _fmt_monto(prima_total_fav))
+        st.markdown(render_metric_row([
+            render_metric_card("Total Favoritos", f"{len(favoritos)}"),
+            render_metric_card("Calls", f"{n_calls_fav}"),
+            render_metric_card("Puts", f"{n_puts_fav}"),
+            render_metric_card("Prima Total", _fmt_monto(prima_total_fav)),
+        ]), unsafe_allow_html=True)
 
         # Tabla resumen
-        st.markdown("#### 📋 Resumen de Favoritos")
         fav_df = pd.DataFrame(favoritos)
         cols_tabla_fav = ["Contrato", "Ticker", "Tipo_Opcion", "Strike", "Vencimiento", 
                           "Volumen", "OI", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
@@ -2526,16 +2577,19 @@ with tab_favoritos:
         display_fav_df = fav_df[cols_disp_fav].copy()
         if "Tipo_Opcion" in display_fav_df.columns and "Lado" in display_fav_df.columns:
             display_fav_df.insert(0, "Sentimiento", display_fav_df.apply(
-                lambda row: f"{determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[0]}",
-                axis=1
+                lambda row: _sentiment_badge(row["Tipo_Opcion"], row.get("Lado", "N/A")), axis=1
             ))
+        if "Tipo_Opcion" in display_fav_df.columns:
+            display_fav_df["Tipo_Opcion"] = display_fav_df["Tipo_Opcion"].apply(_type_badge)
         if "Lado" in display_fav_df.columns:
             display_fav_df["Lado"] = display_fav_df["Lado"].apply(_fmt_lado)
-        # Renombrar Prima_Volumen a Prima Total para claridad
         if "Prima_Volumen" in display_fav_df.columns:
             display_fav_df = display_fav_df.rename(columns={"Prima_Volumen": "Prima Total"})
             display_fav_df["Prima Total"] = display_fav_df["Prima Total"].apply(_fmt_monto)
-        st.dataframe(display_fav_df, width="stretch", hide_index=True)
+        st.markdown(
+            render_pro_table(display_fav_df, title="⭐ Favoritos", badge_count=f"{len(favoritos)}"),
+            unsafe_allow_html=True,
+        )
 
         st.markdown("---")
 
@@ -2774,7 +2828,10 @@ with tab_rango:
                     r["n_calls"], r["n_puts"],
                 ]
             }
-            st.dataframe(pd.DataFrame(resumen_data), width="stretch", hide_index=True)
+            st.markdown(
+                render_pro_table(pd.DataFrame(resumen_data), title="📋 Datos del Cálculo"),
+                unsafe_allow_html=True,
+            )
 
         st.markdown(
             f"""
@@ -2841,12 +2898,11 @@ with tab_proyecciones:
         alta_count = sum(1 for r in resultados if r["clasificacion"] == "ALTA")
         media_count = sum(1 for r in resultados if r["clasificacion"] == "MEDIA")
         baja_count = sum(1 for r in resultados if r["clasificacion"] == "BAJA")
-        with col_s1:
-            st.metric("🟢 Proyección Alta", alta_count)
-        with col_s2:
-            st.metric("🟡 Proyección Media", media_count)
-        with col_s3:
-            st.metric("🔴 Proyección Baja", baja_count)
+        st.markdown(render_metric_row([
+            render_metric_card("Proyección Alta", f"{alta_count}"),
+            render_metric_card("Proyección Media", f"{media_count}", color_override="#f59e0b"),
+            render_metric_card("Proyección Baja", f"{baja_count}", color_override="#ef4444"),
+        ]), unsafe_allow_html=True)
 
         for r in resultados:
             info_emp = WATCHLIST_EMPRESAS.get(r["symbol"])
@@ -2854,7 +2910,10 @@ with tab_proyecciones:
 
         st.markdown("#### 📋 Tabla Comparativa")
         df_tabla = render_tabla_comparativa(resultados)
-        st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+        st.markdown(
+            render_pro_table(df_tabla, title="📋 Tabla Comparativa Consolidadas", badge_count=f"{len(df_tabla)}"),
+            unsafe_allow_html=True,
+        )
         csv_proy = df_tabla.to_csv(index=False).encode("utf-8")
         st.download_button(
             "📥 Descargar análisis CSV",
@@ -2902,12 +2961,11 @@ with tab_proyecciones:
         alta_em = sum(1 for r in resultados_em if r["clasificacion"] == "ALTA")
         media_em = sum(1 for r in resultados_em if r["clasificacion"] == "MEDIA")
         baja_em = sum(1 for r in resultados_em if r["clasificacion"] == "BAJA")
-        with col_e1:
-            st.metric("🟢 Proyección Alta", alta_em)
-        with col_e2:
-            st.metric("🟡 Proyección Media", media_em)
-        with col_e3:
-            st.metric("🔴 Proyección Baja", baja_em)
+        st.markdown(render_metric_row([
+            render_metric_card("Proyección Alta", f"{alta_em}"),
+            render_metric_card("Proyección Media", f"{media_em}", color_override="#f59e0b"),
+            render_metric_card("Proyección Baja", f"{baja_em}", color_override="#ef4444"),
+        ]), unsafe_allow_html=True)
 
         for r in resultados_em:
             info_emp = WATCHLIST_EMERGENTES.get(r["symbol"])
@@ -2915,7 +2973,10 @@ with tab_proyecciones:
 
         st.markdown("#### 📋 Tabla Comparativa Emergentes")
         df_emerg = render_tabla_comparativa(resultados_em, es_emergente=True)
-        st.dataframe(df_emerg, use_container_width=True, hide_index=True)
+        st.markdown(
+            render_pro_table(df_emerg, title="📋 Tabla Comparativa Emergentes", badge_count=f"{len(df_emerg)}"),
+            unsafe_allow_html=True,
+        )
         csv_emerg = df_emerg.to_csv(index=False).encode("utf-8")
         st.download_button(
             "📥 Descargar análisis Emergentes CSV",

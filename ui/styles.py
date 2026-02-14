@@ -533,15 +533,149 @@ CSS_STYLES = """
         background: rgba(148, 163, 184, 0.2); border-radius: 3px;
     }
 
-    /* ====== DATAFRAMES ====== */
+    /* ====== PRO DATAFRAMES ====== */
     .stDataFrame {
-        border-radius: var(--radius-md);
+        border-radius: 14px !important;
         overflow: hidden;
-        border: 1px solid var(--border-default);
-        box-shadow: var(--shadow-card);
+        border: 1px solid rgba(255,255,255,0.06) !important;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.3);
     }
     .stDataFrame [data-testid="glideDataEditor"] {
-        background: var(--bg-card) !important;
+        background: #0c1018 !important;
+    }
+    /* header row */
+    .stDataFrame [data-testid="glideDataEditor"] .dvn-scroller .header-menu,
+    .stDataFrame [data-testid="glideDataEditor"] header {
+        background: #0a0e16 !important;
+    }
+
+    /* ====== HTML PRO TABLE (ok-table) ====== */
+    .ok-table-wrap {
+        background: linear-gradient(145deg, #0c1018, #0f1520);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        margin-bottom: 18px;
+    }
+    .ok-table-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .ok-table-title {
+        font-size: 0.82rem; font-weight: 700; color: #e2e8f0;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .ok-table-badge {
+        font-size: 0.62rem; font-weight: 600;
+        padding: 2px 10px; border-radius: 40px;
+        background: rgba(0,255,136,0.08); color: var(--neon-green);
+        border: 1px solid rgba(0,255,136,0.15);
+    }
+    .ok-tbl {
+        width: 100%; border-collapse: separate; border-spacing: 0;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+    }
+    .ok-tbl thead th {
+        background: #080b11;
+        color: #64748b;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 12px 14px;
+        text-align: left;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        white-space: nowrap;
+        position: sticky; top: 0; z-index: 2;
+    }
+    .ok-tbl tbody tr {
+        transition: background 0.15s ease;
+    }
+    .ok-tbl tbody tr:nth-child(even) {
+        background: rgba(255,255,255,0.015);
+    }
+    .ok-tbl tbody tr:hover {
+        background: rgba(0,255,136,0.04) !important;
+    }
+    .ok-tbl tbody td {
+        padding: 10px 14px;
+        color: #cbd5e1;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        white-space: nowrap;
+    }
+    /* Ticker column bold */
+    .ok-tbl td.td-ticker {
+        color: #f1f5f9; font-weight: 700;
+    }
+    /* Numeric values */
+    .ok-tbl td.td-num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    /* Badges */
+    .ok-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: 0.72rem; font-weight: 700;
+        padding: 2px 8px; border-radius: 6px;
+        line-height: 1.4;
+    }
+    .ok-badge-bull {
+        background: rgba(0,255,136,0.1); color: #00ff88;
+        border: 1px solid rgba(0,255,136,0.2);
+    }
+    .ok-badge-bear {
+        background: rgba(239,68,68,0.1); color: #ef4444;
+        border: 1px solid rgba(239,68,68,0.2);
+    }
+    .ok-badge-neutral {
+        background: rgba(148,163,184,0.1); color: #94a3b8;
+        border: 1px solid rgba(148,163,184,0.15);
+    }
+    .ok-badge-call {
+        background: rgba(59,130,246,0.1); color: #60a5fa;
+        border: 1px solid rgba(59,130,246,0.2);
+    }
+    .ok-badge-put {
+        background: rgba(245,158,11,0.1); color: #fbbf24;
+        border: 1px solid rgba(245,158,11,0.2);
+    }
+    .ok-badge-cluster {
+        background: rgba(139,92,246,0.1); color: #a78bfa;
+        border: 1px solid rgba(139,92,246,0.2);
+    }
+    .ok-badge-top {
+        background: rgba(0,255,136,0.12); color: #00ff88;
+        border: 1px solid rgba(0,255,136,0.25);
+    }
+    .ok-badge-inst {
+        background: rgba(239,68,68,0.12); color: #ef4444;
+        border: 1px solid rgba(239,68,68,0.25);
+    }
+    .ok-badge-prima {
+        background: rgba(245,158,11,0.12); color: #fbbf24;
+        border: 1px solid rgba(245,158,11,0.25);
+    }
+    /* Up/Down delta arrows in cells */
+    .ok-up { color: #00ff88; }
+    .ok-down { color: #ef4444; }
+    .ok-muted { color: #475569; }
+    /* Scroll container for large tables */
+    .ok-table-scroll {
+        max-height: 520px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148,163,184,0.15) transparent;
+    }
+    .ok-table-scroll::-webkit-scrollbar { width: 5px; }
+    .ok-table-scroll::-webkit-scrollbar-track { background: transparent; }
+    .ok-table-scroll::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.15); border-radius: 3px; }
+    .ok-table-footer {
+        padding: 8px 20px;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        font-size: 0.7rem; color: #475569;
     }
 
     /* ====== EXPANDER ====== */

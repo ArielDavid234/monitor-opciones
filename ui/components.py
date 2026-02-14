@@ -316,3 +316,160 @@ def render_empresa_descriptions(watchlist_dict, color_principal, color_borde, es
 
             if es_emergente and "por_que_grande" in info:
                 st.info(f"🌟 **¿Por qué puede ser gigante?**\n\n{info['por_que_grande']}")
+
+
+# ============================================================================
+#                   PRO HTML TABLE — Dark Dashboard Style
+# ============================================================================
+
+def _badge_html(text, variant="neutral"):
+    """Return a small badge <span> in a given variant.
+
+    Variants: bull, bear, neutral, call, put, cluster, top, inst, prima.
+    """
+    return f'<span class="ok-badge ok-badge-{variant}">{text}</span>'
+
+
+def _sentiment_badge(tipo, lado):
+    """Return badge HTML for ALCISTA / BAJISTA from tipo+lado."""
+    if (tipo == "CALL" and lado == "Ask") or (tipo == "PUT" and lado == "Bid"):
+        return _badge_html("▲ ALCISTA", "bull")
+    elif (tipo == "PUT" and lado == "Ask") or (tipo == "CALL" and lado == "Bid"):
+        return _badge_html("▼ BAJISTA", "bear")
+    return _badge_html("— NEUTRAL", "neutral")
+
+
+def _type_badge(tipo):
+    """Return badge for CALL / PUT."""
+    if tipo == "CALL":
+        return _badge_html("CALL", "call")
+    elif tipo == "PUT":
+        return _badge_html("PUT", "put")
+    return str(tipo)
+
+
+def _priority_badge(prioridad):
+    """Return badge for alert priority."""
+    if "TOP" in str(prioridad).upper():
+        return _badge_html("● TOP PRIMA", "top")
+    elif "INSTITUCIONAL" in str(prioridad).upper() or "PRINCIPAL" in str(prioridad).upper():
+        return _badge_html("● INSTITUCIONAL", "inst")
+    elif "PRIMA" in str(prioridad).upper():
+        return _badge_html("● PRIMA ALTA", "prima")
+    elif "CLUSTER" in str(prioridad).upper():
+        return _badge_html("● CLUSTER", "cluster")
+    return str(prioridad)
+
+
+def _delta_cell(value):
+    """Render numeric value with up/down color."""
+    try:
+        v = float(str(value).replace(",", "").replace("$", "").replace("+", "").replace("%", ""))
+        if v > 0:
+            return f'<span class="ok-up">+{value}</span>'
+        elif v < 0:
+            return f'<span class="ok-down">{value}</span>'
+    except (ValueError, TypeError):
+        pass
+    return str(value)
+
+
+_SPECIAL_COLS = {
+    "Sentimiento": "sentiment",
+    "Tipo": "type",
+    "Tipo_Opcion": "type",
+    "Prioridad": "priority",
+}
+
+_NUMERIC_COLS = {
+    "Volumen", "OI", "OI_Chg", "Vol Total", "OI Total",
+    "Prima Total", "Prima Prom.", "Prima_Total", "Prima_Volumen",
+    "Strike", "Ultimo", "Último", "Ask", "Bid", "IV", "Delta",
+    "Spread_%", "Liquidez", "Contratos", "Volumen_Total",
+}
+
+
+def render_pro_table(df, title=None, badge_count=None, max_height=520,
+                     footer_text=None, special_format=None):
+    """Render a professional dark HTML table from a DataFrame.
+
+    Args:
+        df: pandas DataFrame to render.
+        title: optional header text.
+        badge_count: optional count to show in a green badge next to the title.
+        max_height: max pixel height before scroll (0 = no limit).
+        footer_text: optional text for the footer.
+        special_format: dict mapping column names to formatter callables.
+    Returns:
+        An HTML string ready for st.markdown(..., unsafe_allow_html=True).
+    """
+    if df is None or df.empty:
+        return ""
+
+    special_format = special_format or {}
+
+    # Header
+    header_html = ""
+    if title:
+        badge_part = f' <span class="ok-table-badge">{badge_count}</span>' if badge_count is not None else ""
+        header_html = (
+            f'<div class="ok-table-header">'
+            f'<div class="ok-table-title">{title}{badge_part}</div>'
+            f'</div>'
+        )
+
+    # Build <thead>
+    ths = "".join(f'<th>{col}</th>' for col in df.columns)
+    thead = f'<thead><tr>{ths}</tr></thead>'
+
+    # Build <tbody>
+    rows = []
+    for _, row in df.iterrows():
+        cells = []
+        for col in df.columns:
+            val = row[col]
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                val = "-"
+
+            # Decide class
+            td_cls = ""
+            if col in ("Ticker", "Contrato"):
+                td_cls = ' class="td-ticker"'
+            elif col in _NUMERIC_COLS or col in ("OI Chg",):
+                td_cls = ' class="td-num"'
+
+            # Format value
+            if col in special_format:
+                val = special_format[col](val)
+            elif col in _SPECIAL_COLS:
+                fmt_kind = _SPECIAL_COLS[col]
+                if fmt_kind == "sentiment":
+                    val = str(val)  # already formatted before passing
+                elif fmt_kind == "type":
+                    val = _type_badge(str(val))
+                elif fmt_kind == "priority":
+                    val = _priority_badge(str(val))
+            elif col == "OI_Chg" or col == "OI Chg":
+                val = _delta_cell(val)
+
+            cells.append(f'<td{td_cls}>{val}</td>')
+        rows.append(f'<tr>{"".join(cells)}</tr>')
+    tbody = f'<tbody>{"".join(rows)}</tbody>'
+
+    # Scroll container
+    style_attr = f' style="max-height:{max_height}px"' if max_height else ""
+
+    # Footer
+    footer_html = ""
+    if footer_text:
+        footer_html = f'<div class="ok-table-footer">{footer_text}</div>'
+
+    return (
+        f'<div class="ok-table-wrap">'
+        f'{header_html}'
+        f'<div class="ok-table-scroll"{style_attr}>'
+        f'<table class="ok-tbl">{thead}{tbody}</table>'
+        f'</div>'
+        f'{footer_html}'
+        f'</div>'
+    )
