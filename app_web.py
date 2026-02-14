@@ -875,8 +875,8 @@ with tab_scanner:
         alertas_df = pd.DataFrame(alertas_sorted)
 
         def asignar_prioridad(row):
-            prima_m = max(row["Prima_Volumen"], row["Prima_OI"])
-            if prima_m == prima_top:
+            prima_m = row["Prima_Volumen"]
+            if prima_m == max_prima:
                 return "🟢 TOP"
             elif row["Tipo_Alerta"] == "PRINCIPAL":
                 return "🔴 INSTITUCIONAL"
@@ -2064,14 +2064,12 @@ with tab_analisis:
         # Top strikes donde se concentra el dinero
         st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Ejecutada")
         df_prima_strike = df_analisis.copy()
-        df_prima_strike["Prima_Max"] = df_prima_strike[["Prima_Vol", "Prima_OI"]].max(axis=1)
-        top_prima = df_prima_strike.nlargest(15, "Prima_Max")[
-            ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "Prima_OI", "Prima_Max", "IV", "Ultimo"]
+        top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
+            ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "IV", "Ultimo"]
         ].reset_index(drop=True)
 
         top_prima_display = top_prima.copy()
-        for col_p in ["Prima_Vol", "Prima_OI", "Prima_Max"]:
-            top_prima_display[col_p] = top_prima_display[col_p].apply(_fmt_dolar)
+        top_prima_display["Prima_Vol"] = top_prima_display["Prima_Vol"].apply(_fmt_dolar)
         top_prima_display["Volumen"] = top_prima_display["Volumen"].apply(_fmt_entero)
         top_prima_display["IV"] = top_prima_display["IV"].apply(_fmt_iv)
         top_prima_display["Ultimo"] = top_prima_display["Ultimo"].apply(_fmt_precio)
@@ -2117,7 +2115,7 @@ with tab_favoritos:
         col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         n_calls_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "CALL")
         n_puts_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "PUT")
-        prima_total_fav = sum(max(f.get("Prima_Volumen", 0), f.get("Prima_OI", 0)) for f in favoritos)
+        prima_total_fav = sum(f.get("Prima_Volumen", 0) for f in favoritos)
         with col_f1:
             st.metric("⭐ Total Favoritos", len(favoritos))
         with col_f2:
@@ -2131,15 +2129,13 @@ with tab_favoritos:
         st.markdown("#### 📋 Resumen de Favoritos")
         fav_df = pd.DataFrame(favoritos)
         cols_tabla_fav = ["Contrato", "Ticker", "Tipo_Opcion", "Strike", "Vencimiento", 
-                          "Volumen", "OI", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen", "Prima_OI"]
+                          "Volumen", "OI", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
         cols_disp_fav = [c for c in cols_tabla_fav if c in fav_df.columns]
         display_fav_df = fav_df[cols_disp_fav].copy()
         if "Lado" in display_fav_df.columns:
             display_fav_df["Lado"] = display_fav_df["Lado"].apply(_fmt_lado)
         if "Prima_Volumen" in display_fav_df.columns:
             display_fav_df["Prima_Volumen"] = display_fav_df["Prima_Volumen"].apply(_fmt_monto)
-        if "Prima_OI" in display_fav_df.columns:
-            display_fav_df["Prima_OI"] = display_fav_df["Prima_OI"].apply(_fmt_monto)
         st.dataframe(display_fav_df, width="stretch", hide_index=True)
 
         st.markdown("---")
@@ -2151,7 +2147,7 @@ with tab_favoritos:
             fav_tipo = fav.get("Tipo_Opcion", "N/A")
             fav_strike = fav.get("Strike", 0)
             fav_venc = fav.get("Vencimiento", "N/A")
-            fav_prima = max(fav.get("Prima_Volumen", 0), fav.get("Prima_OI", 0))
+            fav_prima = fav.get("Prima_Volumen", 0)
 
             # Calcular días para vencimiento
             try:
@@ -2186,7 +2182,6 @@ with tab_favoritos:
                     iv_fav = fav.get('IV', 0)
                     st.markdown(f"- **IV:** {iv_fav:.1f}%" if iv_fav > 0 else "- **IV:** N/A")
                     st.markdown(f"- **Prima Vol:** {_fmt_monto(fav.get('Prima_Volumen', 0))}")
-                    st.markdown(f"- **Prima OI:** {_fmt_monto(fav.get('Prima_OI', 0))}")
                     st.markdown(f"- **Tipo Alerta:** {fav.get('Tipo_Alerta', 'N/A')}")
                     st.markdown(f"- **Guardado:** {fav.get('Guardado_En', 'N/A')}")
 
