@@ -1,0 +1,10 @@
+streamlit
+yfinance
+pandas
+numpy
+curl_cffi
+scipy
+feedparser
+python-docx
+beautifulsoup4
+requests

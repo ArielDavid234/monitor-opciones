@@ -1,0 +1,32 @@
+# Entorno virtual
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Archivos de IDE
+.vscode/
+.idea/
+
+# Archivos del sistema
+*.log
+Thumbs.db
+.DS_Store
+
+# No subir credenciales (monitor_opciones.py tiene la contraseña de Gmail)
+# monitor_opciones.py  ← descomenta esta línea si NO quieres subir el monitor de terminal
+
+# Tests (opcional, no necesario para deploy)
+test_*.py
+
+# Backups
+*_backup.py
+
+# Carpetas locales (no pertenecen al proyecto)
+Cositas/
+alertas/
+alertas_test/
+data/
+
+# Streamlit secrets
+.streamlit/secrets.toml
