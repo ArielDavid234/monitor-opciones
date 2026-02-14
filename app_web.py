@@ -416,9 +416,10 @@ with st.sidebar:
         umbral_oi = st.number_input("Open Interest mínimo", value=DEFAULT_MIN_OI, step=1_000, format="%d",
                                      help="Solo muestra contratos con OI ≥ este valor")
         umbral_prima = st.number_input(
-            "Prima mínima ($)", value=DEFAULT_MIN_PRIMA, step=500_000, format="%d",
-            help="Marca en ROJO si la prima supera este monto"
+            "Prima Total mínima ($)", value=DEFAULT_MIN_PRIMA, step=500_000, format="%d",
+            help="Prima Total = Volumen × Precio × 100 (dinero que entró en el contrato ese día)"
         )
+        st.caption("💡 **Prima Total** = Volumen × Precio × 100 — Representa el flujo de dinero total del contrato basado en el volumen transaccionado del día.")
         umbral_filtro = st.number_input("Filtro rápido (vol/oi mín.)", value=DEFAULT_QUICK_FILTER, step=100, format="%d",
                                          help="Ignora opciones con vol Y oi debajo de este umbral en el análisis")
 
@@ -737,7 +738,7 @@ with tab_scanner:
             if alerta["OI"] >= umbral_oi:
                 razones.append(f"OI {alerta['OI']:,} ≥ {umbral_oi:,}")
             if alerta["Prima_Volumen"] >= umbral_prima:
-                razones.append(f"Prima Vol ${alerta['Prima_Volumen']:,.0f} ≥ ${umbral_prima:,.0f}")
+                razones.append(f"Prima Total ${alerta['Prima_Volumen']:,.0f} ≥ ${umbral_prima:,.0f}")
             if es_top:
                 razones.insert(0, f"💰 Mayor prima del escaneo: ${prima_mayor:,.0f}")
             razon_html = " | ".join(razones)
@@ -788,7 +789,7 @@ with tab_scanner:
                         Strike: <b>${alerta['Strike']}</b> | 
                         Venc: <b>{alerta['Vencimiento']}</b><br>
                         Vol: <b>{alerta['Volumen']:,}</b> | 
-                        Prima Vol: <b>{prima_vol_fmt}</b> |
+                        Prima Total: <b>{prima_vol_fmt}</b> |
                         Ask: ${alerta['Ask']} | Bid: ${alerta['Bid']} | Último: ${alerta['Ultimo']} |
                         <b>Lado: {_fmt_lado(alerta.get('Lado', 'N/A'))}</b><br>
                         <span class="razon-alerta">📌 {razon_html}</span>
@@ -812,7 +813,7 @@ with tab_scanner:
                         st.markdown(f"- **Bid:** ${alerta['Bid']}")
                         st.markdown(f"- **Último:** ${alerta['Ultimo']}")
                         st.markdown(f"- **Lado:** {_fmt_lado(alerta.get('Lado', 'N/A'))}")
-                        st.markdown(f"- **Prima Vol:** ${prima_mayor:,.0f}")
+                        st.markdown(f"- **Prima Total:** ${prima_mayor:,.0f}")
 
                         # Botón de favorito
                         ya_fav = _es_favorito(contract_sym_card)
@@ -1344,7 +1345,7 @@ with tab_historial:
             
             # Aplicar formateo para visualización
             if 'Prima_Vol' in display_scan.columns:
-                display_scan["Prima_Vol_F"] = display_scan["Prima_Vol"].apply(_fmt_monto)
+                display_scan["Prima Total"] = display_scan["Prima_Vol"].apply(_fmt_monto)
             if 'IV' in display_scan.columns:
                 display_scan["IV_F"] = display_scan["IV"].apply(_fmt_iv)
             if 'Spread_Pct' in display_scan.columns:
@@ -1356,7 +1357,7 @@ with tab_historial:
             
             # Seleccionar columnas relevantes para mostrar
             cols_mostrar = ['Tipo', 'Strike', 'Vencimiento', 'Volumen', 'Ask', 'Bid', 'Spread_%', 
-                           'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima_Vol_F', 'Liquidez']
+                           'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
             
             # Ocultar OI y OI_Chg como antes pero mostrar nuevas métricas
@@ -1609,7 +1610,7 @@ with tab_historial:
                 run_d.font.name = "Calibri"
 
                 headers = ["#", "Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI Chg",
-                           "Ask", "Bid", "Spread %", "Último", "Lado", "Moneyness", "Prima Vol", "Liquidity", "Contrato", "Hora"]
+                           "Ask", "Bid", "Spread %", "Último", "Lado", "Moneyness", "Prima Total", "Liquidity", "Contrato", "Hora"]
                 rows = []
                 # Enriquecer datos con métricas derivadas
                 principales_enriq = _enriquecer_datos_opcion(principales, precio_subyacente=st.session_state.get('precio_subyacente'))
@@ -1637,7 +1638,7 @@ with tab_historial:
                 run_d.font.name = "Calibri"
 
                 headers = ["#", "Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI Chg",
-                           "Ask", "Bid", "Spread %", "Último", "Lado", "Moneyness", "Prima Vol", "Vol/OI"]
+                           "Ask", "Bid", "Spread %", "Último", "Lado", "Moneyness", "Prima Total", "Vol/OI"]
                 rows = []
                 # Enriquecer datos con métricas derivadas
                 prima_alta_enriq = _enriquecer_datos_opcion(prima_alta, precio_subyacente=st.session_state.get('precio_subyacente'))
@@ -1687,7 +1688,7 @@ with tab_historial:
                             run_cl.font.size = Pt(10)
                             run_cl.font.name = "Calibri"
 
-                            headers_det = ["#", "Strike", "Volumen", "OI", "OI Chg", "Prima Vol"]
+                            headers_det = ["#", "Strike", "Volumen", "OI", "OI Chg", "Prima Total"]
                             rows_det = []
                             for j, d in enumerate(c["Detalle"], 1):
                                 rows_det.append([
@@ -1749,7 +1750,7 @@ with tab_historial:
                 run_info.font.name = "Calibri"
 
                 headers_opt = ["Tipo", "Vencimiento", "Strike", "Volumen", "OI", "OI Chg",
-                               "Ask", "Bid", "Spread %", "Último", "Lado", "IV", "Moneyness", "Dist %", "Prima Vol"]
+                               "Ask", "Bid", "Spread %", "Último", "Lado", "IV", "Moneyness", "Dist %", "Prima Total"]
                 rows_opt = []
                 # Enriquecer todos los datos de opciones
                 datos_enriquecidos = _enriquecer_datos_opcion(datos_sorted[:limite], precio_subyacente=st.session_state.get('precio_subyacente'))
@@ -1997,7 +1998,8 @@ with tab_analisis:
             .reset_index(drop=True)
         )
         top_vol_display = top_vol.copy()
-        top_vol_display["Prima_Vol"] = top_vol_display["Prima_Vol"].apply(_fmt_dolar)
+        top_vol_display = top_vol_display.rename(columns={"Prima_Vol": "Prima Total"})
+        top_vol_display["Prima Total"] = top_vol_display["Prima Total"].apply(_fmt_dolar)
         st.dataframe(top_vol_display, width="stretch", hide_index=True)
 
         st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
@@ -2007,7 +2009,8 @@ with tab_analisis:
             .reset_index(drop=True)
         )
         top_oi_display = top_oi.copy()
-        top_oi_display["Prima_Vol"] = top_oi_display["Prima_Vol"].apply(_fmt_dolar)
+        top_oi_display = top_oi_display.rename(columns={"Prima_Vol": "Prima Total"})
+        top_oi_display["Prima Total"] = top_oi_display["Prima Total"].apply(_fmt_dolar)
         st.dataframe(top_oi_display, width="stretch", hide_index=True)
 
         col_iv1, col_iv2 = st.columns(2)
@@ -2034,46 +2037,47 @@ with tab_analisis:
         col_pv1, col_pv2 = st.columns(2)
 
         with col_pv1:
-            st.markdown("#### 📞 Prima en CALLs por Vencimiento")
+            st.markdown("#### 📞 Prima Total en CALLs por Vencimiento")
             if not df_calls_s.empty:
                 prima_calls_venc = df_calls_s.groupby("Vencimiento").agg(
-                    Prima_Vol=("Prima_Vol", "sum"),
+                    Prima_Total=("Prima_Vol", "sum"),
                     Contratos=("Volumen", "count"),
                     Volumen_Total=("Volumen", "sum"),
-                ).sort_values("Prima_Vol", ascending=False).reset_index()
+                ).sort_values("Prima_Total", ascending=False).reset_index()
 
                 display_pc = prima_calls_venc.copy()
-                display_pc["Prima_Vol"] = display_pc["Prima_Vol"].apply(_fmt_dolar)
+                display_pc["Prima_Total"] = display_pc["Prima_Total"].apply(_fmt_dolar)
                 display_pc["Volumen_Total"] = display_pc["Volumen_Total"].apply(_fmt_entero)
                 st.dataframe(display_pc, width="stretch", hide_index=True)
             else:
                 st.info("Sin datos de CALLs.")
 
         with col_pv2:
-            st.markdown("#### 📋 Prima en PUTs por Vencimiento")
+            st.markdown("#### 📋 Prima Total en PUTs por Vencimiento")
             if not df_puts_s.empty:
                 prima_puts_venc = df_puts_s.groupby("Vencimiento").agg(
-                    Prima_Vol=("Prima_Vol", "sum"),
+                    Prima_Total=("Prima_Vol", "sum"),
                     Contratos=("Volumen", "count"),
                     Volumen_Total=("Volumen", "sum"),
-                ).sort_values("Prima_Vol", ascending=False).reset_index()
+                ).sort_values("Prima_Total", ascending=False).reset_index()
 
                 display_pp = prima_puts_venc.copy()
-                display_pp["Prima_Vol"] = display_pp["Prima_Vol"].apply(_fmt_dolar)
+                display_pp["Prima_Total"] = display_pp["Prima_Total"].apply(_fmt_dolar)
                 display_pp["Volumen_Total"] = display_pp["Volumen_Total"].apply(_fmt_entero)
                 st.dataframe(display_pp, width="stretch", hide_index=True)
             else:
                 st.info("Sin datos de PUTs.")
 
         # Top strikes donde se concentra el dinero
-        st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Ejecutada")
+        st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Total Ejecutada")
         df_prima_strike = df_analisis.copy()
         top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
             ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "IV", "Ultimo"]
         ].reset_index(drop=True)
 
         top_prima_display = top_prima.copy()
-        top_prima_display["Prima_Vol"] = top_prima_display["Prima_Vol"].apply(_fmt_dolar)
+        top_prima_display = top_prima_display.rename(columns={"Prima_Vol": "Prima Total"})
+        top_prima_display["Prima Total"] = top_prima_display["Prima Total"].apply(_fmt_dolar)
         top_prima_display["Volumen"] = top_prima_display["Volumen"].apply(_fmt_entero)
         top_prima_display["IV"] = top_prima_display["IV"].apply(_fmt_iv)
         top_prima_display["Ultimo"] = top_prima_display["Ultimo"].apply(_fmt_precio)
@@ -2185,7 +2189,7 @@ with tab_favoritos:
                     st.markdown(f"- **Lado:** {_fmt_lado(fav.get('Lado', 'N/A'))}")
                     iv_fav = fav.get('IV', 0)
                     st.markdown(f"- **IV:** {iv_fav:.1f}%" if iv_fav > 0 else "- **IV:** N/A")
-                    st.markdown(f"- **Prima Vol:** {_fmt_monto(fav.get('Prima_Volumen', 0))}")
+                    st.markdown(f"- **Prima Total:** {_fmt_monto(fav.get('Prima_Volumen', 0))}")
                     st.markdown(f"- **Tipo Alerta:** {fav.get('Tipo_Alerta', 'N/A')}")
                     st.markdown(f"- **Guardado:** {fav.get('Guardado_En', 'N/A')}")
 
