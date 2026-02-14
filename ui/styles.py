@@ -229,50 +229,103 @@ CSS_STYLES = """
         letter-spacing: 0.04em;
     }
 
-    /* ====== METRICS ====== */
-    div[data-testid="stMetric"] {
-        background: var(--bg-card);
-        border: 1px solid var(--border-default);
-        border-radius: var(--radius-md);
-        padding: 18px 22px;
-        box-shadow: var(--shadow-card);
-        transition: all 0.2s ease;
+    /* ====== METRIC CARDS (Pro Dashboard) ====== */
+    .ok-metric-row {
+        display: grid;
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+    .ok-cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .ok-cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .ok-cols-5 { grid-template-columns: repeat(5, 1fr); }
+    .ok-cols-6 { grid-template-columns: repeat(6, 1fr); }
+    @media (max-width: 768px) {
+        .ok-metric-row { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+
+    .ok-metric-card {
+        background: linear-gradient(145deg, #0f1520, #131a2a);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 14px;
+        padding: 20px 22px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        transition: all 0.25s cubic-bezier(.4,0,.2,1);
         position: relative;
         overflow: hidden;
+        min-height: 100px;
     }
-    div[data-testid="stMetric"]::before {
+    .ok-metric-card::before {
         content: '';
         position: absolute;
         top: 0; left: 0; right: 0;
         height: 2px;
         background: linear-gradient(90deg, var(--neon-green), var(--accent-blue));
         opacity: 0;
-        transition: opacity 0.2s ease;
+        transition: opacity 0.25s ease;
     }
-    div[data-testid="stMetric"]:hover {
-        border-color: var(--border-hover);
-        box-shadow: var(--shadow-card), var(--shadow-glow-green);
-        transform: translateY(-1px);
+    .ok-metric-card:hover {
+        border-color: rgba(0,255,136,0.18);
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 20px rgba(0,255,136,0.05);
     }
-    div[data-testid="stMetric"]:hover::before { opacity: 1; }
+    .ok-metric-card:hover::before { opacity: 1; }
+
+    .ok-metric-title {
+        color: #64748b;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .ok-metric-value {
+        color: #f1f5f9;
+        font-size: 1.6rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+    }
+    .ok-metric-delta {
+        font-size: 0.78rem;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-top: 4px;
+    }
+    .ok-delta-up  { color: #00ff88; }
+    .ok-delta-down { color: #ef4444; }
+    .ok-metric-sparkline {
+        margin-top: 8px;
+        height: 32px;
+        width: 100%;
+        opacity: 0.85;
+    }
+
+    /* Legacy st.metric fallback */
+    div[data-testid="stMetric"] {
+        background: var(--bg-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        padding: 16px 20px;
+        box-shadow: var(--shadow-card);
+    }
     div[data-testid="stMetric"] label {
         color: var(--text-muted) !important;
         font-size: 0.72rem !important;
-        font-weight: 600 !important;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
     }
     div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
         color: var(--text-primary) !important;
-        font-size: 1.8rem !important;
-        font-weight: 700 !important;
+        font-size: 1.5rem !important;
         font-family: var(--font-mono) !important;
-    }
-    div[data-testid="stMetric"] [data-testid="stMetricDelta"] svg { display: none; }
-    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-        font-family: var(--font-mono) !important;
-        font-size: 0.75rem !important;
-        font-weight: 600 !important;
     }
 
     /* ====== ALERT PRIORITY ====== */

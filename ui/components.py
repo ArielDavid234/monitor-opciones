@@ -36,6 +36,89 @@ def format_cashflow(value):
     return "N/A"
 
 
+# ============================================================================
+#                    METRIC CARDS — Pro Dashboard Style
+# ============================================================================
+
+def _generate_sparkline_svg(data, color="#00ff88"):
+    """Generate an inline SVG sparkline from data points."""
+    if not data or len(data) < 2:
+        return ""
+    width, height = 120, 32
+    min_val = min(data)
+    max_val = max(data)
+    val_range = max_val - min_val if max_val != min_val else 1
+    points = []
+    for i, val in enumerate(data):
+        x = (i / (len(data) - 1)) * width
+        y = height - ((val - min_val) / val_range) * (height - 4) - 2
+        points.append(f"{x:.1f},{y:.1f}")
+    polyline = " ".join(points)
+    fill_points = f"0,{height} " + polyline + f" {width},{height}"
+    uid = abs(hash(tuple(data))) % 100000
+    return (
+        f'<div class="ok-metric-sparkline">'
+        f'<svg width="100%" height="100%" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
+        f'<defs><linearGradient id="sg{uid}" x1="0" y1="0" x2="0" y2="1">'
+        f'<stop offset="0%" stop-color="{color}" stop-opacity="0.3"/>'
+        f'<stop offset="100%" stop-color="{color}" stop-opacity="0.02"/>'
+        f'</linearGradient></defs>'
+        f'<polygon points="{fill_points}" fill="url(#sg{uid})"/>'
+        f'<polyline points="{polyline}" fill="none" stroke="{color}" stroke-width="1.5" '
+        f'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg></div>'
+    )
+
+
+def render_metric_card(title, value, delta=None, delta_suffix="%",
+                       sparkline_data=None, color_override=None):
+    """Render a professional metric card with optional delta indicator and sparkline.
+
+    Args:
+        title: Small gray label text.
+        value: Large main value string.
+        delta: Numeric change (positive → green ▲, negative → red ▼) or custom str.
+        delta_suffix: Suffix after numeric delta (default "%").
+        sparkline_data: List of numbers for the mini line chart.
+        color_override: Force a specific color for delta & sparkline.
+    """
+    delta_html = ""
+    if delta is not None:
+        if isinstance(delta, str):
+            delta_html = f'<div class="ok-metric-delta" style="color:#64748b">{delta}</div>'
+        else:
+            is_positive = delta >= 0
+            arrow = "▲" if is_positive else "▼"
+            delta_class = "ok-delta-up" if is_positive else "ok-delta-down"
+            style_attr = ""
+            if color_override:
+                delta_class = ""
+                style_attr = f' style="color:{color_override}"'
+            sign = "+" if is_positive else ""
+            delta_html = (
+                f'<div class="ok-metric-delta {delta_class}"{style_attr}>'
+                f'<span>{arrow}</span> {sign}{delta:.1f}{delta_suffix}</div>'
+            )
+    sparkline_html = ""
+    if sparkline_data and len(sparkline_data) > 1:
+        spark_color = color_override or "#00ff88"
+        sparkline_html = _generate_sparkline_svg(sparkline_data, spark_color)
+    return (
+        f'<div class="ok-metric-card">'
+        f'<div class="ok-metric-title">{title}</div>'
+        f'<div class="ok-metric-value">{value}</div>'
+        f'{delta_html}'
+        f'{sparkline_html}'
+        f'</div>'
+    )
+
+
+def render_metric_row(cards_html):
+    """Wrap a list of card HTML strings in a CSS-grid row."""
+    n = len(cards_html)
+    return f'<div class="ok-metric-row ok-cols-{n}">{"" .join(cards_html)}</div>'
+
+
 def get_score_style(clasificacion):
     """Retorna (card_class, score_class, score_emoji) según la clasificación."""
     styles = {

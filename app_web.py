@@ -47,6 +47,7 @@ from ui.styles import CSS_STYLES
 from ui.components import (
     format_market_cap, render_empresa_card, render_tabla_comparativa,
     analizar_watchlist, render_watchlist_preview, render_empresa_descriptions,
+    render_metric_card, render_metric_row,
 )
 
 
@@ -767,22 +768,21 @@ with tab_scanner:
     # --- Métricas rápidas ---
     if st.session_state.datos_completos:
         datos_df = pd.DataFrame(st.session_state.datos_completos)
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric("Opciones Analizadas", f"{len(datos_df):,}")
-        with col2:
-            n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
-            st.metric("Calls", f"{n_calls:,}")
-        with col3:
-            n_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
-            st.metric("Puts", f"{n_puts:,}")
-        with col4:
-            n_alertas = len(st.session_state.alertas_actuales)
-            st.metric("🚨 Alertas", n_alertas)
-        with col5:
-            n_clusters = len(st.session_state.clusters_detectados)
-            st.metric("🔗 Clusters", n_clusters)
+        _n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
+        _n_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
+        _n_alertas = len(st.session_state.alertas_actuales)
+        _n_clusters = len(st.session_state.clusters_detectados)
+        _total = len(datos_df)
+        _call_pct = (_n_calls / _total * 100) if _total else 0
+        _put_pct = (_n_puts / _total * 100) if _total else 0
+        _spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
+        st.markdown(render_metric_row([
+            render_metric_card("Opciones Analizadas", f"{_total:,}", sparkline_data=_spk),
+            render_metric_card("Calls", f"{_n_calls:,}", delta=_call_pct),
+            render_metric_card("Puts", f"{_n_puts:,}", delta=_put_pct, color_override="#ef4444"),
+            render_metric_card("Alertas", f"{_n_alertas}"),
+            render_metric_card("Clusters", f"{_n_clusters}"),
+        ]), unsafe_allow_html=True)
 
     # --- Mostrar alertas ---
     if st.session_state.alertas_actuales:
@@ -1202,27 +1202,30 @@ with tab_oi:
             puts_abiertos = int(df_positivos[df_positivos["Tipo"] == "PUT"]["OI_Chg"].sum()) if n_pos > 0 and "Tipo" in df_positivos.columns else 0
 
             # Métricas rápidas
-            col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-            col_m1.metric("📊 Total Contratos", f"{n_total:,}")
-            col_m2.metric("📞 CALLs", f"{n_calls:,}")
-            col_m3.metric("📋 PUTs", f"{n_puts:,}")
-            col_m4.metric("🟢 Señales Positivas", f"{n_pos:,}")
-            col_m5.metric("🔴 Señales Negativas", f"{n_neg:,}")
+            _pos_pct = (n_pos / n_total * 100) if n_total else 0
+            _neg_pct = (n_neg / n_total * 100) if n_total else 0
+            st.markdown(render_metric_row([
+                render_metric_card("Total Contratos", f"{n_total:,}"),
+                render_metric_card("CALLs", f"{n_calls:,}", delta=(n_calls / n_total * 100) if n_total else 0),
+                render_metric_card("PUTs", f"{n_puts:,}", delta=(n_puts / n_total * 100) if n_total else 0, color_override="#ef4444"),
+                render_metric_card("Señales Positivas", f"{n_pos:,}", delta=_pos_pct),
+                render_metric_card("Señales Negativas", f"{n_neg:,}", delta=_neg_pct, color_override="#ef4444"),
+            ]), unsafe_allow_html=True)
 
             # Segunda fila de métricas: Contratos abiertos vs cerrados
             st.markdown("---")
             st.markdown("##### 📈 Flujo de Contratos")
-            col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
-            
-            col_f1.metric("🟢 Contratos Abiertos", f"{contratos_abiertos_total:,}", 
-                         delta="Nuevas posiciones", delta_color="normal")
-            col_f2.metric("  📞 CALLs Abiertos", f"{calls_abiertos:,}")
-            col_f3.metric("  📋 PUTs Abiertos", f"{puts_abiertos:,}")
-            
-            col_f4.metric("🔴 Contratos Cerrados", f"{contratos_cerrados_total:,}", 
-                         delta="Posiciones cerradas", delta_color="inverse")
-            col_f5.metric("  📞 CALLs Cerrados", f"{calls_cerrados:,}")
-            col_f6.metric("  📋 PUTs Cerrados", f"{puts_cerrados:,}")
+            _net_flow = contratos_abiertos_total + contratos_cerrados_total
+            _open_spk = [max(0, v) for v in df_positivos["OI_Chg"].head(10).tolist()] if n_pos > 1 else None
+            _close_spk = [abs(v) for v in df_negativos["OI_Chg"].head(10).tolist()] if n_neg > 1 else None
+            st.markdown(render_metric_row([
+                render_metric_card("Contratos Abiertos", f"{contratos_abiertos_total:,}", delta="Nuevas posiciones", sparkline_data=_open_spk),
+                render_metric_card("CALLs Abiertos", f"{calls_abiertos:,}"),
+                render_metric_card("PUTs Abiertos", f"{puts_abiertos:,}"),
+                render_metric_card("Contratos Cerrados", f"{contratos_cerrados_total:,}", delta="Posiciones cerradas", sparkline_data=_close_spk, color_override="#ef4444"),
+                render_metric_card("CALLs Cerrados", f"{calls_cerrados:,}"),
+                render_metric_card("PUTs Cerrados", f"{puts_cerrados:,}"),
+            ]), unsafe_allow_html=True)
 
             st.markdown("---")
 
@@ -1356,26 +1359,26 @@ with tab_historial:
             "Las alertas se guardan automáticamente cada vez que ejecutas un escaneo."
         )
     else:
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total de Alertas", len(historial_df))
-        with col2:
-            n_principal = len(
-                historial_df[historial_df["Tipo_Alerta"] == "PRINCIPAL"]
-            ) if "Tipo_Alerta" in historial_df.columns else 0
-            st.metric("🔴 Institucional", n_principal)
-        with col3:
-            n_prima = len(
-                historial_df[historial_df["Tipo_Alerta"] == "PRIMA_ALTA"]
-            ) if "Tipo_Alerta" in historial_df.columns else 0
-            st.metric("🟠 Prima Alta", n_prima)
-        with col4:
-            tickers_unicos = (
-                historial_df["Ticker"].nunique()
-                if "Ticker" in historial_df.columns
-                else 0
-            )
-            st.metric("Tickers Únicos", tickers_unicos)
+        _h_total = len(historial_df)
+        n_principal = len(
+            historial_df[historial_df["Tipo_Alerta"] == "PRINCIPAL"]
+        ) if "Tipo_Alerta" in historial_df.columns else 0
+        n_prima = len(
+            historial_df[historial_df["Tipo_Alerta"] == "PRIMA_ALTA"]
+        ) if "Tipo_Alerta" in historial_df.columns else 0
+        tickers_unicos = (
+            historial_df["Ticker"].nunique()
+            if "Ticker" in historial_df.columns
+            else 0
+        )
+        _inst_pct = (n_principal / _h_total * 100) if _h_total else 0
+        _prima_pct = (n_prima / _h_total * 100) if _h_total else 0
+        st.markdown(render_metric_row([
+            render_metric_card("Total de Alertas", f"{_h_total:,}"),
+            render_metric_card("Institucional", f"{n_principal:,}", delta=_inst_pct, color_override="#ef4444"),
+            render_metric_card("Prima Alta", f"{n_prima:,}", delta=_prima_pct, color_override="#f59e0b"),
+            render_metric_card("Tickers Únicos", f"{tickers_unicos}"),
+        ]), unsafe_allow_html=True)
 
         st.markdown("##### 🔎 Filtros")
         col_f1, col_f2, col_f3 = st.columns(3)
@@ -1452,20 +1455,21 @@ with tab_historial:
         st.info("Ejecuta un escaneo en la pestaña **Escáner en Vivo** para ver los datos aquí.")
     else:
         datos_df = pd.DataFrame(st.session_state.datos_completos)
-
-        col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
-        with col_d1:
-            st.metric("📊 Opciones", f"{len(datos_df):,}")
-        with col_d2:
-            n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
-            st.metric("Calls", f"{n_calls:,}")
-        with col_d3:
-            n_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
-            st.metric("Puts", f"{n_puts:,}")
-        with col_d4:
-            st.metric("🚨 Alertas", len(st.session_state.alertas_actuales))
-        with col_d5:
-            st.metric("🔗 Clusters", len(st.session_state.clusters_detectados))
+        _a_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
+        _a_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
+        _a_total = len(datos_df)
+        _a_alertas = len(st.session_state.alertas_actuales)
+        _a_clusters = len(st.session_state.clusters_detectados)
+        _a_cpct = (_a_calls / _a_total * 100) if _a_total else 0
+        _a_ppct = (_a_puts / _a_total * 100) if _a_total else 0
+        _a_spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
+        st.markdown(render_metric_row([
+            render_metric_card("Opciones", f"{_a_total:,}", sparkline_data=_a_spk),
+            render_metric_card("Calls", f"{_a_calls:,}", delta=_a_cpct),
+            render_metric_card("Puts", f"{_a_puts:,}", delta=_a_ppct, color_override="#ef4444"),
+            render_metric_card("Alertas", f"{_a_alertas}"),
+            render_metric_card("Clusters", f"{_a_clusters}"),
+        ]), unsafe_allow_html=True)
 
         with st.expander("🔍 Ver todas las opciones escaneadas", expanded=False):
             # Enriquecer datos para mejores métricas
