@@ -373,6 +373,14 @@ st.set_page_config(
 # ============================================================================
 st.markdown(CSS_STYLES, unsafe_allow_html=True)
 
+# Forzar dark mode en <html> para navegadores y componentes internos
+st.markdown(
+    '<script>document.documentElement.setAttribute("data-theme","dark");'
+    'document.documentElement.style.colorScheme="dark";</script>'
+    '<meta name="color-scheme" content="dark">',
+    unsafe_allow_html=True,
+)
+
 # ============================================================================
 #                    INICIALIZAR SESSION STATE
 # ============================================================================

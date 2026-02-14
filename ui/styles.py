@@ -11,6 +11,7 @@ CSS_STYLES = """
 
     /* ====== ROOT VARIABLES ====== */
     :root {
+        color-scheme: dark;
         --bg-deepest: #0a0d14;
         --bg-base: #0f172a;
         --bg-card: #1e293b;
@@ -19,8 +20,8 @@ CSS_STYLES = """
         --border-subtle: rgba(148, 163, 184, 0.08);
         --border-default: rgba(148, 163, 184, 0.12);
         --border-hover: rgba(148, 163, 184, 0.2);
-        --text-primary: #f1f5f9;
-        --text-secondary: #94a3b8;
+        --text-primary: #ffffff;
+        --text-secondary: #9ca3af;
         --text-muted: #64748b;
         --text-dim: #475569;
         --neon-green: #00ff88;
