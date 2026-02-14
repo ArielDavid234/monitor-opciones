@@ -122,7 +122,14 @@ def render_plotly_sparkline(data, color="#00ff88", height=60):
     """
     if not data or len(data) < 2:
         return None
-    fill_color = color.replace(")", ",0.15)").replace("rgb", "rgba") if color.startswith("rgb") else color + "26"
+    # Convert hex color to rgba with 0.15 opacity for fill
+    if color.startswith("#") and len(color) == 7:
+        r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+        fill_color = f"rgba({r},{g},{b},0.15)"
+    elif color.startswith("rgb("):
+        fill_color = color.replace("rgb(", "rgba(").replace(")", ",0.15)")
+    else:
+        fill_color = "rgba(0,255,136,0.15)"
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         y=list(data),
