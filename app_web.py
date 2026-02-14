@@ -490,8 +490,8 @@ with st.sidebar:
     # -- Menú de navegación con emojis --
     pagina = st.radio(
         "Navegación",
-        ["🏠 Dashboard", "📊 Market Overview", "🔍 Options Screener",
-         "⚠️ Unusual Activity", "🔔 Smart Alerts", "📰 News & Calendar", "⚙️ Settings"],
+        ["🔍 Escaneo en Vivo", "📊 Open Interest", "📈 Análisis de Datos",
+         "📋 Reports", "⭐ Favorites", "📐 Range", "📰 News & Calendar", "🏢 Important Companies"],
         index=0,
         label_visibility="collapsed",
     )
@@ -521,28 +521,24 @@ with st.sidebar:
         st.session_state.trigger_scan = True
         st.rerun()
 
-    with st.expander("📊 Umbrales", expanded=False):
-        umbral_vol = st.number_input("Volumen mínimo", value=DEFAULT_MIN_VOLUME, step=1_000, format="%d",
-                                      help="Solo muestra contratos con volumen ≥ este valor")
-        umbral_oi = st.number_input("Open Interest mínimo", value=DEFAULT_MIN_OI, step=1_000, format="%d",
-                                     help="Solo muestra contratos con OI ≥ este valor")
-        umbral_prima = st.number_input(
-            "Prima Total mínima ($)", value=DEFAULT_MIN_PRIMA, step=500_000, format="%d",
-            help="Prima Total = Volumen × Precio × 100 (dinero que entró en el contrato ese día)"
-        )
-        st.caption("💡 **Prima Total** = Volumen × Precio × 100 — Representa el flujo de dinero total del contrato basado en el volumen transaccionado del día.")
-        umbral_filtro = st.number_input("Filtro rápido (vol/oi mín.)", value=DEFAULT_QUICK_FILTER, step=100, format="%d",
-                                         help="Ignora opciones con vol Y oi debajo de este umbral en el análisis")
+    # Valores por defecto de umbrales (se configuran en Escaneo en Vivo)
+    if "umbral_vol" not in st.session_state:
+        st.session_state.umbral_vol = DEFAULT_MIN_VOLUME
+    if "umbral_oi" not in st.session_state:
+        st.session_state.umbral_oi = DEFAULT_MIN_OI
+    if "umbral_prima" not in st.session_state:
+        st.session_state.umbral_prima = DEFAULT_MIN_PRIMA
+    if "umbral_filtro" not in st.session_state:
+        st.session_state.umbral_filtro = DEFAULT_QUICK_FILTER
 
     # Guardado automático siempre activo
     csv_carpeta = "alertas"
     guardar_csv = True
 
-    with st.expander("📐 Rango Esperado", expanded=False):
-        rango_delta = st.slider(
-            "Delta objetivo (σ)", min_value=0.01, max_value=1.00, value=DEFAULT_TARGET_DELTA, step=0.01,
-            help="0.16 ≈ 1σ (68%). 0.05 ≈ 2σ (95%). Menor delta = rango más amplio."
-        )
+    # rango_delta se configura en la página Range
+    if "rango_delta" not in st.session_state:
+        st.session_state.rango_delta = DEFAULT_TARGET_DELTA
+    rango_delta = st.session_state.rango_delta
 
     with st.expander("🛡️ Anti-Ban", expanded=False):
         st.markdown(
@@ -596,11 +592,39 @@ st.markdown(
 # ============================================================================
 #                    NAVEGACIÓN POR RADIO (SIDEBAR)
 # ============================================================================
+# Variables de umbrales (disponibles en todas las páginas)
+umbral_vol = st.session_state.umbral_vol
+umbral_oi = st.session_state.umbral_oi
+umbral_prima = st.session_state.umbral_prima
+umbral_filtro = st.session_state.umbral_filtro
 
 # ============================================================================
-#   🏠 DASHBOARD — ESCÁNER EN VIVO
+#   🔍 ESCANEO EN VIVO
 # ============================================================================
-if pagina == "🏠 Dashboard":
+if pagina == "🔍 Escaneo en Vivo":
+
+    # --- Umbrales de filtrado ---
+    with st.expander("📊 Umbrales de Filtrado", expanded=False):
+        _umb_c1, _umb_c2, _umb_c3, _umb_c4 = st.columns(4)
+        with _umb_c1:
+            umbral_vol = st.number_input("Volumen mínimo", value=st.session_state.umbral_vol, step=1_000, format="%d",
+                                          help="Solo muestra contratos con volumen ≥ este valor", key="inp_umbral_vol")
+        with _umb_c2:
+            umbral_oi = st.number_input("Open Interest mínimo", value=st.session_state.umbral_oi, step=1_000, format="%d",
+                                         help="Solo muestra contratos con OI ≥ este valor", key="inp_umbral_oi")
+        with _umb_c3:
+            umbral_prima = st.number_input("Prima Total mínima ($)", value=st.session_state.umbral_prima, step=500_000, format="%d",
+                                            help="Prima Total = Volumen × Precio × 100", key="inp_umbral_prima")
+        with _umb_c4:
+            umbral_filtro = st.number_input("Filtro rápido (vol/oi mín.)", value=st.session_state.umbral_filtro, step=100, format="%d",
+                                             help="Ignora opciones con vol Y oi debajo de este umbral", key="inp_umbral_filtro")
+        st.caption("💡 **Prima Total** = Volumen × Precio × 100 — Flujo de dinero total del contrato basado en el volumen del día.")
+        # Guardar en session_state para persistir entre páginas
+        st.session_state.umbral_vol = umbral_vol
+        st.session_state.umbral_oi = umbral_oi
+        st.session_state.umbral_prima = umbral_prima
+        st.session_state.umbral_filtro = umbral_filtro
+
     col_btn1, col_btn2 = st.columns([1, 1])
 
     with col_btn1:
@@ -708,8 +732,8 @@ if pagina == "🏠 Dashboard":
 
     st.session_state.auto_scan = auto_scan
 
-    # --- Market Overview ---
-    st.markdown("### 📊 Market Overview")
+    # --- Métricas rápidas ---
+    st.markdown("### 📊 Métricas del Escaneo")
 
     if st.session_state.datos_completos:
         datos_df = pd.DataFrame(st.session_state.datos_completos)
@@ -1164,6 +1188,95 @@ if pagina == "🏠 Dashboard":
         )
         st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
 
+    # --- Datos del Último Escaneo ---
+    if st.session_state.datos_completos:
+        st.markdown("---")
+        st.markdown("#### 📊 Datos del Último Escaneo")
+        datos_df_esc = pd.DataFrame(st.session_state.datos_completos)
+        _a_calls = len(datos_df_esc[datos_df_esc["Tipo"] == "CALL"])
+        _a_puts = len(datos_df_esc[datos_df_esc["Tipo"] == "PUT"])
+        _a_total = len(datos_df_esc)
+        _a_alertas = len(st.session_state.alertas_actuales)
+        _a_clusters = len(st.session_state.clusters_detectados)
+        _a_cpct = (_a_calls / _a_total * 100) if _a_total else 0
+        _a_ppct = (_a_puts / _a_total * 100) if _a_total else 0
+        _a_spk = sorted(datos_df_esc["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df_esc.columns else None
+        st.markdown(render_metric_row([
+            render_metric_card("Opciones", f"{_a_total:,}", sparkline_data=_a_spk),
+            render_metric_card("Calls", f"{_a_calls:,}", delta=_a_cpct),
+            render_metric_card("Puts", f"{_a_puts:,}", delta=_a_ppct, color_override="#ef4444"),
+            render_metric_card("Alertas", f"{_a_alertas}"),
+            render_metric_card("Clusters", f"{_a_clusters}"),
+        ]), unsafe_allow_html=True)
+
+        with st.expander("🔍 Ver todas las opciones escaneadas", expanded=False):
+            datos_enriquecidos = _enriquecer_datos_opcion(
+                st.session_state.datos_completos,
+                precio_subyacente=st.session_state.get('precio_subyacente')
+            )
+            display_scan = pd.DataFrame(datos_enriquecidos)
+
+            if 'Prima_Vol' in display_scan.columns:
+                display_scan["Prima Total"] = display_scan["Prima_Vol"].apply(_fmt_monto)
+            if 'IV' in display_scan.columns:
+                display_scan["IV_F"] = display_scan["IV"].apply(_fmt_iv)
+            if 'Spread_Pct' in display_scan.columns:
+                display_scan["Spread_%"] = display_scan["Spread_Pct"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+            if 'Liquidity_Score' in display_scan.columns:
+                display_scan["Liquidez"] = display_scan["Liquidity_Score"].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
+            if 'Lado' in display_scan.columns:
+                display_scan["Lado_F"] = display_scan["Lado"].apply(_fmt_lado)
+
+            if 'Tipo' in display_scan.columns and 'Lado' in display_scan.columns:
+                display_scan["Sentimiento"] = display_scan.apply(
+                    lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
+                    axis=1
+                )
+
+            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'Ask', 'Bid', 'Spread_%',
+                           'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
+            cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
+            cols_ocultar_h = [c for c in ["OI", "OI_Chg"] if c in display_scan.columns]
+            display_final = display_scan.drop(columns=cols_ocultar_h, errors="ignore")
+
+            st.dataframe(
+                display_final[cols_disponibles] if cols_disponibles else display_final,
+                use_container_width=True, hide_index=True, height=400,
+            )
+
+            csv_enriquecido = pd.DataFrame(datos_enriquecidos).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "📈 Descargar Datos Enriquecidos (CSV)",
+                csv_enriquecido,
+                f"opciones_enriquecidas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                "text/csv",
+                key="dl_datos_enriquecidos_escaneo",
+                help="Incluye métricas adicionales: spread, moneyness, liquidez, ratios, etc."
+            )
+
+        # --- Clusters de Compra Continua ---
+        if st.session_state.clusters_detectados:
+            st.markdown("##### 🔗 Clusters de Compra Continua")
+            clusters_table_esc = []
+            for c in st.session_state.clusters_detectados:
+                clusters_table_esc.append({
+                    "Tipo": c["Tipo_Opcion"],
+                    "Vencimiento": c["Vencimiento"],
+                    "Contratos": c["Contratos"],
+                    "Rango Strikes": f"${c['Strike_Min']} - ${c['Strike_Max']}",
+                    "Prima Total": _fmt_monto(c['Prima_Total']),
+                    "Prima Prom.": _fmt_monto(c['Prima_Promedio']),
+                    "Vol Total": _fmt_entero(c['Vol_Total']),
+                    "OI Total": _fmt_entero(c['OI_Total']),
+                    "OI Chg": _fmt_oi_chg(c.get('OI_Chg_Total', 0)),
+                })
+            st.markdown(
+                render_pro_table(pd.DataFrame(clusters_table_esc),
+                                 title="🔗 Clusters de Compra Continua",
+                                 badge_count=f"{len(clusters_table_esc)}"),
+                unsafe_allow_html=True,
+            )
+
     # Auto-refresh con countdown visual
     if auto_scan and st.session_state.scan_count > 0:
         countdown = AUTO_REFRESH_INTERVAL  # Configurable desde constants.py
@@ -1190,9 +1303,9 @@ if pagina == "🏠 Dashboard":
 
 
 # ============================================================================
-#   📊 MARKET OVERVIEW — OPEN INTEREST
+#   📊 OPEN INTEREST
 # ============================================================================
-elif pagina == "📊 Market Overview":
+elif pagina == "📊 Open Interest":
     st.markdown("### 📊 Open Interest")
 
     # ================================================================
@@ -1380,27 +1493,26 @@ elif pagina == "📊 Market Overview":
             else:
                 st.info("Sin contratos con OI Chg negativo.")
     elif st.session_state.scan_count == 0:
-        st.info("⏳ **Ejecutá un escaneo** en 🏠 Dashboard para cargar los datos de Open Interest automáticamente.")
+        st.info("⏳ **Ejecutá un escaneo** en 🔍 Escaneo en Vivo para cargar los datos de Open Interest automáticamente.")
 
 
 # ============================================================================
-#   ⚠️ UNUSUAL ACTIVITY — HISTORIAL DE ALERTAS
+#   📋 REPORTS
 # ============================================================================
-elif pagina == "⚠️ Unusual Activity":
-    st.markdown("### 📜 Historial de Alertas y Datos Guardados")
+elif pagina == "📋 Reports":
+    st.markdown("### 📋 Reports")
     st.markdown(
         """
         <div class="watchlist-info">
-            💾 <b>Centro de Datos</b> — Todas las alertas se guardan automáticamente al escanear.
-            Aquí puedes ver el historial completo, filtrar, y descargar reportes detallados
-            de alertas, opciones escaneadas, clusters y rango esperado.
+            💾 <b>Centro de Reportes</b> — Todas las alertas se guardan automáticamente al escanear.
+            Descarga reportes detallados en CSV y DOCX.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     # --- SECCIÓN 1: HISTORIAL CSV ---
-    st.markdown("#### 📁 Historial de Alertas Guardadas")
+    st.markdown("#### 📁 Alertas Guardadas")
     historial_df = cargar_historial_csv(csv_carpeta)
     
     # Agregar columna de sentimiento al historial
@@ -1525,105 +1637,6 @@ elif pagina == "⚠️ Unusual Activity":
             "text/csv",
             key="dl_alertas_hist",
         )
-
-    # --- SECCIÓN 2: DATOS DEL ÚLTIMO ESCANEO ---
-    st.markdown("---")
-    st.markdown("#### 📊 Datos del Último Escaneo")
-
-    if not st.session_state.datos_completos:
-        st.info("Ejecuta un escaneo en 🏠 **Dashboard** para ver los datos aquí.")
-    else:
-        datos_df = pd.DataFrame(st.session_state.datos_completos)
-        _a_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
-        _a_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
-        _a_total = len(datos_df)
-        _a_alertas = len(st.session_state.alertas_actuales)
-        _a_clusters = len(st.session_state.clusters_detectados)
-        _a_cpct = (_a_calls / _a_total * 100) if _a_total else 0
-        _a_ppct = (_a_puts / _a_total * 100) if _a_total else 0
-        _a_spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
-        st.markdown(render_metric_row([
-            render_metric_card("Opciones", f"{_a_total:,}", sparkline_data=_a_spk),
-            render_metric_card("Calls", f"{_a_calls:,}", delta=_a_cpct),
-            render_metric_card("Puts", f"{_a_puts:,}", delta=_a_ppct, color_override="#ef4444"),
-            render_metric_card("Alertas", f"{_a_alertas}"),
-            render_metric_card("Clusters", f"{_a_clusters}"),
-        ]), unsafe_allow_html=True)
-
-        with st.expander("🔍 Ver todas las opciones escaneadas", expanded=False):
-            # Enriquecer datos para mejores métricas
-            datos_enriquecidos = _enriquecer_datos_opcion(
-                st.session_state.datos_completos, 
-                precio_subyacente=st.session_state.get('precio_subyacente')
-            )
-            display_scan = pd.DataFrame(datos_enriquecidos)
-            
-            # Aplicar formateo para visualización
-            if 'Prima_Vol' in display_scan.columns:
-                display_scan["Prima Total"] = display_scan["Prima_Vol"].apply(_fmt_monto)
-            if 'IV' in display_scan.columns:
-                display_scan["IV_F"] = display_scan["IV"].apply(_fmt_iv)
-            if 'Spread_Pct' in display_scan.columns:
-                display_scan["Spread_%"] = display_scan["Spread_Pct"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
-            if 'Liquidity_Score' in display_scan.columns:
-                display_scan["Liquidez"] = display_scan["Liquidity_Score"].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
-            if 'Lado' in display_scan.columns:
-                display_scan["Lado_F"] = display_scan["Lado"].apply(_fmt_lado)
-            
-            # Agregar columna de sentimiento
-            if 'Tipo' in display_scan.columns and 'Lado' in display_scan.columns:
-                display_scan["Sentimiento"] = display_scan.apply(
-                    lambda row: f"{determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo'], row.get('Lado', 'N/A'))[0]}",
-                    axis=1
-                )
-            
-            # Seleccionar columnas relevantes para mostrar
-            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'Ask', 'Bid', 'Spread_%', 
-                           'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
-            cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
-            
-            # Ocultar OI y OI_Chg como antes pero mostrar nuevas métricas
-            cols_ocultar_h = [c for c in ["OI", "OI_Chg"] if c in display_scan.columns]
-            display_final = display_scan.drop(columns=cols_ocultar_h, errors="ignore")
-            
-            st.dataframe(
-                display_final[cols_disponibles] if cols_disponibles else display_final,
-                width="stretch", hide_index=True, height=400,
-            )
-            
-            # Botón descarga datos enriquecidos
-            csv_enriquecido = pd.DataFrame(datos_enriquecidos).to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "📈 Descargar Datos Enriquecidos (CSV)",
-                csv_enriquecido,
-                f"opciones_enriquecidas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                "text/csv",
-                key="dl_datos_enriquecidos",
-                help="Incluye métricas adicionales: spread, moneyness, liquidez, ratios, etc."
-            )
-
-        # --- Clusters detectados ---
-        if st.session_state.clusters_detectados:
-            st.markdown("##### 🔗 Clusters de Compra Continua")
-            clusters_table = []
-            for c in st.session_state.clusters_detectados:
-                clusters_table.append({
-                    "Tipo": c["Tipo_Opcion"],
-                    "Vencimiento": c["Vencimiento"],
-                    "Contratos": c["Contratos"],
-                    "Rango Strikes": f"${c['Strike_Min']} - ${c['Strike_Max']}",
-                    "Prima Total": _fmt_monto(c['Prima_Total']),
-                    "Prima Prom.": _fmt_monto(c['Prima_Promedio']),
-                    "Vol Total": _fmt_entero(c['Vol_Total']),
-                    "OI Total": _fmt_entero(c['OI_Total']),
-                    "OI Chg": _fmt_oi_chg(c.get('OI_Chg_Total', 0)),
-                })
-            st.markdown(
-                render_pro_table(pd.DataFrame(clusters_table),
-                                 title="🔗 Clusters de Compra Continua",
-                                 badge_count=f"{len(clusters_table)}"),
-                unsafe_allow_html=True,
-            )
 
         # --- Rango esperado ---
         if st.session_state.rango_resultado:
@@ -2051,9 +2064,9 @@ elif pagina == "⚠️ Unusual Activity":
 
 
 # ============================================================================
-#   🔍 OPTIONS SCREENER — ANÁLISIS
+#   � ANÁLISIS DE DATOS
 # ============================================================================
-elif pagina == "🔍 Options Screener":
+elif pagina == "📈 Análisis de Datos":
     st.markdown("### 📈 Análisis de Datos")
 
     if not st.session_state.datos_completos:
@@ -2590,15 +2603,15 @@ elif pagina == "🔍 Options Screener":
 
 
 # ============================================================================
-#   🔔 SMART ALERTS — FAVORITOS + RANGO
+#   ⭐ FAVORITES — CONTRATOS FAVORITOS
 # ============================================================================
-elif pagina == "🔔 Smart Alerts":
+elif pagina == "⭐ Favorites":
     st.markdown("### ⭐ Contratos Favoritos")
     st.markdown(
         """
         <div style="background: rgba(250, 204, 21, 0.06); border: 1px solid rgba(250, 204, 21, 0.15); 
              border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #fde68a;">
-            📌 <b>Contratos guardados para seguimiento.</b> Marcá cualquier contrato como favorito desde las alertas del Escáner. 
+            📌 <b>Contratos guardados para seguimiento.</b> Marcá cualquier contrato como favorito desde las alertas del Escaneo en Vivo. 
             Se guardan entre sesiones y se eliminan automáticamente cuando expiran.
         </div>
         """,
@@ -2727,10 +2740,10 @@ elif pagina == "🔔 Smart Alerts":
                 st.rerun()
 
 
-    # ============================================================================
-    #   RANGO ESPERADO (1σ) — Sub-sección de Smart Alerts
-    # ============================================================================
-    st.markdown("---")
+# ============================================================================
+#   📐 RANGE — RANGO ESPERADO
+# ============================================================================
+elif pagina == "📐 Range":
     st.markdown("### 📐 Rango Esperado de Movimiento (1σ)")
     st.markdown(
         """
@@ -2743,6 +2756,12 @@ elif pagina == "🔔 Smart Alerts":
         """,
         unsafe_allow_html=True,
     )
+
+    rango_delta = st.slider(
+        "Delta objetivo (σ)", min_value=0.01, max_value=1.00, value=st.session_state.rango_delta, step=0.01,
+        help="0.16 ≈ 1σ (68%). 0.05 ≈ 2σ (95%). Menor delta = rango más amplio.", key="rango_delta_slider"
+    )
+    st.session_state.rango_delta = rango_delta
 
     st.markdown("")
 
@@ -2903,9 +2922,9 @@ elif pagina == "🔔 Smart Alerts":
 
 
 # ============================================================================
-#   ⚙️ SETTINGS — PROYECCIONES
+#   🏢 IMPORTANT COMPANIES
 # ============================================================================
-elif pagina == "⚙️ Settings":
+elif pagina == "🏢 Important Companies":
     st.markdown("### 🏢 Proyecciones de Crecimiento a 10 Años")
     st.markdown(
         """
