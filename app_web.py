@@ -488,11 +488,11 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     # -- Menú de navegación con emojis --
-    nav_option = st.radio(
+    pagina = st.radio(
         "Navegación",
         ["🏠 Dashboard", "📊 Market Overview", "🔍 Options Screener",
          "⚠️ Unusual Activity", "🔔 Smart Alerts", "📰 News & Calendar", "⚙️ Settings"],
-        index=1,
+        index=0,
         label_visibility="collapsed",
     )
 
@@ -594,105 +594,13 @@ st.markdown(
 )
 
 # ============================================================================
-#                    TABS PRINCIPALES
+#                    NAVEGACIÓN POR RADIO (SIDEBAR)
 # ============================================================================
-tab_scanner, tab_oi, tab_analisis, tab_favoritos, tab_rango, tab_proyecciones, tab_noticias, tab_calendario, tab_historial = st.tabs(
-    ["🔍 Escáner en Vivo", "📊 Open Interest", "📈 Análisis", "⭐ Favoritos", "📐 Rango Esperado", "🏢 Proyecciones", "📰 Noticias", "📅 Calendario", "📜 Historial"]
-)
-
-# --- Inyección de accesibilidad WAI-ARIA y navegación por teclado ---
-st.markdown(
-    """
-    <script>
-    (function() {
-        function applyARIA() {
-            const tabList = document.querySelector('[data-baseweb="tab-list"]');
-            if (!tabList) return false;
-
-            tabList.setAttribute('role', 'tablist');
-            tabList.setAttribute('aria-label', 'Navegación principal del monitor de opciones');
-
-            const tabLabels = [
-                'Escáner en Vivo',
-                'Historial de Alertas',
-                'Análisis',
-                'Favoritos',
-                'Rango Esperado',
-                'Proyecciones',
-                'Noticias',
-                'Calendario'
-            ];
-
-            const tabs = tabList.querySelectorAll('[data-baseweb="tab"]');
-            tabs.forEach(function(tab, index) {
-                tab.setAttribute('role', 'tab');
-                const panelId = 'tabpanel-' + index;
-                tab.setAttribute('aria-controls', panelId);
-                tab.setAttribute('tabindex', tab.getAttribute('aria-selected') === 'true' ? '0' : '-1');
-                if (tabLabels[index]) {
-                    tab.setAttribute('aria-label', tabLabels[index]);
-                }
-            });
-
-            const panels = document.querySelectorAll('[data-baseweb="tab-panel"]');
-            panels.forEach(function(panel, index) {
-                panel.setAttribute('role', 'tabpanel');
-                panel.setAttribute('id', 'tabpanel-' + index);
-                panel.setAttribute('tabindex', '0');
-                if (tabLabels[index]) {
-                    panel.setAttribute('aria-label', 'Contenido: ' + tabLabels[index]);
-                }
-            });
-
-            if (!tabList.dataset.kbBound) {
-                tabList.dataset.kbBound = 'true';
-                tabList.addEventListener('keydown', function(e) {
-                    const allTabs = Array.from(tabList.querySelectorAll('[data-baseweb="tab"]'));
-                    const current = allTabs.findIndex(function(t) {
-                        return t.getAttribute('aria-selected') === 'true';
-                    });
-                    let next = current;
-                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        next = (current + 1) % allTabs.length;
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        next = (current - 1 + allTabs.length) % allTabs.length;
-                    } else if (e.key === 'Home') {
-                        e.preventDefault();
-                        next = 0;
-                    } else if (e.key === 'End') {
-                        e.preventDefault();
-                        next = allTabs.length - 1;
-                    }
-                    if (next !== current) {
-                        allTabs[next].click();
-                        allTabs[next].focus();
-                    }
-                });
-            }
-            return true;
-        }
-
-        let attempts = 0;
-        const tryApply = setInterval(function() {
-            if (applyARIA() || attempts > 30) clearInterval(tryApply);
-            attempts++;
-        }, 500);
-
-        const observer = new MutationObserver(function() { applyARIA(); });
-        const target = document.querySelector('[data-testid="stAppViewContainer"]');
-        if (target) observer.observe(target, { childList: true, subtree: true });
-    })();
-    </script>
-    """,
-    unsafe_allow_html=True,
-)
 
 # ============================================================================
-#   TAB 1 — ESCÁNER EN VIVO
+#   🏠 DASHBOARD — ESCÁNER EN VIVO
 # ============================================================================
-with tab_scanner:
+if pagina == "🏠 Dashboard":
     col_btn1, col_btn2 = st.columns([1, 1])
 
     with col_btn1:
@@ -1282,9 +1190,9 @@ with tab_scanner:
 
 
 # ============================================================================
-#   TAB — OPEN INTEREST (CAMBIOS)
+#   📊 MARKET OVERVIEW — OPEN INTEREST
 # ============================================================================
-with tab_oi:
+elif pagina == "📊 Market Overview":
     st.markdown("### 📊 Open Interest")
 
     # ================================================================
@@ -1472,13 +1380,13 @@ with tab_oi:
             else:
                 st.info("Sin contratos con OI Chg negativo.")
     elif st.session_state.scan_count == 0:
-        st.info("⏳ **Ejecutá un escaneo** en la pestaña 'Escáner en Vivo' para cargar los datos de Open Interest automáticamente.")
+        st.info("⏳ **Ejecutá un escaneo** en 🏠 Dashboard para cargar los datos de Open Interest automáticamente.")
 
 
 # ============================================================================
-#   TAB 2 — HISTORIAL DE ALERTAS
+#   ⚠️ UNUSUAL ACTIVITY — HISTORIAL DE ALERTAS
 # ============================================================================
-with tab_historial:
+elif pagina == "⚠️ Unusual Activity":
     st.markdown("### 📜 Historial de Alertas y Datos Guardados")
     st.markdown(
         """
@@ -1623,7 +1531,7 @@ with tab_historial:
     st.markdown("#### 📊 Datos del Último Escaneo")
 
     if not st.session_state.datos_completos:
-        st.info("Ejecuta un escaneo en la pestaña **Escáner en Vivo** para ver los datos aquí.")
+        st.info("Ejecuta un escaneo en 🏠 **Dashboard** para ver los datos aquí.")
     else:
         datos_df = pd.DataFrame(st.session_state.datos_completos)
         _a_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
@@ -2143,9 +2051,9 @@ with tab_historial:
 
 
 # ============================================================================
-#   TAB 3 — ANÁLISIS
+#   🔍 OPTIONS SCREENER — ANÁLISIS
 # ============================================================================
-with tab_analisis:
+elif pagina == "🔍 Options Screener":
     st.markdown("### 📈 Análisis de Datos")
 
     if not st.session_state.datos_completos:
@@ -2682,9 +2590,9 @@ with tab_analisis:
 
 
 # ============================================================================
-#   TAB 4 — FAVORITOS
+#   🔔 SMART ALERTS — FAVORITOS + RANGO
 # ============================================================================
-with tab_favoritos:
+elif pagina == "🔔 Smart Alerts":
     st.markdown("### ⭐ Contratos Favoritos")
     st.markdown(
         """
@@ -2819,10 +2727,10 @@ with tab_favoritos:
                 st.rerun()
 
 
-# ============================================================================
-#   TAB 5 — RANGO ESPERADO (1σ)
-# ============================================================================
-with tab_rango:
+    # ============================================================================
+    #   RANGO ESPERADO (1σ) — Sub-sección de Smart Alerts
+    # ============================================================================
+    st.markdown("---")
     st.markdown("### 📐 Rango Esperado de Movimiento (1σ)")
     st.markdown(
         """
@@ -2995,9 +2903,9 @@ with tab_rango:
 
 
 # ============================================================================
-#   TAB 5 — PROYECCIONES A 10 AÑOS
+#   ⚙️ SETTINGS — PROYECCIONES
 # ============================================================================
-with tab_proyecciones:
+elif pagina == "⚙️ Settings":
     st.markdown("### 🏢 Proyecciones de Crecimiento a 10 Años")
     st.markdown(
         """
@@ -3193,9 +3101,9 @@ with tab_proyecciones:
                 st.metric("Recomendación", datos_vivo["recommendation"])
 
 # ============================================================================
-#                    TAB 6 — NOTICIAS FINANCIERAS
+#   📰 NEWS & CALENDAR — NOTICIAS
 # ============================================================================
-with tab_noticias:
+elif pagina == "📰 News & Calendar":
     st.markdown("### 📰 Noticias Financieras en Tiempo Real")
     st.markdown(
         """
@@ -3385,10 +3293,10 @@ with tab_noticias:
                 st.rerun()
 
 
-# ============================================================================
-#   TAB 7 — CALENDARIO FINANCIERO
-# ============================================================================
-with tab_calendario:
+    # ============================================================================
+    #   CALENDARIO FINANCIERO — Sub-sección de News & Calendar
+    # ============================================================================
+    st.markdown("---")
     from ui.tabs.calendar_tab import render_calendar_tab
     render_calendar_tab()
 
