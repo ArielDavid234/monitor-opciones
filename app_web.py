@@ -1827,6 +1827,10 @@ with tab_analisis:
         st.info("Ejecuta un escaneo primero para ver los análisis.")
     else:
         df_analisis = pd.DataFrame(st.session_state.datos_completos)
+        # Renombrar columna para consistencia en esta sección
+        if "Prima_Volumen" in df_analisis.columns:
+            df_analisis = df_analisis.rename(columns={"Prima_Volumen": "Prima_Vol"})
+        
         titulo_datos = f"Datos del último escaneo — {ticker_symbol}"
         
         st.caption(f"*{titulo_datos}* — {len(df_analisis):,} registros")
@@ -1997,13 +2001,13 @@ with tab_analisis:
         st.dataframe(top_vol_display, width="stretch", hide_index=True)
 
         st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
-        oi_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Volumen"]
+        oi_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol"]
         top_oi = (
             df_analisis.nlargest(20, "OI")[oi_cols]
             .reset_index(drop=True)
         )
         top_oi_display = top_oi.copy()
-        top_oi_display["Prima_Volumen"] = top_oi_display["Prima_Volumen"].apply(_fmt_dolar)
+        top_oi_display["Prima_Vol"] = top_oi_display["Prima_Vol"].apply(_fmt_dolar)
         st.dataframe(top_oi_display, width="stretch", hide_index=True)
 
         col_iv1, col_iv2 = st.columns(2)
