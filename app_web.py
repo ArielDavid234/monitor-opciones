@@ -1926,7 +1926,7 @@ with tab_historial:
 
                 datos_sorted = sorted(
                     st.session_state.datos_completos,
-                    key=lambda x: x.get("Prima_Vol", 0), reverse=True,
+                    key=lambda x: x.get("Prima_Volumen", 0), reverse=True,
                 )
                 limite = min(len(datos_sorted), 200)
 
@@ -1951,7 +1951,7 @@ with tab_historial:
                         _fmt_entero(d['Volumen']), _fmt_entero(d['OI']), _fmt_oi_chg(d.get('OI_Chg', 0)),
                         _fmt_precio(d['Ask']), _fmt_precio(d['Bid']), f"{d.get('Spread_Pct', 0):.1f}%", _fmt_precio(d['Ultimo']),
                         _fmt_lado(d.get('Lado', 'N/A')), _fmt_iv(d['IV']), d.get('Moneyness', 'N/A'), f"{d.get('Distance_Pct', 0):.1f}%",
-                        _fmt_monto(d['Prima_Vol']),
+                        _fmt_monto(d.get('Prima_Volumen', 0)),
                     ])
                 _tabla_datos(doc, headers_opt, rows_opt)
 
