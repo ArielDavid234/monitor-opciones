@@ -363,7 +363,6 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
 # ============================================================================
 st.set_page_config(
     page_title="OPTIONSKING Analytics",
-    page_icon="👑",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -371,7 +370,50 @@ st.set_page_config(
 # ============================================================================
 #                    ESTILOS CSS
 # ============================================================================
-st.markdown(CSS_STYLES, unsafe_allow_html=True)
+# CSS complementario para reforzar el tema oscuro profesional
+_CUSTOM_CSS = """
+<style>
+    /* Fondo general ultra oscuro */
+    .stApp { background-color: #0f172a; color: white; }
+
+    /* Sidebar custom */
+    section[data-testid="stSidebar"] {
+        background-color: #1e293b;
+        border-right: 1px solid #334155;
+    }
+
+    /* Cards y containers */
+    .metric-card, .stAlert, div.block-container {
+        background-color: #1e293b !important;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        border: 1px solid #334155;
+    }
+
+    /* Métricas superiores */
+    .stMetric { background-color: #1e293b; border-radius: 12px; padding: 1rem; }
+    .stMetric > label { color: #94a3b8; }
+    .stMetric > div { color: white; font-size: 1.8rem; }
+
+    /* Tablas pro */
+    table { background-color: #1e293b; }
+    thead tr { background-color: #0f172a !important; }
+    tbody tr:hover { background-color: #334155 !important; }
+
+    /* Verde neón y rojo */
+    .positive { color: #00ff88; }
+    .negative { color: #ef4444; }
+    .badge-green { background-color: #10b981; color: white; padding: 4px 10px; border-radius: 8px; }
+    .badge-red { background-color: #ef4444; color: white; padding: 4px 10px; border-radius: 8px; }
+
+    /* Gauge y charts */
+    .js-plotly-plot { background-color: #1e293b !important; }
+</style>
+"""
+
+# Combina CUSTOM_CSS (base) + CSS_STYLES (avanzado — tiene !important, gana donde corresponda)
+st.markdown(_CUSTOM_CSS + CSS_STYLES, unsafe_allow_html=True)
 
 # Forzar dark mode en <html> para navegadores y componentes internos
 st.markdown(
