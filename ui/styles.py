@@ -925,37 +925,111 @@ CSS_STYLES = """
     .gy{color:var(--text-secondary)}.w{color:var(--text-primary)}
     .nc{color:var(--neon-green)}
 
-    /* ====== GAUGE ====== */
+    /* ====== OKA SENTIMENT GAUGE ====== */
     .gauge-container {
         display: flex; flex-direction: column; align-items: center;
-        background: var(--bg-card);
-        border: 1px solid var(--border-default);
-        border-radius: var(--radius-lg);
-        padding: 24px; box-shadow: var(--shadow-card);
+        background: linear-gradient(145deg, #0f1520, #131a2a);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 18px;
+        padding: 32px 28px 24px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        position: relative;
+        max-width: 340px;
+        margin: 0 auto;
+    }
+    .gauge-container::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, var(--neon-green), var(--accent-blue));
+        border-radius: 18px 18px 0 0;
+        opacity: 0.6;
+    }
+    .gauge-header {
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 20px;
+        align-self: flex-start;
+    }
+    .gauge-header-icon {
+        width: 22px; height: 22px;
+        background: linear-gradient(135deg, var(--neon-green), var(--accent-blue));
+        border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
     }
     .gauge-title {
-        font-size: 0.72rem; color: var(--text-muted);
-        text-transform: uppercase; letter-spacing: 0.06em;
-        margin-bottom: 12px;
+        font-size: 0.78rem; color: #94a3b8;
+        font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.08em;
     }
-    .gauge-svg { width: 180px; height: 110px; }
-    .gauge-bg { fill: none; stroke: var(--bg-elevated); stroke-width: 12; stroke-linecap: round; }
-    .gauge-fill { fill: none; stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
-    .gauge-fill.bullish { stroke: var(--neon-green); filter: drop-shadow(0 0 6px rgba(0,255,136,0.4)); }
-    .gauge-fill.bearish { stroke: var(--accent-red); filter: drop-shadow(0 0 6px rgba(239,68,68,0.4)); }
-    .gauge-fill.neutral { stroke: var(--accent-orange); filter: drop-shadow(0 0 6px rgba(245,158,11,0.4)); }
+    .gauge-wrap {
+        position: relative;
+        width: 220px; height: 130px;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .gauge-svg {
+        width: 220px; height: 130px;
+        overflow: visible;
+    }
+    .gauge-track {
+        fill: none;
+        stroke: rgba(255,255,255,0.04);
+        stroke-width: 18;
+        stroke-linecap: round;
+    }
+    .gauge-arc {
+        fill: none;
+        stroke-width: 18;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1);
+        filter: drop-shadow(0 0 8px rgba(0,255,136,0.25));
+    }
+    .gauge-tick-labels {
+        font-family: var(--font-mono);
+        font-size: 0.6rem;
+        fill: #475569;
+        font-weight: 500;
+    }
+    .gauge-center {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -20%);
+        text-align: center;
+    }
     .gauge-value {
-        font-family: var(--font-mono); font-size: 2rem; font-weight: 800;
-        color: var(--text-primary); margin-top: 8px;
+        font-family: var(--font-mono);
+        font-size: 2.8rem;
+        font-weight: 800;
+        color: #f1f5f9;
+        line-height: 1;
+        letter-spacing: -0.03em;
     }
     .gauge-label {
-        font-size: 0.78rem; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 0.06em;
+        font-size: 0.82rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.12em;
         margin-top: 4px;
     }
-    .gauge-label.bullish { color: var(--neon-green); }
-    .gauge-label.bearish { color: var(--accent-red); }
-    .gauge-label.neutral { color: var(--accent-orange); }
+    .gauge-label.bullish { color: var(--neon-green); text-shadow: 0 0 12px rgba(0,255,136,0.3); }
+    .gauge-label.bearish { color: var(--accent-red); text-shadow: 0 0 12px rgba(239,68,68,0.3); }
+    .gauge-label.neutral { color: var(--accent-orange); text-shadow: 0 0 12px rgba(245,158,11,0.3); }
+    .gauge-footer {
+        display: flex; justify-content: space-between; width: 100%;
+        margin-top: 18px; padding-top: 14px;
+        border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .gauge-stat {
+        display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .gauge-stat-label {
+        font-size: 0.62rem; color: #475569;
+        text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+    }
+    .gauge-stat-val {
+        font-family: var(--font-mono); font-size: 0.88rem; font-weight: 700;
+    }
+    .gauge-stat-val.g { color: var(--neon-green); }
+    .gauge-stat-val.r { color: var(--accent-red); }
+    .gauge-stat-val.w { color: #f1f5f9; }
 
     /* ====== SCROLLBAR GLOBAL ====== */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -982,8 +1056,9 @@ CSS_STYLES = """
         .rango-stat-value { font-size: 1rem; }
         .news-stat-card { padding: 10px 12px; }
         .news-stat-number { font-size: 1rem; }
-        .gauge-svg { width: 140px; height: 85px; }
-        .gauge-value { font-size: 1.5rem; }
+        .gauge-wrap { width: 180px; height: 110px; }
+        .gauge-svg { width: 180px; height: 110px; }
+        .gauge-value { font-size: 2.2rem; }
     }
     @media (max-width: 768px) {
         .stMainBlockContainer, .block-container,
@@ -1026,9 +1101,10 @@ CSS_STYLES = """
         .stButton > button { width: 100% !important; font-size: 0.78rem !important; }
         .stExpander { border-radius: var(--radius-sm) !important; }
         .info-card { padding: 14px 16px; }
-        .gauge-container { padding: 16px; }
-        .gauge-svg { width: 120px; height: 72px; }
-        .gauge-value { font-size: 1.3rem; }
+        .gauge-container { padding: 20px 16px; }
+        .gauge-wrap { width: 160px; height: 100px; }
+        .gauge-svg { width: 160px; height: 100px; }
+        .gauge-value { font-size: 2rem; }
     }
     @media (max-width: 480px) {
         .stMainBlockContainer, .block-container,

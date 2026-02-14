@@ -2060,9 +2060,11 @@ with tab_analisis:
             else:
                 net_fill = f"right:50%;width:{net_bar_w:.1f}%;background:linear-gradient(270deg,rgba(239,68,68,.8),rgba(185,28,28,.3));border-radius:6px 0 0 6px"
 
-            # --- Gauge de sentimiento ---
+            # --- OKA Sentiment Gauge ---
             gauge_score = max(0, min(100, 50 + net_pct / 2))  # Normalizar a 0-100
-            gauge_arc = 251.2 * (1 - gauge_score / 100)  # circunferencia del arco
+            # Arc math: semicircle r=90, cx=120 cy=110, from 180° to 0°
+            arc_len = 3.14159 * 90  # ~282.7
+            arc_offset = arc_len * (1 - gauge_score / 100)
             if net_pct >= 10:
                 gauge_cls = "bullish"
                 gauge_lbl = "ALCISTA"
@@ -2072,17 +2074,51 @@ with tab_analisis:
             else:
                 gauge_cls = "neutral"
                 gauge_lbl = "NEUTRAL"
+            # Needle angle: 180° (left/0) to 0° (right/100)
+            needle_angle = 180 - (gauge_score / 100) * 180
+            import math as _m
+            _nx = 120 + 70 * _m.cos(_m.radians(needle_angle))
+            _ny = 110 - 70 * _m.sin(_m.radians(needle_angle))
             st.markdown(
                 f'<div class="gauge-container">'
-                f'<div class="gauge-title">Sentiment Index</div>'
-                f'<svg class="gauge-svg" viewBox="0 0 200 120">'
-                f'<path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />'
-                f'<path class="gauge-fill {gauge_cls}" d="M 20 100 A 80 80 0 0 1 180 100" '
-                f'stroke-dasharray="251.2" stroke-dashoffset="{gauge_arc:.1f}" />'
+                f'<div class="gauge-header">'
+                f'<div class="gauge-header-icon">'
+                f'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0a0d14" stroke-width="2.5">'
+                f'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>'
+                f'<div class="gauge-title">OKA Sentiment Index</div></div>'
+                f'<div class="gauge-wrap">'
+                f'<svg class="gauge-svg" viewBox="0 0 240 135">'
+                f'<defs>'
+                f'<linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">'
+                f'<stop offset="0%" stop-color="#ef4444"/>'
+                f'<stop offset="35%" stop-color="#f59e0b"/>'
+                f'<stop offset="65%" stop-color="#22c55e"/>'
+                f'<stop offset="100%" stop-color="#00ff88"/>'
+                f'</linearGradient></defs>'
+                f'<path class="gauge-track" d="M 30 110 A 90 90 0 0 1 210 110"/>'
+                f'<path class="gauge-arc" d="M 30 110 A 90 90 0 0 1 210 110" '
+                f'stroke="url(#gaugeGrad)" '
+                f'stroke-dasharray="{arc_len:.1f}" stroke-dashoffset="{arc_offset:.1f}"/>'
+                f'<circle cx="{_nx:.1f}" cy="{_ny:.1f}" r="5" fill="#f1f5f9" '
+                f'stroke="#0a0d14" stroke-width="2"/>'
+                f'<text class="gauge-tick-labels" x="24" y="128" text-anchor="middle">0</text>'
+                f'<text class="gauge-tick-labels" x="72" y="40" text-anchor="middle">25</text>'
+                f'<text class="gauge-tick-labels" x="120" y="24" text-anchor="middle">50</text>'
+                f'<text class="gauge-tick-labels" x="168" y="40" text-anchor="middle">75</text>'
+                f'<text class="gauge-tick-labels" x="216" y="128" text-anchor="middle">100</text>'
                 f'</svg>'
+                f'<div class="gauge-center">'
                 f'<div class="gauge-value">{gauge_score:.0f}</div>'
                 f'<div class="gauge-label {gauge_cls}">{gauge_lbl}</div>'
-                f'</div>',
+                f'</div></div>'
+                f'<div class="gauge-footer">'
+                f'<div class="gauge-stat"><div class="gauge-stat-label">Bullish</div>'
+                f'<div class="gauge-stat-val g">{bull_pct:.1f}%</div></div>'
+                f'<div class="gauge-stat"><div class="gauge-stat-label">Score</div>'
+                f'<div class="gauge-stat-val w">{gauge_score:.0f}/100</div></div>'
+                f'<div class="gauge-stat"><div class="gauge-stat-label">Bearish</div>'
+                f'<div class="gauge-stat-val r">{bear_pct:.1f}%</div></div>'
+                f'</div></div>',
                 unsafe_allow_html=True,
             )
 
