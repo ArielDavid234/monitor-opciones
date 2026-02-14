@@ -1,6 +1,8 @@
 """
 Scanner de opciones: sesiones anti-ban, escaneo de cadenas,
 construcción de símbolos y persistencia CSV.
+
+Incluye sistema de caché TTL para evitar rate-limiting de Yahoo Finance.
 """
 import os
 import csv
@@ -10,12 +12,125 @@ import logging
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
+from functools import wraps
 from random import uniform, choice
 from curl_cffi.requests import Session as CurlSession
 
 from config.constants import SCAN_SLEEP_RANGE
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+#                    CACHE TTL (evita rate-limiting)
+# ============================================================================
+# Basado en lru_cache pero con expiración temporal.
+# Si los datos ya fueron descargados en los últimos `ttl` segundos,
+# se devuelven desde memoria sin hacer una nueva petición a Yahoo Finance.
+
+def ttl_cache(ttl_seconds=300, maxsize=128):
+    """Decorador de caché con TTL (time-to-live).
+
+    Similar a @lru_cache pero los datos expiran después de `ttl_seconds`.
+    - maxsize: máximo de entradas en caché (evita memory leaks)
+    - Cada entrada guarda (resultado, timestamp)
+    """
+    def decorator(func):
+        cache = {}
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            key = args + tuple(sorted(kwargs.items()))
+            now = time.time()
+            if key in cache:
+                result, timestamp = cache[key]
+                if now - timestamp < ttl_seconds:
+                    logger.debug("Cache HIT para %s%s", func.__name__, args)
+                    return result
+            # Cache MISS — ejecutar función real
+            logger.debug("Cache MISS para %s%s", func.__name__, args)
+            result = func(*args, **kwargs)
+            cache[key] = (result, now)
+            # Evictar entradas viejas si el cache crece mucho
+            if len(cache) > maxsize:
+                oldest = min(cache, key=lambda k: cache[k][1])
+                del cache[oldest]
+            return result
+
+        def cache_clear():
+            """Limpia todo el caché."""
+            cache.clear()
+
+        def cache_invalidate(*args, **kwargs):
+            """Invalida una entrada específica del caché."""
+            key = args + tuple(sorted(kwargs.items()))
+            cache.pop(key, None)
+
+        wrapper.cache_clear = cache_clear
+        wrapper.cache_invalidate = cache_invalidate
+        wrapper.cache_info = lambda: {"size": len(cache), "maxsize": maxsize, "ttl": ttl_seconds}
+        return wrapper
+    return decorator
+
+
+# --- Funciones cacheadas de Yahoo Finance ---
+
+@ttl_cache(ttl_seconds=300, maxsize=64)
+def _cached_options_dates(ticker_sym):
+    """Obtiene y cachea las fechas de expiración por 5 min."""
+    session, _ = crear_sesion_nueva()
+    ticker = yf.Ticker(ticker_sym, session=session)
+    return tuple(ticker.options)  # tuple para ser hashable
+
+
+@ttl_cache(ttl_seconds=300, maxsize=256)
+def _cached_option_chain(ticker_sym, exp_date):
+    """Obtiene y cachea la cadena de opciones por 5 min."""
+    session, _ = crear_sesion_nueva()
+    ticker = yf.Ticker(ticker_sym, session=session)
+    chain = ticker.option_chain(exp_date)
+    # Convertir a dict para almacenar en caché
+    return {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
+
+
+@ttl_cache(ttl_seconds=300, maxsize=32)
+def _cached_history(ticker_sym, period="1d"):
+    """Obtiene y cachea el historial de precios por 5 min."""
+    session, _ = crear_sesion_nueva()
+    ticker = yf.Ticker(ticker_sym, session=session)
+    return ticker.history(period=period)
+
+
+def limpiar_cache_ticker(ticker_sym=None):
+    """Limpia el caché de un ticker específico o de todo.
+
+    Llamar cuando el usuario cambia de ticker para forzar datos frescos.
+    """
+    if ticker_sym is None:
+        _cached_options_dates.cache_clear()
+        _cached_option_chain.cache_clear()
+        _cached_history.cache_clear()
+        logger.info("Cache completo limpiado")
+    else:
+        _cached_options_dates.cache_invalidate(ticker_sym)
+        _cached_history.cache_invalidate(ticker_sym, "1d")
+        _cached_history.cache_invalidate(ticker_sym, "1mo")
+        _cached_history.cache_invalidate(ticker_sym, "5d")
+        logger.info("Cache limpiado para ticker: %s", ticker_sym)
+
+
+def obtener_precio_actual(ticker_sym):
+    """Obtiene el precio actual usando caché TTL (evita rate-limiting).
+
+    Returns: (precio_float, None) o (None, str_error)
+    """
+    try:
+        hist = _cached_history(ticker_sym, "1d")
+        if not hist.empty:
+            return float(hist['Close'].iloc[-1]), None
+        return None, "Sin datos de precio"
+    except Exception as e:
+        return None, str(e)
 
 
 def _safe_num(value, default=0):
@@ -103,23 +218,39 @@ def obtener_historial_contrato(contract_symbol):
 def ejecutar_escaneo(
     ticker_sym, u_vol, u_oi, u_prima, u_filtro, carpeta_csv, guardar
 ):
-    """Ejecuta un ciclo completo de escaneo y retorna alertas + datos."""
+    """Ejecuta un ciclo completo de escaneo y retorna alertas + datos.
+
+    Usa caché TTL: si los datos de una fecha ya se descargaron en los
+    últimos 5 minutos, se reutilizan sin hacer nueva petición a Yahoo.
+    """
     alertas = []
     datos = []
+    perfil = "cached"
 
-    session, perfil = crear_sesion_nueva()
-    ticker = yf.Ticker(ticker_sym, session=session)
-
+    # Obtener fechas de expiración (cacheado 5 min)
     try:
-        options_dates = ticker.options
+        options_dates = _cached_options_dates(ticker_sym)
     except Exception as e:
-        return [], [], str(e), perfil, []
+        # Si falla el caché, intentar directo con retries
+        options_dates = None
+        for attempt in range(3):
+            try:
+                session, perfil = crear_sesion_nueva()
+                ticker = yf.Ticker(ticker_sym, session=session)
+                options_dates = tuple(ticker.options)
+                break
+            except Exception as e2:
+                if attempt < 2:
+                    time.sleep(5 * (3 ** attempt))
+                else:
+                    return [], [], str(e2), perfil, []
+        if not options_dates:
+            return [], [], str(e), perfil, []
 
     if not options_dates:
         return [], [], "No se encontraron fechas de vencimiento", perfil, []
 
     # Limitar a las 12 fechas más cercanas para evitar rate-limiting
-    # (SPY puede tener 30+ fechas, provocando 30+ API calls)
     MAX_DATES = 12
     dates_to_scan = list(options_dates)[:MAX_DATES]
     max_retries = 3
@@ -128,45 +259,43 @@ def ejecutar_escaneo(
         if idx > 0:
             time.sleep(uniform(*SCAN_SLEEP_RANGE))
 
-        # Retry con backoff exponencial
-        for attempt in range(max_retries):
-            try:
-                chain = ticker.option_chain(exp_date)
-                break  # éxito, salir del retry
-            except Exception as e:
-                error_msg = str(e).lower()
-                is_rate_limit = any(
-                    kw in error_msg
-                    for kw in ["429", "rate limit", "too many requests"]
-                )
-                if attempt < max_retries - 1:
-                    if is_rate_limit:
-                        # Backoff exponencial: 5s, 15s, 45s
-                        wait = 5 * (3 ** attempt)
+        # Intentar obtener del caché primero
+        chain_data = None
+        try:
+            chain_data = _cached_option_chain(ticker_sym, exp_date)
+        except Exception:
+            # Cache miss o error — retry con backoff
+            for attempt in range(max_retries):
+                try:
+                    session, perfil = crear_sesion_nueva()
+                    ticker_retry = yf.Ticker(ticker_sym, session=session)
+                    raw_chain = ticker_retry.option_chain(exp_date)
+                    chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
+                    break
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    is_rate_limit = any(
+                        kw in error_msg
+                        for kw in ["429", "rate limit", "too many requests"]
+                    )
+                    if attempt < max_retries - 1:
+                        wait = 5 * (3 ** attempt) if is_rate_limit else uniform(1.5, 3.0)
                         logger.warning(
-                            "Rate limited en %s (intento %d/%d). "
-                            "Esperando %ds y rotando sesión...",
+                            "Error en %s (intento %d/%d). Esperando %.0fs...",
                             exp_date, attempt + 1, max_retries, wait,
                         )
                         time.sleep(wait)
-                        # Rotar sesión/perfil
-                        session, perfil = crear_sesion_nueva()
-                        ticker = yf.Ticker(ticker_sym, session=session)
                     else:
-                        # Error genérico: espera corta
-                        time.sleep(uniform(1.5, 3.0))
-                else:
-                    logger.warning(
-                        "Falló después de %d intentos en %s: %s",
-                        max_retries, exp_date, e,
-                    )
-                    chain = None
+                        logger.warning(
+                            "Falló después de %d intentos en %s: %s",
+                            max_retries, exp_date, e,
+                        )
 
-        if chain is None:
+        if chain_data is None:
             continue
 
         try:
-            for opt_type, df in [("CALL", chain.calls), ("PUT", chain.puts)]:
+            for opt_type, df in [("CALL", chain_data["calls"]), ("PUT", chain_data["puts"])]:
                 for _, row in df.iterrows():
                     vol = int(_safe_num(row["volume"])) if _safe_num(row["volume"]) > 0 else 0
                     oi = int(_safe_num(row["openInterest"]))

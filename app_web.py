@@ -35,6 +35,7 @@ from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
 from core.scanner import (
     BROWSER_PROFILES, crear_sesion_nueva, obtener_historial_contrato,
     ejecutar_escaneo, cargar_historial_csv,
+    obtener_precio_actual, limpiar_cache_ticker,
 )
 from core.projections import analizar_proyeccion_empresa
 from core.range_calc import calcular_rango_esperado
@@ -554,6 +555,7 @@ if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
     st.session_state.rango_error = None
     st.session_state.scan_error = None
     st.session_state.fechas_escaneadas = []
+    limpiar_cache_ticker(ticker_symbol)  # Forzar datos frescos del nuevo ticker
     st.session_state.trigger_scan = True
     st.rerun()
 
@@ -661,16 +663,10 @@ if pagina == "🔍 Escaneo en Vivo":
                 st.session_state.scan_count += 1
                 st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
                 
-                # Capturar precio subyacente para cálculos de reportes
-                # Reusar la sesión anti-ban del scanner en vez de crear Ticker sin protección
-                try:
-                    session_precio, _ = crear_sesion_nueva()
-                    ticker_precio = yf.Ticker(ticker_symbol, session=session_precio)
-                    hist = ticker_precio.history(period="1d")
-                    if not hist.empty:
-                        st.session_state.precio_subyacente = hist['Close'].iloc[-1]
-                except Exception:
-                    pass
+                # Capturar precio subyacente usando caché TTL (evita rate-limiting)
+                precio, _err_precio = obtener_precio_actual(ticker_symbol)
+                if precio is not None:
+                    st.session_state.precio_subyacente = precio
                 st.session_state.last_perfil = perfil
                 st.session_state.scan_error = None
                 st.session_state.fechas_escaneadas = fechas
