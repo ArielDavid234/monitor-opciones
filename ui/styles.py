@@ -57,12 +57,15 @@ CSS_STYLES = """
 
     /* ====== SIDEBAR ====== */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #070b11 0%, #0c1220 40%, #0f172a 100%) !important;
+        background: linear-gradient(180deg, #060910 0%, #0a0e18 30%, #0c1220 100%) !important;
         border-right: 1px solid var(--border-subtle);
-        box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+        box-shadow: 4px 0 24px rgba(0,0,0,0.5);
     }
     section[data-testid="stSidebar"] > div:first-child {
         padding-top: 0 !important;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
     }
     section[data-testid="stSidebar"] .stMarkdown h2 {
         color: var(--text-primary);
@@ -96,6 +99,134 @@ CSS_STYLES = """
     section[data-testid="stSidebar"] [data-baseweb="input"]:focus-within {
         border-color: var(--neon-green) !important;
         box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.15) !important;
+    }
+
+    /* ====== SIDEBAR LOGO ====== */
+    .ok-logo {
+        padding: 24px 16px 18px 16px;
+        text-align: center;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 6px;
+    }
+    .ok-logo-crown {
+        font-size: 2rem;
+        line-height: 1;
+        filter: drop-shadow(0 0 8px rgba(0,255,136,0.4));
+    }
+    .ok-logo-text {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+        margin-top: 6px;
+    }
+    .ok-logo-text span { color: var(--neon-green); }
+    .ok-logo-sub {
+        font-size: 0.58rem;
+        color: var(--text-dim);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin-top: 2px;
+    }
+
+    /* ====== SIDEBAR NAV MENU ====== */
+    .ok-nav {
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .ok-nav-label {
+        font-size: 0.60rem;
+        font-weight: 700;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.10em;
+        padding: 12px 12px 6px 12px;
+    }
+    .ok-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 14px;
+        border-radius: var(--radius-sm);
+        color: var(--text-secondary);
+        font-size: 0.80rem;
+        font-weight: 500;
+        cursor: default;
+        transition: all 0.15s ease;
+        border: 1px solid transparent;
+        text-decoration: none;
+    }
+    .ok-nav-item:hover {
+        background: rgba(0, 255, 136, 0.04);
+        color: var(--text-primary);
+        border-color: rgba(0, 255, 136, 0.06);
+    }
+    .ok-nav-item.active {
+        background: rgba(0, 255, 136, 0.08);
+        color: var(--neon-green);
+        font-weight: 600;
+        border-color: rgba(0, 255, 136, 0.12);
+        box-shadow: 0 0 12px rgba(0, 255, 136, 0.06);
+    }
+    .ok-nav-item .nav-icon {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        opacity: 0.7;
+    }
+    .ok-nav-item.active .nav-icon { opacity: 1; }
+    .ok-nav-item .nav-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--neon-green);
+        margin-left: auto;
+        box-shadow: 0 0 6px rgba(0,255,136,0.4);
+        display: none;
+    }
+    .ok-nav-item.active .nav-dot { display: block; }
+
+    /* ====== SIDEBAR AVATAR ====== */
+    .ok-avatar-section {
+        padding: 14px 16px;
+        border-top: 1px solid var(--border-subtle);
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .ok-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--neon-green), var(--accent-blue));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.82rem;
+        font-weight: 800;
+        color: #000;
+        flex-shrink: 0;
+    }
+    .ok-avatar-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .ok-avatar-name {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .ok-avatar-plan {
+        font-size: 0.62rem;
+        color: var(--neon-green);
+        font-weight: 600;
+        letter-spacing: 0.04em;
     }
 
     /* ====== METRICS ====== */

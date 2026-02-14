@@ -413,21 +413,61 @@ if not st.session_state.favoritos:
 #                    SIDEBAR - CONFIGURACIÓN
 # ============================================================================
 with st.sidebar:
-    # -- OPTIONSKING Analytics branding --
+    # -- OPTIONSKING Analytics Logo --
     st.markdown(
         """
-        <div style="padding: 20px 10px 12px 10px; text-align: center; border-bottom: 1px solid rgba(148,163,184,0.08); margin-bottom: 16px;">
-            <div style="font-size: 1.8rem; line-height: 1;">👑</div>
-            <div style="font-size: 1.05rem; font-weight: 800; color: #f1f5f9; letter-spacing: -0.02em; margin-top: 4px;">
-                OPTIONS<span style="color: #00ff88;">KING</span>
-            </div>
-            <div style="font-size: 0.62rem; color: #64748b; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 2px;">Analytics</div>
+        <div class="ok-logo">
+            <div class="ok-logo-crown">👑</div>
+            <div class="ok-logo-text">OPTIONS<span>KING</span></div>
+            <div class="ok-logo-sub">Analytics</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    st.markdown("## ⚙️ Configuración")
 
+    # -- Navigation Menu --
+    st.markdown(
+        """
+        <nav class="ok-nav">
+            <div class="ok-nav-label">Main</div>
+            <div class="ok-nav-item active">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Dashboard
+                <span class="nav-dot"></span>
+            </div>
+            <div class="ok-nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Market Overview
+            </div>
+            <div class="ok-nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Options Screener
+            </div>
+            <div class="ok-nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Unusual Activity
+            </div>
+            <div class="ok-nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                Smart Alerts
+            </div>
+            <div class="ok-nav-label">Tools</div>
+            <div class="ok-nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0118 0"/><path d="M4 22V4a2 2 0 012-2h12a2 2 0 012 2v18l-4-2-4 2-4-2-4 2z"/></svg>
+                News & Calendar
+            </div>
+            <div class="ok-nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                Settings
+            </div>
+        </nav>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # -- Ticker Input --
     ticker_symbol = st.text_input(
         "🔍 Símbolo del Ticker", value="SPY", max_chars=10,
         help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)"
@@ -486,6 +526,20 @@ with st.sidebar:
             """,
             unsafe_allow_html=True,
         )
+
+    # -- Avatar / User Section --
+    st.markdown(
+        """
+        <div class="ok-avatar-section">
+            <div class="ok-avatar">OK</div>
+            <div class="ok-avatar-info">
+                <div class="ok-avatar-name">Options Trader</div>
+                <div class="ok-avatar-plan">● Pro Plan</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ============================================================================
 #                    ENCABEZADO PRINCIPAL
