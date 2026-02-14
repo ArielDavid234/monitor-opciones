@@ -1084,13 +1084,40 @@ with tab_oi:
             n_calls = len(df_bc_all[df_bc_all["Tipo"] == "CALL"]) if "Tipo" in df_bc_all.columns else 0
             n_puts = len(df_bc_all[df_bc_all["Tipo"] == "PUT"]) if "Tipo" in df_bc_all.columns else 0
 
+            # Calcular contratos cerrados (OI_Chg negativo)
+            contratos_cerrados_total = int(df_negativos["OI_Chg"].sum()) if n_neg > 0 else 0
+            calls_cerrados = int(df_negativos[df_negativos["Tipo"] == "CALL"]["OI_Chg"].sum()) if n_neg > 0 and "Tipo" in df_negativos.columns else 0
+            puts_cerrados = int(df_negativos[df_negativos["Tipo"] == "PUT"]["OI_Chg"].sum()) if n_neg > 0 and "Tipo" in df_negativos.columns else 0
+
+            # Calcular contratos abiertos (OI_Chg positivo)
+            contratos_abiertos_total = int(df_positivos["OI_Chg"].sum()) if n_pos > 0 else 0
+            calls_abiertos = int(df_positivos[df_positivos["Tipo"] == "CALL"]["OI_Chg"].sum()) if n_pos > 0 and "Tipo" in df_positivos.columns else 0
+            puts_abiertos = int(df_positivos[df_positivos["Tipo"] == "PUT"]["OI_Chg"].sum()) if n_pos > 0 and "Tipo" in df_positivos.columns else 0
+
             # Métricas rápidas
             col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
             col_m1.metric("📊 Total Contratos", f"{n_total:,}")
             col_m2.metric("📞 CALLs", f"{n_calls:,}")
             col_m3.metric("📋 PUTs", f"{n_puts:,}")
-            col_m4.metric("🟢 OI Chg Positivo", f"{n_pos:,}")
-            col_m5.metric("🔴 OI Chg Negativo", f"{n_neg:,}")
+            col_m4.metric("🟢 Señales Positivas", f"{n_pos:,}")
+            col_m5.metric("🔴 Señales Negativas", f"{n_neg:,}")
+
+            # Segunda fila de métricas: Contratos abiertos vs cerrados
+            st.markdown("---")
+            st.markdown("##### 📈 Flujo de Contratos")
+            col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
+            
+            col_f1.metric("🟢 Contratos Abiertos", f"{contratos_abiertos_total:,}", 
+                         delta="Nuevas posiciones", delta_color="normal")
+            col_f2.metric("  📞 CALLs Abiertos", f"{calls_abiertos:,}")
+            col_f3.metric("  📋 PUTs Abiertos", f"{puts_abiertos:,}")
+            
+            col_f4.metric("🔴 Contratos Cerrados", f"{contratos_cerrados_total:,}", 
+                         delta="Posiciones cerradas", delta_color="inverse")
+            col_f5.metric("  📞 CALLs Cerrados", f"{calls_cerrados:,}")
+            col_f6.metric("  📋 PUTs Cerrados", f"{puts_cerrados:,}")
+
+            st.markdown("---")
 
             # --- Columnas de tabla ---
             display_cols = ["Tipo", "Ticker", "Strike", "Vencimiento", "DTE",
