@@ -230,6 +230,51 @@ CSS_STYLES = """
         letter-spacing: 0.04em;
     }
 
+    /* ====== SIDEBAR RADIO NAV (Streamlit) ====== */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] > label {
+        font-size: 0.6rem !important;
+        font-weight: 700 !important;
+        color: var(--text-dim) !important;
+        text-transform: uppercase;
+        letter-spacing: 0.10em;
+        margin-bottom: 4px;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] {
+        gap: 2px !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label {
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        border-radius: var(--radius-sm) !important;
+        padding: 8px 14px !important;
+        margin: 0 !important;
+        transition: all 0.15s ease !important;
+        font-size: 0.82rem !important;
+        font-weight: 500 !important;
+        color: var(--text-secondary) !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:hover {
+        background: rgba(0, 255, 136, 0.04) !important;
+        color: var(--text-primary) !important;
+        border-color: rgba(0, 255, 136, 0.06) !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label[data-checked="true"],
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label:has(input:checked) {
+        background: rgba(0, 255, 136, 0.08) !important;
+        color: var(--neon-green) !important;
+        font-weight: 600 !important;
+        border-color: rgba(0, 255, 136, 0.12) !important;
+        box-shadow: 0 0 12px rgba(0, 255, 136, 0.06) !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label [data-testid="stMarkdownContainer"] p {
+        color: inherit !important;
+        font-size: inherit !important;
+    }
+    /* Hide radio circle indicator in sidebar nav */
+    section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label > div:first-child {
+        display: none !important;
+    }
+
     /* ====== METRIC CARDS (Pro Dashboard) ====== */
     .ok-metric-row {
         display: grid;
@@ -1276,6 +1321,59 @@ CSS_STYLES = """
         [data-testid="stSidebar"] { display: none !important; }
         .stMain { margin-left: 0 !important; width: 100% !important; }
         .stButton, .stTabs [data-baseweb="tab-list"] { display: none !important; }
+    }
+
+    /* ====== TWO-COLUMN DASHBOARD LAYOUT ====== */
+    [data-testid="stColumns"] {
+        gap: 18px;
+    }
+    [data-testid="stColumn"] {
+        background: transparent;
+    }
+
+    /* ====== STREAMLIT DATAFRAME DARK ====== */
+    [data-testid="stDataFrame"] {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+    }
+
+    /* ====== SELECTBOX & INPUTS DARK ====== */
+    [data-testid="stSelectbox"] label,
+    [data-testid="stNumberInput"] label {
+        color: var(--text-secondary) !important;
+        font-size: 0.8rem !important;
+        font-weight: 500 !important;
+    }
+
+    /* ====== DIVIDER / SEPARATOR ====== */
+    hr {
+        border-color: var(--border-subtle) !important;
+        margin: 16px 0 !important;
+    }
+
+    /* ====== SUCCESS / INFO / WARNING MESSAGES ====== */
+    [data-testid="stAlert"] {
+        background: var(--bg-card) !important;
+        border-radius: var(--radius-md) !important;
+        border: 1px solid var(--border-default) !important;
+        font-size: 0.82rem !important;
+    }
+
+    /* ====== EXPANDER DARK THEME ====== */
+    [data-testid="stExpander"] {
+        background: var(--bg-card) !important;
+        border: 1px solid var(--border-default) !important;
+        border-radius: var(--radius-md) !important;
+        overflow: hidden;
+    }
+    [data-testid="stExpander"] summary {
+        color: var(--text-primary) !important;
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+    }
+    [data-testid="stExpander"] summary:hover {
+        color: var(--neon-green) !important;
     }
 </style>
 """

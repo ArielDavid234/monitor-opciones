@@ -468,8 +468,8 @@ if not st.session_state.favoritos:
 with st.sidebar:
     # -- OPTIONSKING Analytics Logo --
     st.markdown("""
-        <div style="text-align: center; padding: 2rem 0;">
-            <div style="display:inline-block;width:48px;height:48px;margin-bottom:8px;">
+        <div style="text-align: center; padding: 2rem 0 1rem;">
+            <div style="display:inline-block;width:56px;height:56px;margin-bottom:10px;">
                 <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1">
                         <stop offset="0%" stop-color="#00ff88"/><stop offset="100%" stop-color="#10b981"/>
@@ -481,11 +481,20 @@ with st.sidebar:
                     <circle cx="52" cy="22" r="2.5" fill="#10b981"/>
                 </svg>
             </div>
-            <h1 style="color: #00ff88; font-size: 28px; margin:0; font-weight:800; letter-spacing:-0.02em;">OPTIONSKING</h1>
-            <p style="color: #94a3b8; font-size: 16px; margin:4px 0 0 0; font-weight:500; letter-spacing:0.1em; text-transform:uppercase;">Analytics</p>
+            <h1 style="color: #00ff88; font-size: 36px; margin:0; font-weight:800; letter-spacing:-0.02em;">OPTIONSKING</h1>
+            <p style="color: white; font-size: 22px; margin:4px 0 0 0; font-weight:500;">Analytics</p>
         </div>
-        <hr style="border-color: #334155; margin: 0 0 1rem 0;">
+        <hr style="border-color: #334155; margin: 0.5rem 0 1rem 0;">
     """, unsafe_allow_html=True)
+
+    # -- Menú de navegación con emojis --
+    nav_option = st.radio(
+        "Navegación",
+        ["🏠 Dashboard", "📊 Market Overview", "🔍 Options Screener",
+         "⚠️ Unusual Activity", "🔔 Smart Alerts", "📰 News & Calendar", "⚙️ Settings"],
+        index=1,
+        label_visibility="collapsed",
+    )
 
     st.markdown("---")
 
@@ -551,9 +560,13 @@ with st.sidebar:
 
     # -- Avatar / User Section --
     st.markdown(
-        "<div style='text-align:center; margin-top:2rem;'>"
-        "<p style='color:#94a3b8;'>Ariel David<br><small>Pro Plan</small></p>"
-        "</div>",
+        '<div style="text-align:center; margin-top:2rem; padding:1rem 0;">'
+        '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#00ff88,#10b981);'
+        'display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#0f172a;'
+        'margin-bottom:8px;box-shadow:0 0 16px rgba(0,255,136,0.2);">AD</div>'
+        '<div style="color:white;font-weight:600;font-size:0.9rem;">Ariel David</div>'
+        '<div style="color:#64748b;font-size:0.75rem;">● Pro Plan</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -787,7 +800,9 @@ with tab_scanner:
 
     st.session_state.auto_scan = auto_scan
 
-    # --- Métricas rápidas ---
+    # --- Market Overview ---
+    st.markdown("### 📊 Market Overview")
+
     if st.session_state.datos_completos:
         datos_df = pd.DataFrame(st.session_state.datos_completos)
         _n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
@@ -797,17 +812,23 @@ with tab_scanner:
         _total = len(datos_df)
         _call_pct = (_n_calls / _total * 100) if _total else 0
         _put_pct = (_n_puts / _total * 100) if _total else 0
+        _pc_ratio = _n_puts / _n_calls if _n_calls > 0 else 0
+        _total_vol = int(datos_df["Volumen"].sum()) if "Volumen" in datos_df.columns else 0
+        _total_oi = int(datos_df["OI"].sum()) if "OI" in datos_df.columns else 0
+        _total_prima = datos_df["Prima_Volumen"].sum() if "Prima_Volumen" in datos_df.columns else 0
+        _flow_pct = _call_pct - _put_pct  # positive = bullish flow
         _spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
         _spk_oi = sorted(datos_df["OI"].dropna().tail(12).tolist()) if "OI" in datos_df.columns else None
+
         st.markdown(render_metric_row([
-            render_metric_card("Opciones Analizadas", f"{_total:,}", sparkline_data=_spk),
-            render_metric_card("Calls", f"{_n_calls:,}", delta=_call_pct),
-            render_metric_card("Puts", f"{_n_puts:,}", delta=_put_pct, color_override="#ef4444"),
-            render_metric_card("Alertas", f"{_n_alertas}"),
-            render_metric_card("Clusters", f"{_n_clusters}"),
+            render_metric_card("Flow Sentiment", f"{_flow_pct:+.1f}%", delta=_flow_pct, sparkline_data=_spk),
+            render_metric_card("Total Volume", f"{_total_vol:,}", delta=_call_pct, delta_suffix="% calls"),
+            render_metric_card("Gamma Exposure", _fmt_monto(_total_prima), sparkline_data=_spk_oi),
+            render_metric_card("Put/Call Ratio", f"{_pc_ratio:.2f}", delta=-(_pc_ratio - 1) * 100 if _pc_ratio != 0 else 0, color_override="#ef4444" if _pc_ratio > 1 else "#00ff88"),
+            render_metric_card("Unusual Alerts", f"{_n_alertas}", delta=float(_n_clusters), delta_suffix=" clusters"),
         ]), unsafe_allow_html=True)
 
-        # Mini sparkline charts en fila
+        # Mini Plotly sparkline charts debajo de las cards
         _spark_cols = st.columns(5)
         _vol_spark = render_plotly_sparkline(_spk, color="#00ff88", height=50)
         _oi_spark = render_plotly_sparkline(_spk_oi, color="#3b82f6", height=50)
@@ -815,7 +836,7 @@ with tab_scanner:
             with _spark_cols[0]:
                 st.plotly_chart(_vol_spark, use_container_width=True, config={"displayModeBar": False})
         if _oi_spark:
-            with _spark_cols[1]:
+            with _spark_cols[2]:
                 st.plotly_chart(_oi_spark, use_container_width=True, config={"displayModeBar": False})
 
     # --- Mostrar alertas ---
@@ -1012,7 +1033,7 @@ with tab_scanner:
                 else:
                     st.info("ℹ️ No se encontró el símbolo del contrato.")
 
-        # Tabla resumen de alertas
+        # ── Two-column dashboard layout ──────────────────────────────
         alertas_df = pd.DataFrame(alertas_sorted)
 
         def asignar_prioridad(row):
@@ -1037,128 +1058,203 @@ with tab_scanner:
         alertas_df["Prima Total"] = alertas_df["Prima Total"].apply(_fmt_dolar)
         cols_ocultar = [c for c in ["OI", "OI_Chg"] if c in alertas_df.columns]
         _tbl_df = alertas_df.drop(columns=cols_ocultar, errors="ignore")
-        st.markdown(
-            render_pro_table(
-                _tbl_df,
-                title="📋 Unusual Activity — Alertas",
-                badge_count=f"{len(_tbl_df)} alertas",
-                footer_text=f"Ordenadas por prima · {len(_tbl_df)} resultados",
-                special_format={"Prioridad": _priority_badge},
-            ),
-            unsafe_allow_html=True,
-        )
 
-        # --- ALERTA DE COMPRA CONTINUA (CLUSTERS) ---
-        if st.session_state.clusters_detectados:
-            st.markdown("### 🔗 Compras Continuas Detectadas")
+        _col_left, _col_right = st.columns([1, 1], gap="medium")
+
+        # ── LEFT COLUMN: Unusual Activity + Net Flow + Clusters ──
+        with _col_left:
             st.markdown(
-                """
-                <div style="background: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.15); 
-                     border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #c4b5fd;">
-                    ⚠️ <b>Posible actividad institucional fragmentada:</b> Se detectó que múltiples contratos 
-                    del mismo tipo y vencimiento, con strikes cercanos, tienen primas similares cerca del umbral configurado.
-                    Esto puede indicar que un <b>mismo comprador</b> está dividiendo una orden grande en partes más pequeñas.
-                </div>
-                """,
+                render_pro_table(
+                    _tbl_df,
+                    title="📋 Unusual Activity — Alertas",
+                    badge_count=f"{len(_tbl_df)} alertas",
+                    footer_text=f"Ordenadas por prima · {len(_tbl_df)} resultados",
+                    special_format={"Prioridad": _priority_badge},
+                ),
                 unsafe_allow_html=True,
             )
 
-            for idx_c, cluster in enumerate(st.session_state.clusters_detectados):
-                strikes_str = ", ".join([f"${s}" for s in cluster["Strikes"]])
-                rango_str = (
-                    f"${cluster['Strike_Min']} - ${cluster['Strike_Max']}"
-                    if cluster["Strike_Min"] != cluster["Strike_Max"]
-                    else f"${cluster['Strike_Min']}"
+            # --- Net Flow bar chart (Calls vs Puts) ---
+            _calls_prima = sum(
+                d.get("Prima_Volumen", 0) for d in alertas_sorted
+                if d.get("Tipo_Opcion") == "CALL"
+            )
+            _puts_prima = sum(
+                d.get("Prima_Volumen", 0) for d in alertas_sorted
+                if d.get("Tipo_Opcion") == "PUT"
+            )
+            if _calls_prima > 0 or _puts_prima > 0:
+                _net_fig = go.Figure()
+                _net_fig.add_trace(go.Bar(
+                    x=["CALLS"], y=[_calls_prima],
+                    marker_color="#00ff88", name="Calls",
+                    text=[f"${_calls_prima:,.0f}"], textposition="auto",
+                    textfont=dict(color="#ffffff", size=12),
+                ))
+                _net_fig.add_trace(go.Bar(
+                    x=["PUTS"], y=[_puts_prima],
+                    marker_color="#ef4444", name="Puts",
+                    text=[f"${_puts_prima:,.0f}"], textposition="auto",
+                    textfont=dict(color="#ffffff", size=12),
+                ))
+                _net_fig.update_layout(
+                    title=dict(text="Net Premium Flow", font=dict(color="#e2e8f0", size=14)),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#94a3b8", family="Inter"),
+                    height=260, margin=dict(l=10, r=10, t=40, b=10),
+                    showlegend=False,
+                    yaxis=dict(gridcolor="rgba(51,65,85,0.4)", tickformat="$,.0f"),
+                    xaxis=dict(showgrid=False),
+                    bargap=0.35,
                 )
+                st.plotly_chart(_net_fig, use_container_width=True, config={"displayModeBar": False})
 
+            # --- CLUSTERS ---
+            if st.session_state.clusters_detectados:
+                st.markdown("#### 🔗 Compras Continuas")
                 st.markdown(
-                    f"""
-                    <div class="alerta-cluster">
-                        <strong>🟣 COMPRA CONTINUA</strong>
-                        <span class="cluster-badge">{cluster['Contratos']} contratos agrupados</span><br>
-                        <b>{cluster['Tipo_Opcion']}</b> | 
-                        Venc: <b>{cluster['Vencimiento']}</b> | 
-                        Rango Strikes: <b>{rango_str}</b><br>
-                        Prima Total Combinada: <b>${cluster['Prima_Total']:,.0f}</b> | 
-                        Prima Promedio: <b>${cluster['Prima_Promedio']:,.0f}</b><br>
-                        Vol Total: <b>{cluster['Vol_Total']:,}</b>
-                        <div class="cluster-detail">
-                            📍 Strikes: {strikes_str}<br>
-                            🎯 Interpretación: {cluster['Contratos']} compras similares en zona 
-                            {rango_str} sugieren acumulación institucional.
-                            Prima combinada ${cluster['Prima_Total']:,.0f} → Posición real estimada.
-                        </div>
-                    </div>
-                    """,
+                    '<div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);'
+                    'border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:0.78rem;color:#c4b5fd;">'
+                    '⚠️ <b>Actividad institucional fragmentada</b> — Múltiples contratos similares con strikes '
+                    'cercanos y primas cerca del umbral.</div>',
                     unsafe_allow_html=True,
                 )
 
-            if len(st.session_state.clusters_detectados) > 0:
-                clusters_table = []
-                for c in st.session_state.clusters_detectados:
-                    clusters_table.append({
-                        "Tipo": c["Tipo_Opcion"],
-                        "Vencimiento": c["Vencimiento"],
-                        "Contratos": c["Contratos"],
-                        "Rango Strikes": f"${c['Strike_Min']} - ${c['Strike_Max']}",
-                        "Prima Total": f"${c['Prima_Total']:,.0f}",
-                        "Prima Prom.": f"${c['Prima_Promedio']:,.0f}",
-                        "Vol Total": f"{c['Vol_Total']:,}",
-                    })
-                st.markdown(
-                    render_pro_table(pd.DataFrame(clusters_table),
-                                     title="🔗 Clusters Detectados",
-                                     badge_count=f"{len(clusters_table)}"),
-                    unsafe_allow_html=True,
-                )
+                for idx_c, cluster in enumerate(st.session_state.clusters_detectados):
+                    rango_str = (
+                        f"${cluster['Strike_Min']} - ${cluster['Strike_Max']}"
+                        if cluster["Strike_Min"] != cluster["Strike_Max"]
+                        else f"${cluster['Strike_Min']}"
+                    )
+                    st.markdown(
+                        f'<div class="alerta-cluster">'
+                        f'<strong>🟣 COMPRA CONTINUA</strong> '
+                        f'<span class="cluster-badge">{cluster["Contratos"]} contratos</span><br>'
+                        f'<b>{cluster["Tipo_Opcion"]}</b> | Venc: <b>{cluster["Vencimiento"]}</b> | '
+                        f'Rango: <b>{rango_str}</b><br>'
+                        f'Prima: <b>${cluster["Prima_Total"]:,.0f}</b> | '
+                        f'Vol: <b>{cluster["Vol_Total"]:,}</b></div>',
+                        unsafe_allow_html=True,
+                    )
 
-    elif st.session_state.scan_count > 0 and not st.session_state.scan_error:
-        st.success("✅ Sin alertas relevantes en este ciclo.")
+                if len(st.session_state.clusters_detectados) > 0:
+                    clusters_table = []
+                    for c in st.session_state.clusters_detectados:
+                        clusters_table.append({
+                            "Tipo": c["Tipo_Opcion"],
+                            "Vencimiento": c["Vencimiento"],
+                            "Contratos": c["Contratos"],
+                            "Rango Strikes": f"${c['Strike_Min']} - ${c['Strike_Max']}",
+                            "Prima Total": f"${c['Prima_Total']:,.0f}",
+                            "Vol Total": f"{c['Vol_Total']:,}",
+                        })
+                    st.markdown(
+                        render_pro_table(pd.DataFrame(clusters_table),
+                                         title="🔗 Clusters Detectados",
+                                         badge_count=f"{len(clusters_table)}"),
+                        unsafe_allow_html=True,
+                    )
 
-    # --- Datos completos del escaneo ---
-    if st.session_state.datos_completos:
-        with st.expander("📊 Ver todas las opciones escaneadas", expanded=False):
-            datos_df = pd.DataFrame(st.session_state.datos_completos)
+        # ── RIGHT COLUMN: Options Flow Screener ──
+        with _col_right:
+            st.markdown(
+                '<div style="font-size:1.05rem;font-weight:700;color:#e2e8f0;margin-bottom:8px;">'
+                '🔍 Options Flow Screener</div>',
+                unsafe_allow_html=True,
+            )
+            if st.session_state.datos_completos:
+                datos_df = pd.DataFrame(st.session_state.datos_completos)
 
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                filtro_tipo = st.selectbox(
-                    "Tipo", ["Todos", "CALL", "PUT"], key="filtro_tipo_scanner"
-                )
-            with col_f2:
-                filtro_fecha = st.selectbox(
-                    "Vencimiento",
-                    ["Todos"] + sorted(datos_df["Vencimiento"].unique().tolist()),
-                    key="filtro_fecha_scanner",
-                )
-            with col_f3:
+                _rf1, _rf2 = st.columns(2)
+                with _rf1:
+                    filtro_tipo = st.selectbox(
+                        "Tipo", ["Todos", "CALL", "PUT"], key="filtro_tipo_scanner"
+                    )
+                with _rf2:
+                    filtro_fecha = st.selectbox(
+                        "Vencimiento",
+                        ["Todos"] + sorted(datos_df["Vencimiento"].unique().tolist()),
+                        key="filtro_fecha_scanner",
+                    )
                 min_vol_filtro = st.number_input(
                     "Volumen mínimo", value=0, step=100, key="min_vol_scanner"
                 )
 
-            df_filtered = datos_df.copy()
-            if filtro_tipo != "Todos":
-                df_filtered = df_filtered[df_filtered["Tipo"] == filtro_tipo]
-            if filtro_fecha != "Todos":
-                df_filtered = df_filtered[df_filtered["Vencimiento"] == filtro_fecha]
-            if min_vol_filtro > 0:
-                df_filtered = df_filtered[df_filtered["Volumen"] >= min_vol_filtro]
+                df_filtered = datos_df.copy()
+                if filtro_tipo != "Todos":
+                    df_filtered = df_filtered[df_filtered["Tipo"] == filtro_tipo]
+                if filtro_fecha != "Todos":
+                    df_filtered = df_filtered[df_filtered["Vencimiento"] == filtro_fecha]
+                if min_vol_filtro > 0:
+                    df_filtered = df_filtered[df_filtered["Volumen"] >= min_vol_filtro]
 
-            display_df = df_filtered.copy()
-            # Renombrar Prima_Vol a Prima Total para claridad
-            if "Prima_Vol" in display_df.columns:
-                display_df = display_df.rename(columns={"Prima_Vol": "Prima Total"})
-                display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
-            display_df["IV"] = display_df["IV"].apply(_fmt_iv)
+                display_df = df_filtered.copy()
+                if "Prima_Vol" in display_df.columns:
+                    display_df = display_df.rename(columns={"Prima_Vol": "Prima Total"})
+                    display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
+                display_df["IV"] = display_df["IV"].apply(_fmt_iv)
 
-            cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
-            st.dataframe(
-                display_df.drop(columns=cols_ocultar_df, errors="ignore").sort_values("Volumen", ascending=False),
-                width="stretch",
-                hide_index=True,
-                height=500,
+                cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
+                st.dataframe(
+                    display_df.drop(columns=cols_ocultar_df, errors="ignore").sort_values("Volumen", ascending=False),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=600,
+                )
+                st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
+            else:
+                st.info("Ejecuta un escaneo para ver el flujo de opciones.")
+
+    elif st.session_state.scan_count > 0 and not st.session_state.scan_error:
+        st.success("✅ Sin alertas relevantes en este ciclo.")
+
+    # --- Options Flow Screener (when no alerts but data exists) ---
+    if not st.session_state.alertas_actuales and st.session_state.datos_completos:
+        st.markdown(
+            '<div style="font-size:1.05rem;font-weight:700;color:#e2e8f0;margin-bottom:8px;">'
+            '🔍 Options Flow Screener</div>',
+            unsafe_allow_html=True,
+        )
+        datos_df = pd.DataFrame(st.session_state.datos_completos)
+
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            filtro_tipo = st.selectbox(
+                "Tipo", ["Todos", "CALL", "PUT"], key="filtro_tipo_scanner_noalert"
             )
-            st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
+        with col_f2:
+            filtro_fecha = st.selectbox(
+                "Vencimiento",
+                ["Todos"] + sorted(datos_df["Vencimiento"].unique().tolist()),
+                key="filtro_fecha_scanner_noalert",
+            )
+        with col_f3:
+            min_vol_filtro = st.number_input(
+                "Volumen mínimo", value=0, step=100, key="min_vol_scanner_noalert"
+            )
+
+        df_filtered = datos_df.copy()
+        if filtro_tipo != "Todos":
+            df_filtered = df_filtered[df_filtered["Tipo"] == filtro_tipo]
+        if filtro_fecha != "Todos":
+            df_filtered = df_filtered[df_filtered["Vencimiento"] == filtro_fecha]
+        if min_vol_filtro > 0:
+            df_filtered = df_filtered[df_filtered["Volumen"] >= min_vol_filtro]
+
+        display_df = df_filtered.copy()
+        if "Prima_Vol" in display_df.columns:
+            display_df = display_df.rename(columns={"Prima_Vol": "Prima Total"})
+            display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
+        display_df["IV"] = display_df["IV"].apply(_fmt_iv)
+
+        cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
+        st.dataframe(
+            display_df.drop(columns=cols_ocultar_df, errors="ignore").sort_values("Volumen", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+            height=500,
+        )
+        st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
 
     # Auto-refresh con countdown visual
     if auto_scan and st.session_state.scan_count > 0:
@@ -2181,10 +2277,17 @@ with tab_analisis:
                 paper_bgcolor="#1e293b",
                 plot_bgcolor="#1e293b",
                 font={"color": "white", "family": "Inter, sans-serif"},
-                height=300,
+                height=400,
                 margin=dict(l=30, r=30, t=60, b=10),
             )
             st.plotly_chart(fig_gauge, use_container_width=True)
+
+            # Bullish / Bearish / Neutral label debajo del gauge
+            _gauge_color = "#00ff88" if gauge_lbl == "ALCISTA" else "#ef4444" if gauge_lbl == "BAJISTA" else "#f59e0b"
+            st.markdown(
+                f'<h3 style="text-align:center;color:{_gauge_color};margin:-10px 0 8px;font-weight:800;">{gauge_lbl}</h3>',
+                unsafe_allow_html=True,
+            )
 
             # Footer stats below gauge
             st.markdown(
