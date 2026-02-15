@@ -562,11 +562,11 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
                         closes = tecnico["chart_close"]
                         for i, v in enumerate(closes):
                             if i == 0:
-                                vol_colors.append('#3b82f6')
+                                vol_colors.append('rgba(59,130,246,0.5)')
                             elif v >= closes[i - 1]:
-                                vol_colors.append('#22c55e88')
+                                vol_colors.append('rgba(34,197,94,0.5)')
                             else:
-                                vol_colors.append('#ef444488')
+                                vol_colors.append('rgba(239,68,68,0.5)')
                         fig.add_trace(go.Bar(
                             x=tecnico["chart_dates"],
                             y=tecnico["chart_volume"],
