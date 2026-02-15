@@ -296,7 +296,7 @@ def render_tabla_comparativa(resultados, es_emergente=False):
         else:
             row["PEG"] = f"{r['peg_ratio']:.2f}"
             row["Upside Analistas"] = f"{'+' if r['upside_pct']>0 else ''}{r['upside_pct']:.1f}%"
-        row["Recomendación"] = r["recommendation"]
+        # Columna "Recomendación" eliminada según solicitud del usuario
         tabla_data.append(row)
     return pd.DataFrame(tabla_data)
 
@@ -344,17 +344,13 @@ def render_watchlist_preview(watchlist_dict, incluir_por_que=False):
 
 
 def render_empresa_descriptions(watchlist_dict, color_principal, color_borde, es_emergente=False):
-    """Renderiza las descripciones detalladas de cada empresa del watchlist usando componentes nativos."""
+    """Renderiza las descripciones detalladas de cada empresa del watchlist con expanders colapsables individuales."""
     for sym, info in watchlist_dict.items():
-        with st.container(border=True):
-            col_t, col_s = st.columns([3, 1])
-            with col_t:
-                st.markdown(f"**{sym}** — {info['nombre']}")
-            with col_s:
-                st.caption(info['sector'])
-
-            st.caption(info['descripcion'])
-
+        # Crear un expander colapsado para cada empresa
+        with st.expander(f"**{sym}** — {info['nombre']} · {info['sector']}", expanded=False):
+            st.caption(f"**Sector:** {info['sector']}")
+            st.markdown(f"📝 {info['descripcion']}")
+            
             if es_emergente and "por_que_grande" in info:
                 st.info(f"🌟 **¿Por qué puede ser gigante?**\n\n{info['por_que_grande']}")
 

@@ -9,7 +9,7 @@ Empresas consolidadas y emergentes con proyección a 10 años.
 WATCHLIST_EMPRESAS = {
     "NVDA": {
         "nombre": "NVIDIA Corporation",
-        "descripcion": "Líder mundial en GPUs y chips de inteligencia artificial. Domina el mercado de aceleradores para data centers, IA generativa, conducción autónoma y gaming.",
+        "descripcion": "Líder mundial en GPUs y chips de IA. Domina aceleradores para data centers, IA generativa, conducción autónoma y gaming.",
         "sector": "Semiconductores / IA",
     },
     "MSFT": {
@@ -19,7 +19,7 @@ WATCHLIST_EMPRESAS = {
     },
     "GOOGL": {
         "nombre": "Alphabet Inc. (Google)",
-        "descripcion": "Dueña de Google Search, YouTube, Android, Google Cloud y Waymo. Líder en publicidad digital y pionera en IA con DeepMind y Gemini.",
+        "descripcion": "Dueña de Google Search, YouTube, Android y Google Cloud. Líder en publicidad digital y pionera en IA con DeepMind y Gemini.",
         "sector": "Publicidad Digital / Cloud / IA",
     },
     "AMZN": {
@@ -34,12 +34,12 @@ WATCHLIST_EMPRESAS = {
     },
     "AAPL": {
         "nombre": "Apple Inc.",
-        "descripcion": "Fabricante del iPhone, Mac, iPad y Apple Watch. Ecosistema cerrado con servicios crecientes (App Store, iCloud, Apple TV+, Apple Pay).",
+        "descripcion": "Fabricante del iPhone, Mac, iPad y Apple Watch. Ecosistema cerrado con servicios crecientes (App Store, iCloud, Apple TV+).",
         "sector": "Hardware / Servicios",
     },
     "TSLA": {
         "nombre": "Tesla Inc.",
-        "descripcion": "Líder en vehículos eléctricos, almacenamiento de energía con baterías Megapack, paneles solares y desarrollo de conducción autónoma (FSD).",
+        "descripcion": "Líder en vehículos eléctricos, almacenamiento de energía (Megapack), paneles solares y desarrollo de conducción autónoma (FSD).",
         "sector": "Vehículos Eléctricos / Energía",
     },
     "AMD": {
@@ -55,7 +55,7 @@ WATCHLIST_EMPRESAS = {
     "LLY": {
         "nombre": "Eli Lilly and Company",
         "descripcion": "Farmacéutica líder con fármacos revolucionarios para diabetes/obesidad (Mounjaro, Zepbound) y pipeline en Alzheimer.",
-        "sector": "Farmacéutica / Biotecnología",
+        "sector": "Farmácutica / Biotecnología",
     },
     "V": {
         "nombre": "Visa Inc.",
@@ -64,7 +64,7 @@ WATCHLIST_EMPRESAS = {
     },
     "UNH": {
         "nombre": "UnitedHealth Group",
-        "descripcion": "Mayor aseguradora de salud de EE.UU. con Optum (servicios de datos y salud). Crecimiento estable impulsado por el envejecimiento poblacional.",
+        "descripcion": "Mayor aseguradora de salud de EE.UU. con Optum (servicios de datos y salud). Crecimiento estable por envejecimiento poblacional.",
         "sector": "Salud / Seguros",
     },
     "PLTR": {
@@ -84,7 +84,7 @@ WATCHLIST_EMPRESAS = {
     },
     "CRWD": {
         "nombre": "CrowdStrike Holdings",
-        "descripcion": "Líder en ciberseguridad endpoint basada en IA/cloud. Plataforma Falcon protege a empresas contra amenazas avanzadas.",
+        "descripcion": "Líder en ciberseguridad endpoint basada en IA/cloud. Plataforma Falcon protege empresas contra amenazas avanzadas.",
         "sector": "Ciberseguridad",
     },
     "SNOW": {

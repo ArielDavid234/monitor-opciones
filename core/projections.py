@@ -46,6 +46,21 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
         forward_pe = info.get("forwardPE", 0)
         trailing_pe = info.get("trailingPE", 0)
         peg_ratio = info.get("pegRatio", 0)
+        
+        # *** CALCULAR PEG MANUALMENTE SI NO ESTÁ DISPONIBLE ***
+        # PEG = PER / Tasa de crecimiento anual del BPA (%)
+        # Si Yahoo no provee PEG, lo calculamos nosotros
+        if not peg_ratio or peg_ratio <= 0:
+            # Usar el PER más confiable que tengamos
+            pe_to_use = forward_pe if forward_pe and forward_pe > 0 else trailing_pe
+            # Convertir earningsGrowth (decimal) a porcentaje
+            earnings_growth_pct = earnings_growth * 100 if earnings_growth else 0
+            
+            if pe_to_use and pe_to_use > 0 and earnings_growth_pct > 0:
+                # PEG = PER / % de crecimiento
+                peg_ratio = pe_to_use / earnings_growth_pct
+                logger.info(f"{symbol}: PEG calculado manualmente = {peg_ratio:.3f} (PER={pe_to_use:.1f}, Crec={earnings_growth_pct:.1f}%)")
+        
         price_to_sales = info.get("priceToSalesTrailing12Months", 0)
 
         # Analistas

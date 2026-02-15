@@ -2958,20 +2958,13 @@ elif pagina == "🏢 Important Companies":
             render_pro_table(df_tabla, title="📋 Tabla Comparativa Consolidadas", badge_count=f"{len(df_tabla)}"),
             unsafe_allow_html=True,
         )
-        csv_proy = df_tabla.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Descargar análisis CSV",
-            csv_proy,
-            f"proyecciones_consolidadas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            "text/csv",
-            key="dl_consolidadas",
-        )
+        # Botón CSV eliminado según solicitud
 
     else:
-        st.markdown("#### 🏢 18 Empresas Consolidadas Monitoreadas")
+        st.markdown("#### 🏛️ Top Empresas Consolidadas")
         render_watchlist_preview(WATCHLIST_EMPRESAS)
 
-    with st.expander("📝 Ver todas las empresas consolidadas y sus descripciones", expanded=True):
+    with st.expander("� Análisis de las Empresas Consolidadas", expanded=False):
         render_empresa_descriptions(WATCHLIST_EMPRESAS, "59, 130, 246", "#3b82f6")
 
     # ==============================================================
@@ -3021,76 +3014,15 @@ elif pagina == "🏢 Important Companies":
             render_pro_table(df_emerg, title="📋 Tabla Comparativa Emergentes", badge_count=f"{len(df_emerg)}"),
             unsafe_allow_html=True,
         )
-        csv_emerg = df_emerg.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Descargar análisis Emergentes CSV",
-            csv_emerg,
-            f"emergentes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            "text/csv",
-            key="dl_emergentes",
-        )
+        # Botón CSV eliminado según solicitud
 
     else:
-        st.markdown("#### 🚀 18 Empresas Emergentes Monitoreadas")
+        st.markdown("#### 🚀 Top Empresas Emergentes")
         render_watchlist_preview(WATCHLIST_EMERGENTES)
 
-    with st.expander("📝 Ver todas las empresas emergentes y por qué pueden ser gigantes", expanded=True):
+    with st.expander("� Análisis de las Empresas Emergentes", expanded=False):
         render_empresa_descriptions(WATCHLIST_EMERGENTES, "6, 182, 212", "#06b6d4", es_emergente=True)
 
-    # ==============================================================
-    #  SECCIÓN 3: ANÁLISIS DETALLADO DE EMPRESAS EMERGENTES
-    # ==============================================================
-    st.markdown("---")
-    st.markdown("## 🔬 Análisis Detallado — Empresas Emergentes")
-    st.caption(
-        "Desglose individual de cada empresa emergente: qué hacen, por qué pueden ser gigantes, "
-        "su sector, y las razones de su proyección a 10 años."
-    )
-
-    for sym, info in WATCHLIST_EMERGENTES.items():
-        datos_vivo = None
-        if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
-            for r in st.session_state.emergentes_resultados:
-                if r["symbol"] == sym:
-                    datos_vivo = r
-                    break
-
-        with st.container(border=True):
-            if datos_vivo:
-                if datos_vivo["clasificacion"] == "ALTA":
-                    badge_text = "🟢 ALTA"
-                elif datos_vivo["clasificacion"] == "MEDIA":
-                    badge_text = "🟡 MEDIA"
-                else:
-                    badge_text = "🔴 BAJA"
-                col_h1, col_h2 = st.columns([3, 1])
-                with col_h1:
-                    st.markdown(f"**{sym}** — {info['nombre']} · ${datos_vivo['precio']:,.2f}")
-                with col_h2:
-                    st.markdown(f"**{badge_text} — {datos_vivo['score']}/100**")
-            else:
-                st.markdown(f"**{sym}** — {info['nombre']}  ⏳ *Sin analizar*")
-
-            st.caption(f"**Sector:** {info['sector']}")
-            st.markdown(f"📝 {info['descripcion']}")
-            st.info(f"🌟 **¿Por qué puede ser una empresa gigante?**\n\n{info['por_que_grande']}")
-
-        if datos_vivo:
-            mc_str = format_market_cap(datos_vivo["market_cap"])
-
-            col_d1, col_d2, col_d3, col_d4, col_d5 = st.columns(5)
-            with col_d1:
-                st.metric("Market Cap", mc_str)
-            with col_d2:
-                growth_val = f"{'+' if datos_vivo['revenue_growth']>0 else ''}{datos_vivo['revenue_growth']*100:.1f}%"
-                st.metric("Crec. Ingresos", growth_val)
-            with col_d3:
-                st.metric("Margen Op.", f"{datos_vivo['operating_margins']*100:.1f}%")
-            with col_d4:
-                upside_val = f"{'+' if datos_vivo['upside_pct']>0 else ''}{datos_vivo['upside_pct']:.1f}%"
-                st.metric("Upside Analistas", upside_val)
-            with col_d5:
-                st.metric("Recomendación", datos_vivo["recommendation"])
 
 # ============================================================================
 #   📰 NEWS & CALENDAR — NOTICIAS
