@@ -1476,179 +1476,942 @@ elif pagina == "📋 Reports":
     st.markdown(
         """
         <div class="watchlist-info">
-            💾 <b>Centro de Reportes</b> — Todas las alertas se guardan automáticamente al escanear.
-            Descarga reportes detallados en CSV y DOCX.
+            💾 <b>Centro de Reportes</b> — Descarga reportes detallados en formato DOCX.
+            Los reportes se generan con los datos cargados en cada sección.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # --- SECCIÓN 1: HISTORIAL CSV ---
-    st.markdown("#### 📁 Alertas Guardadas")
-    historial_df = cargar_historial_csv(csv_carpeta)
-    
-    # Agregar columna de sentimiento al historial
-    if not historial_df.empty and "Tipo_Opcion" in historial_df.columns and "Lado" in historial_df.columns:
-        historial_df.insert(0, "Sentimiento", historial_df.apply(
-            lambda row: f"{determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[1]} {determinar_sentimiento(row['Tipo_Opcion'], row.get('Lado', 'N/A'))[0]}",
-            axis=1
-        ))
-    
-    # Renombrar Prima_Total (CSV) a "Prima Total" (UI con espacio) para mejor visualización
-    # También maneja CSVs antiguos que puedan tener Prima_Volumen
-    if not historial_df.empty:
-        if "Prima_Total" in historial_df.columns:
-            historial_df = historial_df.rename(columns={"Prima_Total": "Prima Total"})
-        elif "Prima_Volumen" in historial_df.columns:
-            historial_df = historial_df.rename(columns={"Prima_Volumen": "Prima Total"})
-
-    if historial_df.empty:
-        st.info(
-            "No se encontraron alertas guardadas aún.\n\n"
-            "Las alertas se guardan automáticamente cada vez que ejecutas un escaneo."
-        )
-    else:
-        _h_total = len(historial_df)
-        n_principal = len(
-            historial_df[historial_df["Tipo_Alerta"] == "PRINCIPAL"]
-        ) if "Tipo_Alerta" in historial_df.columns else 0
-        n_prima = len(
-            historial_df[historial_df["Tipo_Alerta"] == "PRIMA_ALTA"]
-        ) if "Tipo_Alerta" in historial_df.columns else 0
-        tickers_unicos = (
-            historial_df["Ticker"].nunique()
-            if "Ticker" in historial_df.columns
-            else 0
-        )
-        _inst_pct = (n_principal / _h_total * 100) if _h_total else 0
-        _prima_pct = (n_prima / _h_total * 100) if _h_total else 0
-        st.markdown(render_metric_row([
-            render_metric_card("Total de Alertas", f"{_h_total:,}"),
-            render_metric_card("Institucional", f"{n_principal:,}", delta=_inst_pct, color_override="#ef4444"),
-            render_metric_card("Prima Alta", f"{n_prima:,}", delta=_prima_pct, color_override="#f59e0b"),
-            render_metric_card("Tickers Únicos", f"{tickers_unicos}"),
-        ]), unsafe_allow_html=True)
-
-        st.markdown("##### 🔎 Filtros")
-        col_f1, col_f2, col_f3 = st.columns(3)
-
-        with col_f1:
-            if "Tipo_Alerta" in historial_df.columns:
-                tipos_disponibles = ["Todos"] + historial_df["Tipo_Alerta"].unique().tolist()
-            else:
-                tipos_disponibles = ["Todos"]
-            filtro_tipo_hist = st.selectbox(
-                "Tipo de Alerta", tipos_disponibles, key="hist_tipo"
-            )
-
-        with col_f2:
-            if "Tipo_Opcion" in historial_df.columns:
-                opciones_disponibles = ["Todos"] + historial_df["Tipo_Opcion"].unique().tolist()
-            else:
-                opciones_disponibles = ["Todos"]
-            filtro_opcion_hist = st.selectbox(
-                "Tipo de Opción", opciones_disponibles, key="hist_opcion"
-            )
-
-        with col_f3:
-            if "Ticker" in historial_df.columns:
-                tickers_disponibles = ["Todos"] + sorted(
-                    historial_df["Ticker"].unique().tolist()
-                )
-            else:
-                tickers_disponibles = ["Todos"]
-            filtro_ticker_hist = st.selectbox(
-                "Ticker", tickers_disponibles, key="hist_ticker"
-            )
-
-        df_hist_filtered = historial_df.copy()
-        if filtro_tipo_hist != "Todos" and "Tipo_Alerta" in df_hist_filtered.columns:
-            df_hist_filtered = df_hist_filtered[
-                df_hist_filtered["Tipo_Alerta"] == filtro_tipo_hist
-            ]
-        if filtro_opcion_hist != "Todos" and "Tipo_Opcion" in df_hist_filtered.columns:
-            df_hist_filtered = df_hist_filtered[
-                df_hist_filtered["Tipo_Opcion"] == filtro_opcion_hist
-            ]
-        if filtro_ticker_hist != "Todos" and "Ticker" in df_hist_filtered.columns:
-            df_hist_filtered = df_hist_filtered[
-                df_hist_filtered["Ticker"] == filtro_ticker_hist
-            ]
-
-        _hist_sorted = (
-            df_hist_filtered.sort_values("Fecha_Hora", ascending=False)
-            if "Fecha_Hora" in df_hist_filtered.columns else df_hist_filtered
-        )
-        # Format columns for pro table
-        _hist_show = _hist_sorted.copy()
-        if "Tipo_Opcion" in _hist_show.columns:
-            _hist_show["Tipo_Opcion"] = _hist_show["Tipo_Opcion"].apply(_type_badge)
-        if "Tipo_Alerta" in _hist_show.columns:
-            _hist_show["Tipo_Alerta"] = _hist_show["Tipo_Alerta"].apply(_priority_badge)
-        if "Prima Total" in _hist_show.columns:
-            _hist_show["Prima Total"] = _hist_show["Prima Total"].apply(
-                lambda x: _fmt_dolar(x) if isinstance(x, (int, float)) else x
-            )
-        if "Lado" in _hist_show.columns:
-            _hist_show["Lado"] = _hist_show["Lado"].apply(_fmt_lado)
-        st.markdown(
-            render_pro_table(
-                _hist_show,
-                title="📜 Historial de Alertas",
-                badge_count=f"{len(df_hist_filtered):,} de {len(historial_df):,}",
-                footer_text=f"Mostrando {len(df_hist_filtered):,} de {len(historial_df):,} alertas",
-            ),
-            unsafe_allow_html=True,
-        )
-
-        csv_download = df_hist_filtered.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Descargar Alertas CSV",
-            csv_download,
-            f"alertas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            "text/csv",
-            key="dl_alertas_hist",
-        )
-
-        # --- Rango esperado ---
-        if st.session_state.rango_resultado:
-            r = st.session_state.rango_resultado
-            st.markdown("##### 📐 Rango Esperado Calculado")
-            rango_table = pd.DataFrame({
-                "Campo": [
-                    "Símbolo", "Precio Actual", "Rango Inferior (1σ)", "Rango Superior (1σ)",
-                    "Bajada Esperada", "Subida Esperada", "Rango Total",
-                    "Call Strike", "Call Delta", "Call IV",
-                    "Put Strike", "Put Delta", "Put IV",
-                    "Expiración", "Días Restantes",
-                ],
-                "Valor": [
-                    r["symbol"],
-                    _fmt_precio(r['underlying_price']),
-                    _fmt_precio(r['expected_range_low']),
-                    _fmt_precio(r['expected_range_high']),
-                    f"-{_fmt_precio(r['downside_points'])} ({r['downside_percent']:.2f}%)",
-                    f"+{_fmt_precio(r['upside_points'])} (+{r['upside_percent']:.2f}%)",
-                    f"{_fmt_precio(r['total_range_points'])} ({r['total_range_pct']:.2f}%)",
-                    _fmt_precio(r['call_strike']),
-                    f"{r['call_delta']}",
-                    _fmt_iv(r['call_iv']),
-                    _fmt_precio(r['put_strike']),
-                    f"{r['put_delta']}",
-                    _fmt_iv(r['put_iv']),
-                    r["expiration"],
-                    r["dias_restantes"] if r["dias_restantes"] else "N/A",
-                ]
+    # =============================================
+    # HELPERS PARA GENERAR REPORTES DOCX
+    # =============================================
+    def _estilo_celda_report(cell, texto, negrita=False, color_fondo=None, color_texto=None, size=9, align="left"):
+        """Aplica formato a una celda de tabla Word."""
+        cell.text = ""
+        p = cell.paragraphs[0]
+        p.alignment = {
+            "left": WD_ALIGN_PARAGRAPH.LEFT,
+            "center": WD_ALIGN_PARAGRAPH.CENTER,
+            "right": WD_ALIGN_PARAGRAPH.RIGHT,
+        }.get(align, WD_ALIGN_PARAGRAPH.LEFT)
+        p.space_before = Pt(1)
+        p.space_after = Pt(1)
+        run = p.add_run(str(texto))
+        run.bold = negrita
+        run.font.size = Pt(size)
+        run.font.name = "Calibri"
+        if color_texto:
+            run.font.color.rgb = color_texto
+        if color_fondo:
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            shading = tcPr.makeelement(qn("w:shd"), {
+                qn("w:fill"): color_fondo,
+                qn("w:val"): "clear",
             })
-            st.markdown(
-                render_pro_table(rango_table, title="📐 Rango Esperado Calculado"),
-                unsafe_allow_html=True,
+            tcPr.append(shading)
+
+    def _agregar_titulo_report(doc, texto, level=2):
+        """Agrega un título de sección con formato."""
+        heading = doc.add_heading(texto, level=level)
+        for run in heading.runs:
+            run.font.name = "Calibri"
+            run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+
+    def _tabla_info_report(doc, datos_dict, titulo=None):
+        """Tabla de 2 columnas Campo/Valor para info resumida."""
+        if titulo:
+            p = doc.add_paragraph()
+            run = p.add_run(titulo)
+            run.bold = True
+            run.font.size = Pt(11)
+            run.font.name = "Calibri"
+        table = doc.add_table(rows=0, cols=2)
+        table.style = "Light List Accent 1"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        for campo, valor in datos_dict.items():
+            row = table.add_row()
+            _estilo_celda_report(row.cells[0], campo, negrita=True, size=10)
+            _estilo_celda_report(row.cells[1], str(valor), size=10)
+        doc.add_paragraph("")
+
+    def _tabla_datos_report(doc, headers, rows_data):
+        """Tabla con encabezados y filas de datos."""
+        if not rows_data:
+            return
+        table = doc.add_table(rows=1, cols=len(headers))
+        table.style = "Light List Accent 1"
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        # Encabezados
+        for i, h in enumerate(headers):
+            _estilo_celda_report(
+                table.rows[0].cells[i], h,
+                negrita=True, size=9,
+                color_fondo="1E3A5F",
+                color_texto=RGBColor(0xFF, 0xFF, 0xFF),
+                align="center",
+            )
+        # Datos
+        for row_idx, row_data in enumerate(rows_data):
+            row = table.add_row()
+            bg = "F0F4F8" if row_idx % 2 == 0 else None
+            for i, val in enumerate(row_data):
+                _estilo_celda_report(row.cells[i], str(val), size=9, color_fondo=bg)
+        doc.add_paragraph("")
+
+    # =============================================
+    # FUNCIÓN 1: REPORTE LIVE SCANNING
+    # =============================================
+    def _generar_reporte_live_scanning():
+        """Genera reporte DOCX con todos los datos del Live Scanning."""
+        doc = Document()
+        
+        # Configurar página
+        section = doc.sections[0]
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin = Cm(1.5)
+        section.right_margin = Cm(1.5)
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+
+        # Portada
+        doc.add_paragraph("")
+        titulo = doc.add_heading("REPORTE — LIVE SCANNING", level=0)
+        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in titulo.runs:
+            run.font.name = "Calibri"
+            run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+
+        ticker_name = st.session_state.get("ticker_anterior", "N/A")
+        subtitulo = doc.add_paragraph()
+        subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_sub = subtitulo.add_run(f"Ticker: {ticker_name}")
+        run_sub.font.size = Pt(18)
+        run_sub.font.color.rgb = RGBColor(0x3B, 0x82, 0xF6)
+        run_sub.font.name = "Calibri"
+        run_sub.bold = True
+
+        fecha_legible = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        fecha_p = doc.add_paragraph()
+        fecha_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_fecha = fecha_p.add_run(f"Generado: {fecha_legible}")
+        run_fecha.font.size = Pt(11)
+        run_fecha.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        run_fecha.font.name = "Calibri"
+
+        doc.add_paragraph("")
+
+        # Resumen Ejecutivo
+        n_opciones = len(st.session_state.datos_completos)
+        n_alertas = len(st.session_state.alertas_actuales)
+        n_clusters = len(st.session_state.clusters_detectados)
+        precio_subyacente = st.session_state.get('precio_subyacente', 0)
+        
+        datos_calls = [d for d in st.session_state.datos_completos if d.get('Tipo', '') == 'CALL']
+        datos_puts = [d for d in st.session_state.datos_completos if d.get('Tipo', '') == 'PUT']
+        
+        vol_promedio = np.mean([d.get('Volumen', 0) for d in st.session_state.datos_completos]) if st.session_state.datos_completos else 0
+        oi_promedio = np.mean([d.get('OI', 0) for d in st.session_state.datos_completos]) if st.session_state.datos_completos else 0
+        iv_promedio = np.mean([d.get('IV', 0) for d in st.session_state.datos_completos if d.get('IV', 0) > 0]) if st.session_state.datos_completos else 0
+        
+        principales = [a for a in st.session_state.alertas_actuales if a.get("Tipo_Alerta") == "PRINCIPAL"]
+        prima_alta = [a for a in st.session_state.alertas_actuales if a.get("Tipo_Alerta") == "PRIMA_ALTA"]
+
+        _agregar_titulo_report(doc, "RESUMEN EJECUTIVO", level=1)
+        _tabla_info_report(doc, {
+            "Ticker Analizado": ticker_name,
+            "Precio Subyacente": f"${precio_subyacente:,.2f}" if precio_subyacente > 0 else "N/D",
+            "Fecha del Reporte": fecha_legible,
+            "Total Opciones Escaneadas": f"{n_opciones:,}",
+            "Calls vs Puts": f"{len(datos_calls):,} calls / {len(datos_puts):,} puts",
+            "Alertas Detectadas": f"{n_alertas} ({len(principales)} institucionales, {len(prima_alta)} prima alta)",
+            "Clusters de Compra": f"{n_clusters}",
+            "Volumen Promedio": f"{vol_promedio:,.0f}",
+            "OI Promedio": f"{oi_promedio:,.0f}",
+            "IV Promedio": f"{iv_promedio:.1f}%" if iv_promedio > 0 else "N/D",
+        })
+
+        # Alertas Institucionales
+        if principales:
+            _agregar_titulo_report(doc, f"ALERTAS INSTITUCIONALES ({len(principales)})", level=1)
+            p_desc = doc.add_paragraph()
+            run_d = p_desc.add_run(
+                "Operaciones con prima significativa que sugieren actividad institucional."
+            )
+            run_d.font.size = Pt(10)
+            run_d.font.italic = True
+            run_d.font.name = "Calibri"
+
+            headers = ["#", "Tipo", "Strike", "Vencimiento", "Volumen", "OI", 
+                       "Ask", "Bid", "Último", "IV", "Sentimiento", "Lado", "Prima Total", "Contrato"]
+            rows = []
+            principales_enriq = _enriquecer_datos_opcion(principales, precio_subyacente)
+            
+            for i, a in enumerate(principales_enriq, 1):
+                sent_txt, sent_emoji, _ = determinar_sentimiento(a["Tipo_Opcion"], a.get("Lado", "N/A"))
+                rows.append([
+                    i, a["Tipo_Opcion"], _fmt_precio(a['Strike']), a["Vencimiento"],
+                    _fmt_entero(a['Volumen']), _fmt_entero(a['OI']),
+                    _fmt_precio(a['Ask']), _fmt_precio(a['Bid']), _fmt_precio(a['Ultimo']),
+                    _fmt_iv(a['IV']),
+                    f"{sent_emoji} {sent_txt}", _fmt_lado(a.get('Lado', 'N/A')),
+                    _fmt_monto(a['Prima_Volumen']),
+                    a.get("Contrato", "N/A"),
+                ])
+            _tabla_datos_report(doc, headers, rows)
+
+        # Alertas Prima Alta
+        if prima_alta:
+            _agregar_titulo_report(doc, f"ALERTAS PRIMA ALTA ({len(prima_alta)})", level=1)
+            p_desc = doc.add_paragraph()
+            run_d = p_desc.add_run(
+                "Opciones con volumen y open interest por encima de los umbrales configurados."
+            )
+            run_d.font.size = Pt(10)
+            run_d.font.italic = True
+            run_d.font.name = "Calibri"
+
+            headers = ["#", "Tipo", "Strike", "Vencimiento", "Volumen", "OI",
+                       "Ask", "Bid", "Último", "IV", "Sentimiento", "Lado", "Prima Total"]
+            rows = []
+            prima_alta_enriq = _enriquecer_datos_opcion(prima_alta, precio_subyacente)
+            
+            for i, a in enumerate(prima_alta_enriq, 1):
+                sent_txt, sent_emoji, _ = determinar_sentimiento(a["Tipo_Opcion"], a.get("Lado", "N/A"))
+                rows.append([
+                    i, a["Tipo_Opcion"], _fmt_precio(a['Strike']), a["Vencimiento"],
+                    _fmt_entero(a['Volumen']), _fmt_entero(a['OI']),
+                    _fmt_precio(a['Ask']), _fmt_precio(a['Bid']), _fmt_precio(a['Ultimo']),
+                    _fmt_iv(a['IV']),
+                    f"{sent_emoji} {sent_txt}", _fmt_lado(a.get('Lado', 'N/A')),
+                    _fmt_monto(a['Prima_Volumen']),
+                ])
+            _tabla_datos_report(doc, headers, rows)
+
+        # Clusters
+        if st.session_state.clusters_detectados:
+            _agregar_titulo_report(doc, f"CLUSTERS DE COMPRA CONTINUA ({n_clusters})", level=1)
+            p_desc = doc.add_paragraph()
+            run_d = p_desc.add_run(
+                "Grupos de contratos con strikes cercanos y primas similares en la misma expiración."
+            )
+            run_d.font.size = Pt(10)
+            run_d.font.italic = True
+            run_d.font.name = "Calibri"
+
+            headers_cl = ["#", "Tipo", "Vencimiento", "Contratos", "Rango Strikes",
+                          "Prima Total", "Prima Prom.", "Vol Total", "OI Total"]
+            rows_cl = []
+            for i, c in enumerate(st.session_state.clusters_detectados, 1):
+                rows_cl.append([
+                    i, c["Tipo_Opcion"], c["Vencimiento"], c["Contratos"],
+                    f"${c['Strike_Min']} — ${c['Strike_Max']}",
+                    _fmt_monto(c['Prima_Total']), _fmt_monto(c['Prima_Promedio']),
+                    _fmt_entero(c['Vol_Total']), _fmt_entero(c['OI_Total']),
+                ])
+            _tabla_datos_report(doc, headers_cl, rows_cl)
+
+            # Detalle de cada cluster
+            for i, c in enumerate(st.session_state.clusters_detectados, 1):
+                if c.get("Detalle"):
+                    p_cl = doc.add_paragraph()
+                    run_cl = p_cl.add_run(f"Detalle Cluster #{i} — {c['Tipo_Opcion']} Venc. {c['Vencimiento']}")
+                    run_cl.bold = True
+                    run_cl.font.size = Pt(10)
+                    run_cl.font.name = "Calibri"
+
+                    headers_det = ["#", "Strike", "Volumen", "OI", "Prima Total"]
+                    rows_det = []
+                    for j, d in enumerate(c["Detalle"], 1):
+                        rows_det.append([
+                            j, _fmt_precio(d['Strike']),
+                            _fmt_entero(d['Volumen']), _fmt_entero(d['OI']),
+                            _fmt_monto(d['Prima_Volumen']),
+                        ])
+                    _tabla_datos_report(doc, headers_det, rows_det)
+
+        # Todas las opciones escaneadas
+        if st.session_state.datos_completos:
+            _agregar_titulo_report(doc, "TODAS LAS OPCIONES ESCANEADAS", level=1)
+
+            datos_sorted = sorted(
+                st.session_state.datos_completos,
+                key=lambda x: x.get("Prima_Volumen", 0), reverse=True,
             )
 
-        # --- BOTÓN DE DESCARGA COMPLETA ---
-        st.markdown("---")
-        st.markdown("#### 📥 Descargar Reportes")
-        st.caption("Genera reportes detallados con toda la información recopilada (alertas, opciones, clusters, rango). Excluye noticias y proyecciones.")
+            p_info = doc.add_paragraph()
+            run_info = p_info.add_run(f"Total de opciones: {len(datos_sorted):,}")
+            run_info.font.size = Pt(10)
+            run_info.font.italic = True
+            run_info.font.name = "Calibri"
+
+            headers_opt = ["Tipo", "Vencimiento", "Strike", "Volumen", "OI",
+                           "Ask", "Bid", "Último", "Lado", "IV", "Prima Total"]
+            rows_opt = []
+            datos_enriquecidos = _enriquecer_datos_opcion(datos_sorted, precio_subyacente)
+            
+            for d in datos_enriquecidos:
+                rows_opt.append([
+                    d["Tipo"], d["Vencimiento"], _fmt_precio(d['Strike']),
+                    _fmt_entero(d['Volumen']), _fmt_entero(d['OI']),
+                    _fmt_precio(d['Ask']), _fmt_precio(d['Bid']), _fmt_precio(d['Ultimo']),
+                    _fmt_lado(d.get('Lado', 'N/A')), _fmt_iv(d['IV']),
+                    _fmt_monto(d.get('Prima_Volumen', 0)),
+                ])
+            _tabla_datos_report(doc, headers_opt, rows_opt)
+
+        # Pie de página
+        doc.add_paragraph("")
+        pie = doc.add_paragraph()
+        pie.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_pie = pie.add_run(f"Monitor de Opciones — Reporte Live Scanning — {fecha_legible}")
+        run_pie.font.size = Pt(8)
+        run_pie.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+        run_pie.font.name = "Calibri"
+
+        # Retornar bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    # =============================================
+    # FUNCIÓN 2: REPORTE OPEN INTEREST
+    # =============================================
+    def _generar_reporte_open_interest():
+        """Genera reporte DOCX con análisis de Open Interest."""
+        doc = Document()
+        
+        # Configurar página
+        section = doc.sections[0]
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin = Cm(1.5)
+        section.right_margin = Cm(1.5)
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+
+        # Portada
+        doc.add_paragraph("")
+        titulo = doc.add_heading("REPORTE — OPEN INTEREST", level=0)
+        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in titulo.runs:
+            run.font.name = "Calibri"
+            run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+
+        ticker_name = st.session_state.get("ticker_anterior", "N/A")
+        subtitulo = doc.add_paragraph()
+        subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_sub = subtitulo.add_run(f"Ticker: {ticker_name}")
+        run_sub.font.size = Pt(18)
+        run_sub.font.color.rgb = RGBColor(0x3B, 0x82, 0xF6)
+        run_sub.font.name = "Calibri"
+        run_sub.bold = True
+
+        fecha_legible = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        fecha_p = doc.add_paragraph()
+        fecha_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_fecha = fecha_p.add_run(f"Generado: {fecha_legible}")
+        run_fecha.font.size = Pt(11)
+        run_fecha.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        run_fecha.font.name = "Calibri"
+
+        doc.add_paragraph("")
+
+        # Datos de Barchart
+        if st.session_state.barchart_data is not None and not st.session_state.barchart_data.empty:
+            df_bc = st.session_state.barchart_data.copy()
+            
+            df_positivos = df_bc[df_bc["OI_Chg"] > 0].sort_values("OI_Chg", ascending=False)
+            df_negativos = df_bc[df_bc["OI_Chg"] < 0].sort_values("OI_Chg", ascending=True)
+            
+            n_total = len(df_bc)
+            n_pos = len(df_positivos)
+            n_neg = len(df_negativos)
+            n_calls = len(df_bc[df_bc["Tipo"] == "CALL"]) if "Tipo" in df_bc.columns else 0
+            n_puts = len(df_bc[df_bc["Tipo"] == "PUT"]) if "Tipo" in df_bc.columns else 0
+            
+            contratos_abiertos = int(df_positivos["OI_Chg"].sum()) if n_pos > 0 else 0
+            contratos_cerrados = int(df_negativos["OI_Chg"].sum()) if n_neg > 0 else 0
+
+            # Resumen
+            _agregar_titulo_report(doc, "RESUMEN DE CAMBIOS EN OPEN INTEREST", level=1)
+            _tabla_info_report(doc, {
+                "Ticker": ticker_name,
+                "Fecha": fecha_legible,
+                "Total Contratos Analizados": f"{n_total:,}",
+                "Calls": f"{n_calls:,}",
+                "Puts": f"{n_puts:,}",
+                "Contratos Abiertos (OI Positivo)": f"{contratos_abiertos:,}",
+                "Contratos Cerrados (OI Negativo)": f"{contratos_cerrados:,}",
+                "Señales Positivas": f"{n_pos:,}",
+                "Señales Negativas": f"{n_neg:,}",
+            })
+
+            # Tabla OI Positivo
+            if n_pos > 0:
+                _agregar_titulo_report(doc, f"OI POSITIVO — ABRIENDO POSICIONES ({n_pos})", level=1)
+                p_desc = doc.add_paragraph()
+                run_d = p_desc.add_run(
+                    "Contratos donde el Open Interest aumentó, indicando nuevas posiciones abiertas."
+                )
+                run_d.font.size = Pt(10)
+                run_d.font.italic = True
+                run_d.font.name = "Calibri"
+
+                headers_pos = ["#", "Tipo", "Strike", "Vencimiento", "DTE", "Volumen", "OI", "OI Chg", "IV", "Delta", "Último"]
+                rows_pos = []
+                for i, row in enumerate(df_positivos.head(100).itertuples(), 1):
+                    rows_pos.append([
+                        i,
+                        row.Tipo if hasattr(row, 'Tipo') else "N/A",
+                        f"${row.Strike:,.1f}" if hasattr(row, 'Strike') else "N/A",
+                        row.Vencimiento if hasattr(row, 'Vencimiento') else "N/A",
+                        f"{row.DTE}d" if hasattr(row, 'DTE') else "N/A",
+                        f"{int(row.Volumen):,}" if hasattr(row, 'Volumen') else "N/A",
+                        f"{int(row.OI):,}" if hasattr(row, 'OI') else "N/A",
+                        f"+{int(row.OI_Chg):,}" if hasattr(row, 'OI_Chg') else "N/A",
+                        f"{row.IV:.1f}%" if hasattr(row, 'IV') and row.IV > 0 else "N/A",
+                        f"{row.Delta:.3f}" if hasattr(row, 'Delta') and row.Delta != 0 else "N/A",
+                        f"${row.Último:.2f}" if hasattr(row, 'Último') and row.Último > 0 else "N/A",
+                    ])
+                _tabla_datos_report(doc, headers_pos, rows_pos)
+
+            # Tabla OI Negativo
+            if n_neg > 0:
+                _agregar_titulo_report(doc, f"OI NEGATIVO — CERRANDO POSICIONES ({n_neg})", level=1)
+                p_desc = doc.add_paragraph()
+                run_d = p_desc.add_run(
+                    "Contratos donde el Open Interest disminuyó, indicando posiciones cerradas o ejercidas."
+                )
+                run_d.font.size = Pt(10)
+                run_d.font.italic = True
+                run_d.font.name = "Calibri"
+
+                headers_neg = ["#", "Tipo", "Strike", "Vencimiento", "DTE", "Volumen", "OI", "OI Chg", "IV", "Delta", "Último"]
+                rows_neg = []
+                for i, row in enumerate(df_negativos.head(100).itertuples(), 1):
+                    rows_neg.append([
+                        i,
+                        row.Tipo if hasattr(row, 'Tipo') else "N/A",
+                        f"${row.Strike:,.1f}" if hasattr(row, 'Strike') else "N/A",
+                        row.Vencimiento if hasattr(row, 'Vencimiento') else "N/A",
+                        f"{row.DTE}d" if hasattr(row, 'DTE') else "N/A",
+                        f"{int(row.Volumen):,}" if hasattr(row, 'Volumen') else "N/A",
+                        f"{int(row.OI):,}" if hasattr(row, 'OI') else "N/A",
+                        f"{int(row.OI_Chg):,}" if hasattr(row, 'OI_Chg') else "N/A",
+                        f"{row.IV:.1f}%" if hasattr(row, 'IV') and row.IV > 0 else "N/A",
+                        f"{row.Delta:.3f}" if hasattr(row, 'Delta') and row.Delta != 0 else "N/A",
+                        f"${row.Último:.2f}" if hasattr(row, 'Último') and row.Último > 0 else "N/A",
+                    ])
+                _tabla_datos_report(doc, headers_neg, rows_neg)
+
+        else:
+            # Sin datos
+            p_sin = doc.add_paragraph()
+            run_sin = p_sin.add_run("No hay datos de Open Interest disponibles. Ejecuta un escaneo primero.")
+            run_sin.font.size = Pt(11)
+            run_sin.font.italic = True
+            run_sin.font.name = "Calibri"
+
+        # Pie de página
+        doc.add_paragraph("")
+        pie = doc.add_paragraph()
+        pie.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_pie = pie.add_run(f"Monitor de Opciones — Reporte Open Interest — {fecha_legible}")
+        run_pie.font.size = Pt(8)
+        run_pie.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+        run_pie.font.name = "Calibri"
+
+        # Retornar bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    # =============================================
+    # FUNCIÓN 3: REPORTE DATA ANALYSIS
+    # =============================================
+    def _generar_reporte_data_analysis():
+        """Genera reporte DOCX con análisis detallado de Important Companies."""
+        doc = Document()
+        
+        # Configurar página
+        section = doc.sections[0]
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Cm(29.7)
+        section.page_height = Cm(21.0)
+        section.left_margin = Cm(1.5)
+        section.right_margin = Cm(1.5)
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+
+        # Portada
+        doc.add_paragraph("")
+        titulo = doc.add_heading("REPORTE — DATA ANALYSIS", level=0)
+        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in titulo.runs:
+            run.font.name = "Calibri"
+            run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+
+        subtitulo = doc.add_paragraph()
+        subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_sub = subtitulo.add_run("Análisis Completo de Important Companies")
+        run_sub.font.size = Pt(16)
+        run_sub.font.color.rgb = RGBColor(0x3B, 0x82, 0xF6)
+        run_sub.font.name = "Calibri"
+        run_sub.bold = True
+
+        fecha_legible = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        fecha_p = doc.add_paragraph()
+        fecha_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_fecha = fecha_p.add_run(f"Generado: {fecha_legible}")
+        run_fecha.font.size = Pt(11)
+        run_fecha.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        run_fecha.font.name = "Calibri"
+
+        doc.add_paragraph("")
+
+        # EMPRESAS CONSOLIDADAS
+        if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
+            resultados = st.session_state.proyecciones_resultados
+            
+            _agregar_titulo_report(doc, f"EMPRESAS CONSOLIDADAS ({len(resultados)})", level=1)
+            p_desc = doc.add_paragraph()
+            run_d = p_desc.add_run(
+                "Grandes corporaci ones con historial probado y proyección de crecimiento sostenido. "
+                "Análisis fundamental + técnico + sentimiento."
+            )
+            run_d.font.size = Pt(10)
+            run_d.font.italic = True
+            run_d.font.name = "Calibri"
+
+            # Resumen métricas
+            alta = sum(1 for r in resultados if r.get("veredicto", "").startswith("OPORTUNIDAD"))
+            considerar = sum(1 for r in resultados if "CONSIDERAR" in r.get("veredicto", ""))
+            mantener = sum(1 for r in resultados if "MANTENER" in r.get("veredicto", ""))
+            precaucion = sum(1 for r in resultados if "PRECAUCIÓN" in r.get("veredicto", "") or "PRECAU" in r.get("veredicto", ""))
+
+            _tabla_info_report(doc, {
+                "Total Empresas": len(resultados),
+                "Oportunidad de Compra": alta,
+                "Considerar": considerar,
+                "Mantener": mantener,
+                "Precaución": precaucion,
+            })
+
+            # Tabla comparativa
+            headers_comp = ["#", "Ticker", "Empresa", "Precio", "Score Fund.", "Score Téc.", "Score Comb.", "Veredicto",
+                            "Crec. Ingresos", "Margen Op.", "P/E Fwd", "PEG", "Tendencia", "RSI", "Target", "Upside"]
+            rows_comp = []
+            for i, r in enumerate(resultados, 1):
+                tecnico = r.get("tecnico", {})
+                rows_comp.append([
+                    i,
+                    r["symbol"],
+                    r["nombre"][:30],
+                    f"${r['precio']:,.2f}",
+                    f"{r.get('score', 0)}/100",
+                    f"{r.get('score_tecnico', 0)}/100",
+                    f"{r.get('score_combinado', 0)}/100",
+                    r.get("veredicto", "N/A")[:25],
+                    f"{r['revenue_growth']*100:.1f}%",
+                    f"{r['operating_margins']*100:.1f}%",
+                    f"{r['forward_pe']:.1f}x" if r['forward_pe'] > 0 else "N/A",
+                    f"{r['peg_ratio']:.2f}" if r['peg_ratio'] > 0 else "N/A",
+                    tecnico.get("tendencia", "N/A"),
+                    f"{tecnico.get('rsi', 0):.0f}" if tecnico else "N/A",
+                    f"${r['target_mean']:,.0f}" if r.get('target_mean', 0) > 0 else "N/A",
+                    f"{r['upside_pct']:.1f}%" if r.get('upside_pct') else "N/A",
+                ])
+            _tabla_datos_report(doc, headers_comp, rows_comp)
+
+            # Detalle por empresa
+            for r in resultados:
+                doc.add_page_break()
+                _agregar_titulo_report(doc, f"{r['symbol']} — {r['nombre']}", level=2)
+                
+                tecnico = r.get("tecnico", {})
+                
+                # Info básica
+                _tabla_info_report(doc, {
+                    "Precio Actual": f"${r['precio']:,.2f}",
+                    "Market Cap": format_market_cap(r.get("market_cap", 0)),
+                    "Sector": r.get("sector", "N/A"),
+                    "Industria": r.get("industria", "N/A"),
+                    "Score Combinado": f"{r.get('score_combinado', 0)}/100",
+                    "Veredicto": r.get("veredicto", "N/A"),
+                })
+
+                # Fundamental
+                _agregar_titulo_report(doc, "📊 Análisis Fundamental", level=3)
+                _tabla_info_report(doc, {
+                    "Ingresos Totales": f"${r.get('revenue', 0)/1e9:.1f}B" if r.get('revenue', 0) > 0 else "N/A",
+                    "Crecimiento Ingresos": f"{r['revenue_growth']*100:.1f}%",
+                    "Margen Bruto": f"{r['gross_margins']*100:.1f}%",
+                    "Margen Operativo": f"{r['operating_margins']*100:.1f}%",
+                    "Margen Neto": f"{r['profit_margins']*100:.1f}%",
+                    "P/E Forward": f"{r['forward_pe']:.1f}x" if r['forward_pe'] > 0 else "N/A",
+                    "P/E Trailing": f"{r['trailing_pe']:.1f}x" if r['trailing_pe'] > 0 else "N/A",
+                    "PEG Ratio": f"{r['peg_ratio']:.2f}" if r['peg_ratio'] > 0 else "N/A",
+                    "Free Cash Flow": f"${r.get('free_cashflow', 0)/1e9:.1f}B" if r.get('free_cashflow', 0) > 0 else "N/A",
+                    "Crecimiento Beneficios": f"{r['earnings_growth']*100:.1f}%",
+                })
+
+                # Técnico
+                if tecnico:
+                    _agregar_titulo_report(doc, "📈 Análisis Técnico", level=3)
+                    _tabla_info_report(doc, {
+                        "Tendencia": tecnico.get("tendencia", "N/A"),
+                        "RSI (14)": f"{tecnico.get('rsi', 0):.0f}",
+                        "ADX (14)": f"{tecnico.get('adx', 0):.0f}",
+                        "SMA 20": f"${tecnico.get('sma_20', 0):,.2f}",
+                        "SMA 50": f"${tecnico.get('sma_50', 0):,.2f}",
+                        "SMA 200": f"${tecnico.get('sma_200', 0):,.2f}" if tecnico.get('sma_200', 0) > 0 else "N/A",
+                        "Volumen Ratio": f"{tecnico.get('vol_ratio', 0):.2f}x",
+                        "Soporte 20d": f"${tecnico.get('soporte_20d', 0):,.2f}",
+                        "Resistencia 20d": f"${tecnico.get('resistencia_20d', 0):,.2f}",
+                        "Rango 52sem": f"{tecnico.get('rango_52w_pct', 0):.0f}%",
+                    })
+
+                # Sentimiento
+                _agregar_titulo_report(doc, "🎯 Sentimiento", level=3)
+                _tabla_info_report(doc, {
+                    "Recomendación": r.get("recommendation", "N/A").upper(),
+                    "Número Analistas": r.get("num_analysts", 0),
+                    "Target Medio": f"${r['target_mean']:,.2f}" if r.get('target_mean', 0) > 0 else "N/A",
+                    "Target Alto": f"${r['target_high']:,.2f}" if r.get('target_high', 0) > 0 else "N/A",
+                    "Target Bajo": f"${r['target_low']:,.2f}" if r.get('target_low', 0) > 0 else "N/A",
+                    "Upside Potencial": f"{r['upside_pct']:.1f}%" if r.get('upside_pct') else "N/A",
+                    "Beta": f"{r['beta']:.2f}" if r.get('beta', 0) > 0 else "N/A",
+                    "52 Week Low": f"${r['fifty_two_low']:,.2f}" if r.get('fifty_two_low', 0) > 0 else "N/A",
+                    "52 Week High": f"${r['fifty_two_high']:,.2f}" if r.get('fifty_two_high', 0) > 0 else "N/A",
+                })
+
+                # Razones fundamentales
+                if r.get("razones"):
+                    p_raz = doc.add_paragraph()
+                    run_raz = p_raz.add_run("Factores del Score Fundamental:")
+                    run_raz.bold = True
+                    run_raz.font.size = Pt(10)
+                    run_raz.font.name = "Calibri"
+                    for razon in r["razones"]:
+                        p_item = doc.add_paragraph(razon, style='List Bullet')
+                        p_item.paragraph_format.left_indent = Pt(20)
+
+                # Señales técnicas
+                if r.get("señales_tecnicas"):
+                    p_sen = doc.add_paragraph()
+                    run_sen = p_sen.add_run("Señales Técnicas:")
+                    run_sen.bold = True
+                    run_sen.font.size = Pt(10)
+                    run_sen.font.name = "Calibri"
+                    for senal in r["señales_tecnicas"]:
+                        p_item = doc.add_paragraph(senal, style='List Bullet')
+                        p_item.paragraph_format.left_indent = Pt(20)
+
+        # EMPRESAS EMERGENTES
+        if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
+            doc.add_page_break()
+            resultados_em = st.session_state.emergentes_resultados
+            
+            _agregar_titulo_report(doc, f"EMPRESAS EMERGENTES ({len(resultados_em)})", level=1)
+            p_desc_em = doc.add_paragraph()
+            run_d_em = p_desc_em.add_run(
+                "Empresas innovadoras con alto potencial de crecimiento disruptivo a 10 años."
+            )
+            run_d_em.font.size = Pt(10)
+            run_d_em.font.italic = True
+            run_d_em.font.name = "Calibri"
+
+            # Tabla comparativa emergentes (igual formato que consolidadas)
+            headers_em = ["#", "Ticker", "Empresa", "Precio", "Score Comb.", "Veredicto",
+                          "Crec. Ingresos", "P/E Fwd", "Target", "Upside"]
+            rows_em = []
+            for i, r in enumerate(resultados_em, 1):
+                rows_em.append([
+                    i,
+                    r["symbol"],
+                    r["nombre"][:30],
+                    f"${r['precio']:,.2f}",
+                    f"{r.get('score_combinado', 0)}/100",
+                    r.get("veredicto", "N/A")[:25],
+                    f"{r['revenue_growth']*100:.1f}%",
+                    f"{r['forward_pe']:.1f}x" if r['forward_pe'] > 0 else "N/A",
+                    f"${r['target_mean']:,.0f}" if r.get('target_mean', 0) > 0 else "N/A",
+                    f"{r['upside_pct']:.1f}%" if r.get('upside_pct') else "N/A",
+                ])
+            _tabla_datos_report(doc, headers_em, rows_em)
+
+        # Sin datos
+        if ("proyecciones_resultados" not in st.session_state or not st.session_state.proyecciones_resultados) and \
+           ("emergentes_resultados" not in st.session_state or not st.session_state.emergentes_resultados):
+            p_sin = doc.add_paragraph()
+            run_sin = p_sin.add_run("No hay datos de análisis disponibles. Ejecuta el análisis en Important Companies primero.")
+            run_sin.font.size = Pt(11)
+            run_sin.font.italic = True
+            run_sin.font.name = "Calibri"
+
+        # Pie de página
+        doc.add_paragraph("")
+        pie = doc.add_paragraph()
+        pie.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_pie = pie.add_run(f"Monitor de Opciones — Reporte Data Analysis — {fecha_legible}")
+        run_pie.font.size = Pt(8)
+        run_pie.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+        run_pie.font.name = "Calibri"
+
+        # Retornar bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    # =============================================
+    # FUNCIÓN 4: REPORTE RANGE
+    # =============================================
+    def _generar_reporte_range():
+        """Genera reporte DOCX con información del Rango Esperado."""
+        doc = Document()
+        
+        # Configurar página
+        section = doc.sections[0]
+        section.page_width = Cm(21.0)
+        section.page_height = Cm(29.7)
+        section.left_margin = Cm(2.0)
+        section.right_margin = Cm(2.0)
+        section.top_margin = Cm(2.0)
+        section.bottom_margin = Cm(2.0)
+
+        # Portada
+        doc.add_paragraph("")
+        titulo = doc.add_heading("REPORTE — RANGO ESPERADO", level=0)
+        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in titulo.runs:
+            run.font.name = "Calibri"
+            run.font.color.rgb = RGBColor(0x1E, 0x3A, 0x5F)
+
+        r = st.session_state.rango_resultado
+        ticker_name = r.get("symbol", "N/A")
+        
+        subtitulo = doc.add_paragraph()
+        subtitulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_sub = subtitulo.add_run(f"Ticker: {ticker_name}")
+        run_sub.font.size = Pt(18)
+        run_sub.font.color.rgb = RGBColor(0x3B, 0x82, 0xF6)
+        run_sub.font.name = "Calibri"
+        run_sub.bold = True
+
+        fecha_legible = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        fecha_p = doc.add_paragraph()
+        fecha_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_fecha = fecha_p.add_run(f"Generado: {fecha_legible}")
+        run_fecha.font.size = Pt(11)
+        run_fecha.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        run_fecha.font.name = "Calibri"
+
+        doc.add_paragraph("")
+
+        # Explicación
+        _agregar_titulo_report(doc, "¿QUÉ ES EL RANGO ESPERADO?", level=1)
+        p_exp = doc.add_paragraph()
+        run_exp = p_exp.add_run(
+            "El rango esperado es una estimación estadística del movimiento probable del precio del activo "
+            "hasta la fecha de expiración, basado en la volatilidad implícita (IV) de las opciones. "
+            "Se calcula con una desviación estándar (1σ), lo que significa que hay aproximadamente 68% de "
+            "probabilidad de que el precio permanezca dentro del rango calculado."
+        )
+        run_exp.font.size = Pt(10)
+        run_exp.font.name = "Calibri"
+
+        doc.add_paragraph("")
+
+        # Parámetros del cálculo
+        dias = r.get('dias_restantes')
+        _agregar_titulo_report(doc, "PARÁMETROS DEL CÁLCULO", level=1)
+        _tabla_info_report(doc, {
+            "Símbolo": ticker_name,
+            "Precio Actual del Subyacente": f"${r['underlying_price']:,.2f}",
+            "Fecha de Expiración": r["expiration"],
+            "Días Restantes (DTE)": dias if dias else "N/A",
+            "Delta Objetivo": f"±{r.get('target_delta', 'N/A')}",
+        })
+
+        # Rango calculado
+        _agregar_titulo_report(doc, "RANGO DE PRECIOS ESPERADO (1σ)", level=1)
+        _tabla_info_report(doc, {
+            "Rango Inferior": f"${r['expected_range_low']:,.2f}",
+            "Precio Actual": f"${r['underlying_price']:,.2f}",
+            "Rango Superior": f"${r['expected_range_high']:,.2f}",
+            "Bajada Esperada": f"-${r['downside_points']:,.2f} (-{r['downside_percent']:.2f}%)",
+            "Subida Esperada": f"+${r['upside_points']:,.2f} (+{r['upside_percent']:.2f}%)",
+            "Rango Total de Movimiento": f"${r['total_range_points']:,.2f} ({r['total_range_pct']:.2f}%)",
+        })
+
+        # Contratos utilizados
+        _agregar_titulo_report(doc, "CONTRATOS UTILIZADOS EN EL CÁLCULO", level=1)
+        p_cont = doc.add_paragraph()
+        run_cont = p_cont.add_run(
+            "El rango se calcula utilizando las opciones Call y Put con deltas más cercanos al objetivo configurado."
+        )
+        run_cont.font.size = Pt(10)
+        run_cont.font.italic = True
+        run_cont.font.name = "Calibri"
+
+        _tabla_info_report(doc, {
+            "Call Strike": f"${r['call_strike']}",
+            "Call Delta": f"{r['call_delta']}",
+            "Call IV": f"{r['call_iv']:.1f}%",
+            "Put Strike": f"${r['put_strike']}",
+            "Put Delta": f"{r['put_delta']}",
+            "Put IV": f"{r['put_iv']:.1f}%",
+        })
+
+        # Interpretación
+        _agregar_titulo_report(doc, "INTERPRETACIÓN", level=1)
+        p_int = doc.add_paragraph()
+        run_int = p_int.add_run(
+            f"Basándose en la volatilidad implícita actual, se espera que {ticker_name} se mueva "
+            f"entre ${r['expected_range_low']:,.2f} y ${r['expected_range_high']:,.2f} antes del "
+            f"{r['expiration']}. Esto representa un rango de movimiento de ±{r['total_range_pct']:.1f}%.\n\n"
+            f"Este rango puede utilizarse para:\n"
+            f"• Planificar estrategias de trading direccionales (si esperas movimiento fuera del rango)\n"
+            f"• Diseñar estrategias neutrales (si esperas que el precio permanezca dentro del rango)\n"
+            f"• Identificar niveles de soporte y resistencia probables\n"
+            f"• Evaluar el riesgo de posiciones existentes"
+        )
+        run_int.font.size = Pt(10)
+        run_int.font.name = "Calibri"
+
+        # Aviso
+        doc.add_paragraph("")
+        p_aviso = doc.add_paragraph()
+        run_aviso = p_aviso.add_run(
+            "⚠️ AVISO: Este cálculo es una estimación estadística basada en la volatilidad implícita "
+            "y no garantiza que el precio permanecerá dentro del rango. Los movimientos del mercado "
+            "pueden ser impredecibles, especialmente ante eventos inesperados o noticias significativas."
+        )
+        run_aviso.font.size = Pt(9)
+        run_aviso.font.italic = True
+        run_aviso.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+        run_aviso.font.name = "Calibri"
+
+        # Pie de página
+        doc.add_paragraph("")
+        pie = doc.add_paragraph()
+        pie.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_pie = pie.add_run(f"Monitor de Opciones — Reporte Rango Esperado — {fecha_legible}")
+        run_pie.font.size = Pt(8)
+        run_pie.font.color.rgb = RGBColor(0x9C, 0xA3, 0xAF)
+        run_pie.font.name = "Calibri"
+
+        # Retornar bytes
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    # =============================================
+    # BOTONES DE DESCARGA
+    # =============================================
+    st.markdown("---")
+    st.markdown("#### 📥 Descargar Reportes")
+    st.caption("Genera reportes detallados en formato DOCX con los datos cargados en cada sección.")
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Verificar disponibilidad de datos
+    tiene_scanning = st.session_state.scan_count > 0 and st.session_state.datos_completos
+    tiene_oi = tiene_scanning and st.session_state.barchart_data is not None and not st.session_state.barchart_data.empty
+    tiene_analysis = ("proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados) or \
+                     ("emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados)
+    tiene_range = st.session_state.rango_resultado is not None
+
+    # Botón 1: Live Scanning
+    if tiene_scanning:
+        ticker_name = st.session_state.get("ticker_anterior", "SCAN")
+        with st.spinner("📊 Generando reporte de Live Scanning..."):
+            try:
+                docx_scanning = _generar_reporte_live_scanning()
+                st.download_button(
+                    "📊 Descargar Reporte Live Scanning (DOCX)",
+                    docx_scanning,
+                    f"reporte_live_scanning_{ticker_name}_{timestamp}.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="dl_scanning",
+                    help="Descarga todos los datos escaneados: alertas, clusters, y todas las opciones analizadas.",
+                )
+            except Exception as e:
+                st.error(f"⚠️ Error al generar reporte de Live Scanning: {e}")
+    else:
+        st.info("📊 **Reporte Live Scanning** — Ejecuta un escaneo primero en 🔍 Live Scanning")
+
+    # Botón 2: Open Interest
+    if tiene_oi:
+        ticker_name = st.session_state.get("ticker_anterior", "SCAN")
+        with st.spinner("📊 Generando reporte de Open Interest..."):
+            try:
+                docx_oi = _generar_reporte_open_interest()
+                st.download_button(
+                    "📊 Descargar Reporte Open Interest (DOCX)",
+                    docx_oi,
+                    f"reporte_open_interest_{ticker_name}_{timestamp}.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="dl_oi",
+                    help="Descarga el análisis completo de cambios en Open Interest (OI positivo y negativo).",
+                )
+            except Exception as e:
+                st.error(f"⚠️ Error al generar reporte de Open Interest: {e}")
+    else:
+        st.info("📊 **Reporte Open Interest** — Ejecuta un escaneo primero en 🔍 Live Scanning")
+
+    # Botón 3: Data Analysis
+    if tiene_analysis:
+        with st.spinner("📊 Generando reporte de Data Analysis..."):
+            try:
+                docx_analysis = _generar_reporte_data_analysis()
+                st.download_button(
+                    "📈 Descargar Reporte Data Analysis (DOCX)",
+                    docx_analysis,
+                    f"reporte_data_analysis_{timestamp}.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="dl_analysis",
+                    help="Descarga el análisis completo de Important Companies: fundamental, técnico, sentimiento y veredicto.",
+                )
+            except Exception as e:
+                st.error(f"⚠️ Error al generar reporte de Data Analysis: {e}")
+    else:
+        st.info("📈 **Reporte Data Analysis** — Ejecuta el análisis en 🏢 Important Companies primero")
+
+    # Botón 4: Range
+    if tiene_range:
+        ticker_name = st.session_state.rango_resultado.get("symbol", "RANGE")
+        with st.spinner("📊 Generando reporte de Rango Esperado..."):
+            try:
+                docx_range = _generar_reporte_range()
+                st.download_button(
+                    "📐 Descargar Reporte Rango Esperado (DOCX)",
+                    docx_range,
+                    f"reporte_rango_{ticker_name}_{timestamp}.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="dl_range",
+                    help="Descarga el cálculo detallado del rango esperado con explicación e interpretación.",
+                )
+            except Exception as e:
+                st.error(f"⚠️ Error al generar reporte de Rango: {e}")
+    else:
+        st.info("📐 **Reporte Rango Esperado** — Calcula el rango en 📐 Range primero")
+
+    st.markdown("---")
+    st.success("✅ Selecciona los reportes que deseas descargar. Los archivos .docx son editables y tienen estructura profesional.")
 
         ticker_name = ticker_symbol if ticker_symbol else "SCAN"
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
