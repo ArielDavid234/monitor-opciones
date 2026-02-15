@@ -49,6 +49,7 @@ from ui.styles import CSS_STYLES
 from ui.components import (
     format_market_cap, render_empresa_card, render_tabla_comparativa,
     analizar_watchlist, render_watchlist_preview, render_empresa_descriptions,
+    render_analisis_completo,
     render_metric_card, render_metric_row, render_plotly_sparkline,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge, _badge_html,
 )
@@ -2964,8 +2965,11 @@ elif pagina == "🏢 Important Companies":
         st.markdown("#### 🏛️ Top Empresas Consolidadas")
         render_watchlist_preview(WATCHLIST_EMPRESAS)
 
-    with st.expander("� Análisis de las Empresas Consolidadas", expanded=False):
-        render_empresa_descriptions(WATCHLIST_EMPRESAS, "59, 130, 246", "#3b82f6")
+    with st.expander("📊 Análisis de las Empresas Consolidadas", expanded=False):
+        if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
+            render_analisis_completo(st.session_state.proyecciones_resultados, WATCHLIST_EMPRESAS)
+        else:
+            render_empresa_descriptions(WATCHLIST_EMPRESAS, "59, 130, 246", "#3b82f6")
 
     # ==============================================================
     #  SECCIÓN 2: EMPRESAS EMERGENTES
@@ -3020,8 +3024,11 @@ elif pagina == "🏢 Important Companies":
         st.markdown("#### 🚀 Top Empresas Emergentes")
         render_watchlist_preview(WATCHLIST_EMERGENTES)
 
-    with st.expander("� Análisis de las Empresas Emergentes", expanded=False):
-        render_empresa_descriptions(WATCHLIST_EMERGENTES, "6, 182, 212", "#06b6d4", es_emergente=True)
+    with st.expander("📊 Análisis de las Empresas Emergentes", expanded=False):
+        if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
+            render_analisis_completo(st.session_state.emergentes_resultados, WATCHLIST_EMERGENTES, es_emergente=True)
+        else:
+            render_empresa_descriptions(WATCHLIST_EMERGENTES, "6, 182, 212", "#06b6d4", es_emergente=True)
 
 
 # ============================================================================

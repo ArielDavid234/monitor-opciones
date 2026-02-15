@@ -1,7 +1,10 @@
 """
-Análisis de proyecciones fundamentales de empresas a 10 años.
+Análisis de proyecciones fundamentales y técnicas de empresas a 10 años.
+Combina análisis fundamental (valor intrínseco) y técnico (precio/volumen)
+para identificar oportunidades de compra o venta.
 """
 import logging
+import pandas as pd
 import yfinance as yf
 
 from config.constants import SCORE_THRESHOLD_ALTA, SCORE_THRESHOLD_MEDIA
@@ -86,6 +89,105 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
         if precio and target_mean:
             upside_pct = ((target_mean - precio) / precio) * 100
 
+        # === ANÁLISIS TÉCNICO (Precio, Indicadores, Volumen) ===
+        tecnico = {}
+        try:
+            hist = ticker.history(period="1y")
+            if not hist.empty and len(hist) >= 20:
+                close = hist['Close']
+                high = hist['High']
+                low = hist['Low']
+                volume = hist['Volume']
+
+                # — Medias Móviles (SMA 20, 50, 200) —
+                sma_20 = close.rolling(20).mean()
+                sma_50 = close.rolling(50).mean()
+                sma_200 = close.rolling(200).mean() if len(close) >= 200 else pd.Series([None] * len(close), index=close.index)
+
+                # — RSI (14 periodos) —
+                delta_price = close.diff()
+                gain = delta_price.where(delta_price > 0, 0).rolling(14).mean()
+                loss_val = (-delta_price.where(delta_price < 0, 0)).rolling(14).mean()
+                rs = gain / loss_val
+                rsi_series = 100 - (100 / (1 + rs))
+
+                # — ADX (14 periodos) — Fuerza de la tendencia
+                tr = pd.DataFrame({
+                    'hl': high - low,
+                    'hc': abs(high - close.shift(1)),
+                    'lc': abs(low - close.shift(1))
+                }).max(axis=1)
+                plus_dm = high.diff()
+                minus_dm = -low.diff()
+                plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
+                minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
+                atr_14 = tr.rolling(14).mean()
+                plus_di = 100 * (plus_dm.rolling(14).mean() / atr_14)
+                minus_di = 100 * (minus_dm.rolling(14).mean() / atr_14)
+                di_sum = plus_di + minus_di
+                di_sum = di_sum.replace(0, 1)  # evitar div/0
+                dx = 100 * abs(plus_di - minus_di) / di_sum
+                adx_series = dx.rolling(14).mean()
+
+                # — Valores actuales —
+                current = close.iloc[-1]
+                sma20_val = sma_20.iloc[-1] if pd.notna(sma_20.iloc[-1]) else 0
+                sma50_val = sma_50.iloc[-1] if pd.notna(sma_50.iloc[-1]) else 0
+                sma200_val = sma_200.iloc[-1] if pd.notna(sma_200.iloc[-1]) else 0
+                rsi_val = rsi_series.iloc[-1] if pd.notna(rsi_series.iloc[-1]) else 50
+                adx_val = adx_series.iloc[-1] if pd.notna(adx_series.iloc[-1]) else 0
+
+                # — Determinación de Tendencia —
+                if sma20_val > 0 and sma50_val > 0:
+                    if current > sma20_val and sma20_val > sma50_val:
+                        tendencia = "ALCISTA"
+                    elif current < sma20_val and sma20_val < sma50_val:
+                        tendencia = "BAJISTA"
+                    else:
+                        tendencia = "LATERAL"
+                else:
+                    tendencia = "N/D"
+
+                # — Análisis de Volumen —
+                avg_vol_20 = volume.rolling(20).mean().iloc[-1]
+                recent_vol = volume.tail(5).mean()
+                vol_ratio = round(recent_vol / avg_vol_20, 2) if avg_vol_20 > 0 else 1.0
+
+                # — Posición en rango de 52 semanas —
+                high_52 = close.max()
+                low_52 = close.min()
+                rango_pct = (current - low_52) / (high_52 - low_52) if (high_52 - low_52) > 0 else 0.5
+
+                # — Soporte y resistencia (aprox. últimos 20 días) —
+                soporte_20d = round(float(close.tail(20).min()), 2)
+                resistencia_20d = round(float(close.tail(20).max()), 2)
+
+                # — Datos para gráfico (últimos 90 días) —
+                chart_data = hist.tail(90)
+                tecnico = {
+                    "sma_20": round(float(sma20_val), 2),
+                    "sma_50": round(float(sma50_val), 2),
+                    "sma_200": round(float(sma200_val), 2),
+                    "rsi": round(float(rsi_val), 1),
+                    "adx": round(float(adx_val), 1),
+                    "tendencia": tendencia,
+                    "vol_avg_20d": int(avg_vol_20) if pd.notna(avg_vol_20) else 0,
+                    "vol_reciente": int(recent_vol) if pd.notna(recent_vol) else 0,
+                    "vol_ratio": vol_ratio,
+                    "rango_52w_pct": round(rango_pct * 100, 1),
+                    "soporte_20d": soporte_20d,
+                    "resistencia_20d": resistencia_20d,
+                    "chart_dates": [d.strftime('%Y-%m-%d') for d in chart_data.index],
+                    "chart_close": [round(float(v), 2) for v in chart_data['Close'].tolist()],
+                    "chart_volume": [int(v) for v in chart_data['Volume'].tolist()],
+                    "chart_sma20": [round(float(v), 2) if pd.notna(v) else None for v in sma_20.tail(90).tolist()],
+                    "chart_sma50": [round(float(v), 2) if pd.notna(v) else None for v in sma_50.tail(90).tolist()],
+                }
+                logger.info(f"{symbol}: Técnico OK — Tendencia={tendencia}, RSI={rsi_val:.1f}, ADX={adx_val:.1f}")
+        except Exception as e:
+            logger.warning(f"{symbol}: Error en análisis técnico: {e}")
+            tecnico = {}
+
         # === SCORE DE PROYECCIÓN (0-100) ===
         score = 0
         razones = []
@@ -159,6 +261,76 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
         else:
             clasificacion = "BAJA"
 
+        # === SCORE TÉCNICO (0-100) ===
+        score_tecnico = 0
+        señales_tecnicas = []
+        if tecnico:
+            t = tecnico
+            # 1. Tendencia (0-30 pts)
+            if t["tendencia"] == "ALCISTA":
+                score_tecnico += 30; señales_tecnicas.append("Tendencia alcista (precio > SMA20 > SMA50)")
+            elif t["tendencia"] == "LATERAL":
+                score_tecnico += 15; señales_tecnicas.append("Tendencia lateral / consolidación")
+            else:
+                score_tecnico += 5; señales_tecnicas.append("Tendencia bajista — precaución")
+
+            # 2. RSI (0-20 pts)
+            rsi_v = t["rsi"]
+            if 40 <= rsi_v <= 60:
+                score_tecnico += 20; señales_tecnicas.append(f"RSI {rsi_v:.0f} — zona neutral, buen punto de entrada")
+            elif 30 <= rsi_v < 40:
+                score_tecnico += 18; señales_tecnicas.append(f"RSI {rsi_v:.0f} — cerca de sobreventa, posible rebote")
+            elif rsi_v < 30:
+                score_tecnico += 15; señales_tecnicas.append(f"RSI {rsi_v:.0f} — SOBREVENTA, posible oportunidad")
+            elif 60 < rsi_v <= 70:
+                score_tecnico += 12; señales_tecnicas.append(f"RSI {rsi_v:.0f} — fuerza alcista moderada")
+            elif rsi_v > 70:
+                score_tecnico += 5; señales_tecnicas.append(f"RSI {rsi_v:.0f} — SOBRECOMPRA, riesgo de corrección")
+
+            # 3. ADX — fuerza de tendencia (0-20 pts)
+            adx_v = t["adx"]
+            if adx_v > 25:
+                score_tecnico += 20; señales_tecnicas.append(f"ADX {adx_v:.0f} — tendencia fuerte")
+            elif adx_v > 20:
+                score_tecnico += 15; señales_tecnicas.append(f"ADX {adx_v:.0f} — tendencia moderada")
+            elif adx_v > 15:
+                score_tecnico += 10; señales_tecnicas.append(f"ADX {adx_v:.0f} — tendencia débil")
+            else:
+                score_tecnico += 5; señales_tecnicas.append(f"ADX {adx_v:.0f} — sin tendencia clara")
+
+            # 4. Volumen (0-15 pts)
+            vr = t["vol_ratio"]
+            if vr > 1.5:
+                score_tecnico += 15; señales_tecnicas.append(f"Volumen +{(vr-1)*100:.0f}% vs promedio — interés alto")
+            elif vr > 1.1:
+                score_tecnico += 10; señales_tecnicas.append(f"Volumen +{(vr-1)*100:.0f}% vs promedio — actividad normal-alta")
+            elif vr > 0.8:
+                score_tecnico += 7; señales_tecnicas.append("Volumen en rango normal")
+            else:
+                score_tecnico += 3; señales_tecnicas.append(f"Volumen bajo ({vr:.0%} del promedio)")
+
+            # 5. Posición en rango 52 semanas (0-15 pts)
+            rp = t["rango_52w_pct"]
+            if 20 <= rp <= 60:
+                score_tecnico += 15; señales_tecnicas.append(f"Precio al {rp:.0f}% del rango 52s — zona de valor")
+            elif 60 < rp <= 80:
+                score_tecnico += 10; señales_tecnicas.append(f"Precio al {rp:.0f}% del rango 52s — fuerza")
+            elif rp > 80:
+                score_tecnico += 5; señales_tecnicas.append(f"Precio al {rp:.0f}% del rango 52s — cerca de máximos")
+            elif rp < 20:
+                score_tecnico += 8; señales_tecnicas.append(f"Precio al {rp:.0f}% del rango 52s — cerca de mínimos")
+
+        # === VEREDICTO COMBINADO ===
+        score_combinado = round((score * 0.55) + (score_tecnico * 0.45)) if tecnico else score
+        if score_combinado >= 70:
+            veredicto = "OPORTUNIDAD DE COMPRA"
+        elif score_combinado >= 50:
+            veredicto = "CONSIDERAR — Vigilar entrada"
+        elif score_combinado >= 35:
+            veredicto = "MANTENER / ESPERAR"
+        else:
+            veredicto = "PRECAUCIÓN — No recomendado"
+
         return {
             "symbol": symbol,
             "nombre": nombre,
@@ -175,6 +347,7 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
             "trailing_pe": trailing_pe or 0,
             "peg_ratio": peg_ratio or 0,
             "price_to_sales": price_to_sales or 0,
+            "revenue": revenue or 0,
             "target_mean": target_mean or 0,
             "target_high": target_high or 0,
             "target_low": target_low or 0,
@@ -182,12 +355,18 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
             "recommendation": recommendation,
             "num_analysts": num_analysts or 0,
             "free_cashflow": free_cashflow or 0,
+            "operating_cashflow": operating_cashflow or 0,
             "beta": beta or 0,
             "fifty_two_high": fifty_two_high or 0,
             "fifty_two_low": fifty_two_low or 0,
             "score": score,
+            "score_tecnico": score_tecnico,
+            "score_combinado": score_combinado,
             "clasificacion": clasificacion,
             "razones": razones,
+            "señales_tecnicas": señales_tecnicas,
+            "veredicto": veredicto if tecnico else clasificacion,
+            "tecnico": tecnico,
         }, None
 
     except Exception as e:
