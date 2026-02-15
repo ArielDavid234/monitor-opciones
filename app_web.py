@@ -446,6 +446,7 @@ _DEFAULTS = {
     "todas_las_fechas": [],
     "rango_resultado": None,
     "rango_error": None,
+    "scanning_active": False,
     "noticias_data": [],
     "noticias_last_refresh": None,
     "barchart_data": None,
@@ -612,9 +613,10 @@ if pagina == "🔍 Live Scanning":
     col_btn1, col_btn2 = st.columns([1, 1])
 
     with col_btn1:
-        scan_btn = st.button("🚀 Escanear Ahora", type="primary", use_container_width=True)
+        scan_btn = st.button("🚀 Escanear Ahora", type="primary", use_container_width=True,
+                                disabled=st.session_state.scanning_active)
     with col_btn2:
-        auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)")
+        auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)", disabled=st.session_state.scanning_active)
 
     if st.session_state.last_scan_time:
         st.markdown(
@@ -636,6 +638,7 @@ if pagina == "🔍 Live Scanning":
         st.session_state.trigger_scan = False
 
     if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
+        st.session_state.scanning_active = True
         with st.status("🔍 Escaneando opciones...", expanded=True) as status:
             st.write(f"Creando sesión TLS anti-ban...")
             st.write(f"Descargando cadena de opciones de **{ticker_symbol}**...")
@@ -701,6 +704,7 @@ if pagina == "🔍 Live Scanning":
                     label=f"✅ Escaneo completado — {n_alertas} alertas en {n_opciones:,} opciones",
                     state="complete",
                 )
+        st.session_state.scanning_active = False
 
     st.session_state.auto_scan = auto_scan
 
@@ -3149,9 +3153,11 @@ elif pagina == "📐 Range":
             )
     with col_r3:
         st.markdown("<br>", unsafe_allow_html=True)
-        calc_btn = st.button("📐 Calcular Rango", type="primary", use_container_width=True)
+        calc_btn = st.button("📐 Calcular Rango", type="primary", use_container_width=True,
+                                disabled=st.session_state.scanning_active)
 
     if calc_btn:
+        st.session_state.scanning_active = True
         with st.spinner(f"Calculando rango esperado para {rango_symbol} al {rango_exp_date}..."):
             resultado, error = calcular_rango_esperado(
                 rango_symbol, rango_exp_date,
@@ -3159,6 +3165,7 @@ elif pagina == "📐 Range":
             )
         st.session_state.rango_resultado = resultado
         st.session_state.rango_error = error
+        st.session_state.scanning_active = False
 
     if st.session_state.rango_error:
         st.error(f"❌ {st.session_state.rango_error}")
@@ -3305,6 +3312,7 @@ elif pagina == "🏢 Important Companies":
             type="primary",
             use_container_width=True,
             key="btn_analizar_consolidadas",
+            disabled=st.session_state.scanning_active,
         )
     with col_info_c:
         if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
@@ -3313,7 +3321,9 @@ elif pagina == "🏢 Important Companies":
             st.caption("Presiona para obtener métricas financieras en tiempo real de Yahoo Finance.")
 
     if analizar_consol_btn:
+        st.session_state.scanning_active = True
         analizar_watchlist(WATCHLIST_EMPRESAS, "proyecciones_resultados", "consolidadas")
+        st.session_state.scanning_active = False
 
     if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
         resultados = st.session_state.proyecciones_resultados
@@ -3364,6 +3374,7 @@ elif pagina == "🏢 Important Companies":
             type="primary",
             use_container_width=True,
             key="btn_analizar_emergentes",
+            disabled=st.session_state.scanning_active,
         )
     with col_info_e:
         if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
@@ -3372,7 +3383,9 @@ elif pagina == "🏢 Important Companies":
             st.caption("Presiona para obtener métricas financieras en tiempo real de Yahoo Finance.")
 
     if analizar_emerg_btn:
+        st.session_state.scanning_active = True
         analizar_watchlist(WATCHLIST_EMERGENTES, "emergentes_resultados", "emergentes")
+        st.session_state.scanning_active = False
 
     if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
         resultados_em = st.session_state.emergentes_resultados
