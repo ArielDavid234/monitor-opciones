@@ -491,12 +491,16 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     # -- Menú de navegación con emojis --
+    if st.session_state.scanning_active:
+        st.warning("⏳ **Escaneo en progreso...** La navegación está bloqueada temporalmente.")
+    
     pagina = st.radio(
         "Navegación",
         ["🔍 Live Scanning", "📊 Open Interest", "📈 Data Analysis",
          "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News & Calendar", "📋 Reports"],
         index=0,
         label_visibility="collapsed",
+        disabled=st.session_state.scanning_active,
     )
 
     st.markdown("---")
@@ -541,6 +545,7 @@ ticker_symbol = st.text_input(
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
     placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
     label_visibility="collapsed",
+    disabled=st.session_state.scanning_active,
 ).strip().upper()
 
 # Detectar cambio de ticker → auto-escanear
@@ -573,6 +578,45 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# Mostrar overlay de bloqueo cuando hay escaneo activo
+if st.session_state.scanning_active:
+    st.markdown("""
+        <div style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+        ">
+            <div style="
+                text-align: center;
+                color: white;
+                padding: 3rem;
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                border-radius: 16px;
+                border: 2px solid #00ff88;
+                box-shadow: 0 0 40px rgba(0, 255, 136, 0.3);
+            ">
+                <div style="font-size: 64px; margin-bottom: 1rem; animation: pulse 2s infinite;">⏳</div>
+                <h2 style="color: #00ff88; margin: 0 0 0.5rem 0; font-size: 28px;">Escaneo en Progreso</h2>
+                <p style="color: #94a3b8; font-size: 16px; margin: 0;">Por favor espera mientras se completa el análisis...</p>
+                <p style="color: #64748b; font-size: 14px; margin-top: 1rem;">La aplicación está temporalmente bloqueada</p>
+            </div>
+        </div>
+        <style>
+            @keyframes pulse {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.7; transform: scale(1.1); }
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
 # ============================================================================
 #                    NAVEGACIÓN POR RADIO (SIDEBAR)
