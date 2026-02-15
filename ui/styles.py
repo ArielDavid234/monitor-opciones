@@ -337,6 +337,7 @@ CSS_STYLES = """
         font-family: var(--font-mono);
         line-height: 1.15;
         letter-spacing: -0.02em;
+        white-space: nowrap;
     }
     .ok-metric-delta {
         font-size: 0.8rem;

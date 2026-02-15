@@ -491,15 +491,15 @@ with st.sidebar:
     # -- Menú de navegación con emojis --
     pagina = st.radio(
         "Navegación",
-        ["🔍 Escaneo en Vivo", "📊 Open Interest", "📈 Análisis de Datos",
-         "📋 Reports", "⭐ Favorites", "📐 Range", "📰 News & Calendar", "🏢 Important Companies"],
+        ["🔍 Live Scanning", "📊 Open Interest", "📈 Data Analysis",
+         "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News & Calendar", "📋 Reports"],
         index=0,
         label_visibility="collapsed",
     )
 
     st.markdown("---")
 
-    # Valores por defecto de umbrales (se configuran en Escaneo en Vivo)
+    # Valores por defecto de umbrales (se configuran en Live Scanning)
     if "umbral_vol" not in st.session_state:
         st.session_state.umbral_vol = DEFAULT_MIN_VOLUME
     if "umbral_oi" not in st.session_state:
@@ -582,9 +582,9 @@ umbral_prima = st.session_state.umbral_prima
 umbral_filtro = st.session_state.umbral_filtro
 
 # ============================================================================
-#   🔍 ESCANEO EN VIVO
+#   🔍 LIVE SCANNING
 # ============================================================================
-if pagina == "🔍 Escaneo en Vivo":
+if pagina == "🔍 Live Scanning":
 
     # --- Umbrales de filtrado ---
     with st.expander("📊 Umbrales de Filtrado", expanded=False):
@@ -1464,7 +1464,7 @@ elif pagina == "📊 Open Interest":
             else:
                 st.info("Sin contratos con OI Chg negativo.")
     elif st.session_state.scan_count == 0:
-        st.info("⏳ **Ejecutá un escaneo** en 🔍 Escaneo en Vivo para cargar los datos de Open Interest automáticamente.")
+        st.info("⏳ **Ejecutá un escaneo** en 🔍 Live Scanning para cargar los datos de Open Interest automáticamente.")
 
 
 # ============================================================================
@@ -2035,10 +2035,10 @@ elif pagina == "📋 Reports":
 
 
 # ============================================================================
-#   � ANÁLISIS DE DATOS
+#   📈 DATA ANALYSIS
 # ============================================================================
-elif pagina == "📈 Análisis de Datos":
-    st.markdown("### 📈 Análisis de Datos")
+elif pagina == "📈 Data Analysis":
+    st.markdown("### 📈 Data Analysis")
 
     if not st.session_state.datos_completos:
         st.info("Ejecuta un escaneo primero para ver los análisis.")
@@ -2449,7 +2449,7 @@ elif pagina == "📈 Análisis de Datos":
         )
 
         st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
-        oi_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
+        oi_cols = ["Vencimiento", "Tipo", "Strike", "OI", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
         top_oi = (
             df_analisis.nlargest(20, "OI")[[c for c in oi_cols if c in df_analisis.columns]]
             .reset_index(drop=True)
@@ -2582,7 +2582,7 @@ elif pagina == "⭐ Favorites":
         """
         <div style="background: rgba(250, 204, 21, 0.06); border: 1px solid rgba(250, 204, 21, 0.15); 
              border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #fde68a;">
-            📌 <b>Contratos guardados para seguimiento.</b> Marcá cualquier contrato como favorito desde las alertas del Escaneo en Vivo. 
+            📌 <b>Contratos guardados para seguimiento.</b> Marcá cualquier contrato como favorito desde las alertas del Live Scanning. 
             Se guardan entre sesiones y se eliminan automáticamente cuando expiran.
         </div>
         """,
