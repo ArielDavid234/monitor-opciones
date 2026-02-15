@@ -96,12 +96,12 @@ def _fmt_oi_chg(x):
 def _fmt_lado(lado):
     """Formatea el lado de ejecución con emoji indicador."""
     if lado == "Ask":
-        return "­ƒƒó Ask"   # Compra agresiva
+        return "🟢 Ask"   # Compra agresiva
     elif lado == "Bid":
-        return "­ƒö┤ Bid"   # Venta agresiva
+        return "🔴 Bid"   # Venta agresiva
     elif lado == "Mid":
-        return "ÔÜ¬ Mid"
-    return "Ô×û N/A"
+        return "⚪ Mid"
+    return "➖ N/A"
 
 
 def determinar_sentimiento(tipo_opcion, lado):
@@ -120,15 +120,15 @@ def determinar_sentimiento(tipo_opcion, lado):
         tuple: (sentimiento_texto, emoji, color_hex)
     """
     if tipo_opcion == "CALL" and lado == "Ask":
-        return "ALCISTA", "­ƒƒó", "#10b981"
+        return "ALCISTA", "🟢", "#10b981"
     elif tipo_opcion == "PUT" and lado == "Bid":
-        return "ALCISTA", "­ƒƒó", "#10b981"
+        return "ALCISTA", "🟢", "#10b981"
     elif tipo_opcion == "PUT" and lado == "Ask":
-        return "BAJISTA", "­ƒö┤", "#ef4444"
+        return "BAJISTA", "🔴", "#ef4444"
     elif tipo_opcion == "CALL" and lado == "Bid":
-        return "BAJISTA", "­ƒö┤", "#ef4444"
+        return "BAJISTA", "🔴", "#ef4444"
     else:
-        return "NEUTRAL", "ÔÜ¬", "#94a3b8"
+        return "NEUTRAL", "⚪", "#94a3b8"
 
 
 # ============================================================================
@@ -228,7 +228,7 @@ def _inyectar_oi_chg_barchart():
     if bc is None or bc.empty:
         return
 
-    # Crear mapa (Vencimiento, Tipo, Strike) ÔåÆ OI_Chg de Barchart
+    # Crear mapa (Vencimiento, Tipo, Strike) → OI_Chg de Barchart
     bc_map = {}
     for _, row in bc.iterrows():
         tipo = row.get("Tipo", "")
@@ -496,7 +496,7 @@ with st.sidebar:
         st.markdown("""
             <div style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
                         border-radius: 12px; border: 2px solid #00ff88; margin: 1rem 0;">
-                <div style="font-size: 48px; margin-bottom: 1rem; animation: pulse 2s infinite;">ÔÅ│</div>
+                <div style="font-size: 48px; margin-bottom: 1rem; animation: pulse 2s infinite;">⏳</div>
                 <h3 style="color: #00ff88; margin: 0 0 0.5rem 0;">Escaneo Activo</h3>
                 <p style="color: #94a3b8; font-size: 14px; margin: 0;">
                     El panel estí bloqueado hasta que finalice el anílisis
@@ -513,8 +513,8 @@ with st.sidebar:
         # -- Menú de navegación con emojis --
         pagina = st.radio(
             "Navegación",
-            ["­ƒöì Live Scanning", "­ƒôè Open Interest", "­ƒôê Data Analysis",
-             "­ƒôÉ Range", "Ô¡É Favorites", "­ƒÅó Important Companies", "­ƒô░ News & Calendar", "­ƒôï Reports"],
+            ["🔍 Live Scanning", "📊 Open Interest", "📈 Data Analysis",
+             "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News & Calendar", "📋 Reports"],
             index=0,
             label_visibility="collapsed",
         )
@@ -528,7 +528,7 @@ with st.sidebar:
             'display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#0f172a;'
             'margin-bottom:8px;box-shadow:0 0 16px rgba(0,255,136,0.2);">AD</div>'
             '<div style="color:white;font-weight:600;font-size:0.9rem;">Ariel David</div>'
-            '<div style="color:#64748b;font-size:0.75rem;">ÔùÅ Pro Plan</div>'
+            '<div style="color:#64748b;font-size:0.75rem;">● Pro Plan</div>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -554,7 +554,7 @@ rango_delta = st.session_state.rango_delta
 
 # Obtener pígina actual (con fallback si scanning_active bloqueó el radio)
 if "current_page" not in st.session_state:
-    st.session_state.current_page = "­ƒöì Live Scanning"
+    st.session_state.current_page = "🔍 Live Scanning"
 if not st.session_state.scanning_active:
     st.session_state.current_page = pagina
 pagina = st.session_state.current_page
@@ -564,14 +564,14 @@ pagina = st.session_state.current_page
 # ============================================================================
 # Header superior: ticker input
 ticker_symbol = st.text_input(
-    "­ƒöì Símbolo del Ticker", value="SPY", max_chars=10,
+    "🔍 Símbolo del Ticker", value="SPY", max_chars=10,
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
     placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
     label_visibility="collapsed",
     disabled=st.session_state.scanning_active,
 ).strip().upper()
 
-# Detectar cambio de ticker ÔåÆ auto-escanear
+# Detectar cambio de ticker → auto-escanear
 if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
     st.session_state.ticker_anterior = ticker_symbol
     st.session_state.alertas_actuales = []
@@ -592,11 +592,11 @@ if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
 st.markdown(
     f"""
     <div class="scanner-header">
-        <h1>­ƒææ OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
+        <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
         <p class="subtitle">
             Escíner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
         </p>
-        <span class="badge">ÔùÅ LIVE ÔÇó Anílisis Avanzado</span>
+        <span class="badge">● LIVE • Anílisis Avanzado</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -612,26 +612,26 @@ umbral_prima = st.session_state.umbral_prima
 umbral_filtro = st.session_state.umbral_filtro
 
 # ============================================================================
-#   ­ƒöì LIVE SCANNING
+#   🔍 LIVE SCANNING
 # ============================================================================
-if pagina == "­ƒöì Live Scanning":
+if pagina == "🔍 Live Scanning":
 
     # --- Umbrales de filtrado ---
-    with st.expander("­ƒôè Umbrales de Filtrado", expanded=False):
+    with st.expander("📊 Umbrales de Filtrado", expanded=False):
         _umb_c1, _umb_c2, _umb_c3, _umb_c4 = st.columns(4)
         with _umb_c1:
             umbral_vol = st.number_input("Volumen mínimo", value=st.session_state.umbral_vol, step=1_000, format="%d",
-                                          help="Solo muestra contratos con volumen ÔëÑ este valor", key="inp_umbral_vol")
+                                          help="Solo muestra contratos con volumen ≥ este valor", key="inp_umbral_vol")
         with _umb_c2:
             umbral_oi = st.number_input("Open Interest mínimo", value=st.session_state.umbral_oi, step=1_000, format="%d",
-                                         help="Solo muestra contratos con OI ÔëÑ este valor", key="inp_umbral_oi")
+                                         help="Solo muestra contratos con OI ≥ este valor", key="inp_umbral_oi")
         with _umb_c3:
             umbral_prima = st.number_input("Prima Total mínima ($)", value=st.session_state.umbral_prima, step=500_000, format="%d",
                                             help="Prima Total = Volumen × Precio × 100", key="inp_umbral_prima")
         with _umb_c4:
             umbral_filtro = st.number_input("Filtro rípido (vol/oi mín.)", value=st.session_state.umbral_filtro, step=100, format="%d",
                                              help="Ignora opciones con vol Y oi debajo de este umbral", key="inp_umbral_filtro")
-        st.caption("­ƒÆí **Prima Total** = Volumen × Precio × 100 — Flujo de dinero total del contrato basado en el volumen del día.")
+        st.caption("💡 **Prima Total** = Volumen × Precio × 100 — Flujo de dinero total del contrato basado en el volumen del día.")
         # Guardar en session_state para persistir entre píginas
         st.session_state.umbral_vol = umbral_vol
         st.session_state.umbral_oi = umbral_oi
@@ -641,10 +641,10 @@ if pagina == "­ƒöì Live Scanning":
     col_btn1, col_btn2 = st.columns([1, 1])
 
     with col_btn1:
-        scan_btn = st.button("­ƒÜÇ Escanear Ahora", type="primary", use_container_width=True,
+        scan_btn = st.button("🚀 Escanear Ahora", type="primary", use_container_width=True,
                                 disabled=st.session_state.scanning_active)
     with col_btn2:
-        auto_scan = st.checkbox("­ƒöä Auto-escaneo (5 min)", disabled=st.session_state.scanning_active)
+        auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)", disabled=st.session_state.scanning_active)
 
     if st.session_state.last_scan_time:
         st.markdown(
@@ -667,7 +667,7 @@ if pagina == "­ƒöì Live Scanning":
 
     if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
         st.session_state.scanning_active = True
-        with st.status("­ƒöì Escaneando opciones...", expanded=True) as status:
+        with st.status("🔍 Escaneando opciones...", expanded=True) as status:
             st.write(f"Creando sesión TLS anti-ban...")
             st.write(f"Descargando cadena de opciones de **{ticker_symbol}**...")
             st.write(f"Analizando **todas** las fechas de vencimiento disponibles...")
@@ -687,7 +687,7 @@ if pagina == "­ƒöì Live Scanning":
             )
 
             if error:
-                status.update(label=f"ÔØî Error: {error}", state="error")
+                status.update(label=f"❌ Error: {error}", state="error")
                 st.session_state.scan_error = error
             else:
                 st.session_state.alertas_actuales = alertas
@@ -729,7 +729,7 @@ if pagina == "­ƒöì Live Scanning":
                 st.session_state.clusters_detectados = clusters
 
                 status.update(
-                    label=f"Ô£à Escaneo completado — {n_alertas} alertas en {n_opciones:,} opciones",
+                    label=f"✅ Escaneo completado — {n_alertas} alertas en {n_opciones:,} opciones",
                     state="complete",
                 )
         st.session_state.scanning_active = False
@@ -738,7 +738,7 @@ if pagina == "­ƒöì Live Scanning":
 
     # --- Mîtricas rípidas ---
     if st.session_state.datos_completos:
-        st.markdown("### ­ƒôè Mîtricas del Escaneo")
+        st.markdown("### 📊 Mîtricas del Escaneo")
         datos_df = pd.DataFrame(st.session_state.datos_completos)
         _n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
         _n_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
@@ -765,21 +765,21 @@ if pagina == "­ƒöì Live Scanning":
 
     # --- Mostrar alertas ---
     if st.session_state.alertas_actuales:
-        st.markdown("### ­ƒÜ¿ Alertas Detectadas")
+        st.markdown("### 🚨 Alertas Detectadas")
 
         st.markdown(
             """
             <div class="leyenda-colores">
-                <div style="font-weight: 600; color: #f1f5f9; margin-bottom: 8px; font-size: 0.9rem;">­ƒÄ¿ Guía de Prioridades</div>
-                <span class="leyenda-item"><span class="dot-green">ÔùÅ</span> <b>VERDE</b> — Mayor prima detectada. Míxima atención: contrato con mís dinero en juego.</span>
-                <span class="leyenda-item"><span class="dot-red">ÔùÅ</span> <b>ROJO</b> — Actividad institucional. Vol <u>y</u> OI superan umbrales + prima alta.</span>
-                <span class="leyenda-item"><span class="dot-orange">ÔùÅ</span> <b>NARANJA</b> — Actividad notable. Vol y OI superan umbrales.</span>
-                <span class="leyenda-item"><span class="dot-purple">ÔùÅ</span> <b>MORADO</b> — Compra continua. Múltiples contratos similares cerca del umbral = posible mismo comprador institucional.</span>
+                <div style="font-weight: 600; color: #f1f5f9; margin-bottom: 8px; font-size: 0.9rem;">🎨 Guía de Prioridades</div>
+                <span class="leyenda-item"><span class="dot-green">●</span> <b>VERDE</b> — Mayor prima detectada. Míxima atención: contrato con mís dinero en juego.</span>
+                <span class="leyenda-item"><span class="dot-red">●</span> <b>ROJO</b> — Actividad institucional. Vol <u>y</u> OI superan umbrales + prima alta.</span>
+                <span class="leyenda-item"><span class="dot-orange">●</span> <b>NARANJA</b> — Actividad notable. Vol y OI superan umbrales.</span>
+                <span class="leyenda-item"><span class="dot-purple">●</span> <b>MORADO</b> — Compra continua. Múltiples contratos similares cerca del umbral = posible mismo comprador institucional.</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.info("­ƒÆí **Prima Total** = Volumen × Precio × 100 — Representa el flujo de dinero total del contrato basado en el volumen transaccionado del día (no del Open Interest).")
+        st.info("💡 **Prima Total** = Volumen × Precio × 100 — Representa el flujo de dinero total del contrato basado en el volumen transaccionado del día (no del Open Interest).")
 
         alertas_sorted = sorted(
             st.session_state.alertas_actuales,
@@ -795,15 +795,15 @@ if pagina == "­ƒöì Live Scanning":
             es_top = (prima_mayor == max_prima) and (i == 0)
             if es_top:
                 css_class = "alerta-top"
-                emoji = "­ƒƒó"
+                emoji = "🟢"
                 etiqueta = "MAYOR PRIMA"
             elif tipo == "PRINCIPAL":
                 css_class = "alerta-principal"
-                emoji = "­ƒö┤"
+                emoji = "🔴"
                 etiqueta = "ACTIVIDAD INSTITUCIONAL"
             else:
                 css_class = "alerta-prima"
-                emoji = "­ƒƒá"
+                emoji = "🟠"
                 etiqueta = "PRIMA ALTA"
 
             # Determinar sentimiento para colorear
@@ -813,13 +813,13 @@ if pagina == "­ƒöì Live Scanning":
 
             razones = []
             if alerta["Volumen"] >= umbral_vol:
-                razones.append(f"Vol {alerta['Volumen']:,} ÔëÑ {umbral_vol:,}")
+                razones.append(f"Vol {alerta['Volumen']:,} ≥ {umbral_vol:,}")
             if alerta["OI"] >= umbral_oi:
-                razones.append(f"OI {alerta['OI']:,} ÔëÑ {umbral_oi:,}")
+                razones.append(f"OI {alerta['OI']:,} ≥ {umbral_oi:,}")
             if alerta["Prima_Volumen"] >= umbral_prima:
-                razones.append(f"Prima Total ${alerta['Prima_Volumen']:,.0f} ÔëÑ ${umbral_prima:,.0f}")
+                razones.append(f"Prima Total ${alerta['Prima_Volumen']:,.0f} ≥ ${umbral_prima:,.0f}")
             if es_top:
-                razones.insert(0, f"­ƒÆ░ Mayor prima del escaneo: ${prima_mayor:,.0f}")
+                razones.insert(0, f"💰 Mayor prima del escaneo: ${prima_mayor:,.0f}")
             razon_html = " | ".join(razones)
 
             prima_vol_fmt = f"${alerta['Prima_Volumen']:,.0f}"
@@ -832,10 +832,10 @@ if pagina == "­ƒöì Live Scanning":
             )
 
             with st.expander(expander_label, expanded=False):
-                # Ô¡É Botón de favorito rípido (arriba del detalle)
+                # ⭐ Botón de favorito rípido (arriba del detalle)
                 if contract_sym_card:
                     ya_fav_top = _es_favorito(contract_sym_card)
-                    star_icon = "Ô¡É" if ya_fav_top else "Ôÿå"
+                    star_icon = "⭐" if ya_fav_top else "☆"
                     star_label = f"{star_icon} Favorito" if ya_fav_top else f"{star_icon} Marcar Favorito"
                     col_star, _ = st.columns([1, 4])
                     with col_star:
@@ -878,7 +878,7 @@ if pagina == "­ƒöì Live Scanning":
                         Prima Total: <b>{prima_vol_fmt}</b> |
                         Ask: ${alerta['Ask']} | Bid: ${alerta['Bid']} | Último: ${alerta['Ultimo']} |
                         <b>Lado: {_fmt_lado(alerta.get('Lado', 'N/A'))}</b><br>
-                        <span class="razon-alerta">­ƒôî {razon_html}</span>
+                        <span class="razon-alerta">📌 {razon_html}</span>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -903,7 +903,7 @@ if pagina == "­ƒöì Live Scanning":
 
                         # Botón de favorito
                         ya_fav = _es_favorito(contract_sym_card)
-                        btn_label = "Ô¡É Ya en Favoritos" if ya_fav else "Ôÿå Guardar en Favoritos"
+                        btn_label = "⭐ Ya en Favoritos" if ya_fav else "☆ Guardar en Favoritos"
                         if st.button(btn_label, key=f"fav_btn_{i}_{contract_sym_card}", disabled=ya_fav, use_container_width=True):
                             fav_data = {
                                 "Contrato": contract_sym_card,
@@ -923,7 +923,7 @@ if pagina == "­ƒöì Live Scanning":
                                 "Tipo_Alerta": alerta["Tipo_Alerta"],
                             }
                             if _agregar_favorito(fav_data):
-                                st.success(f"Ô¡É {contract_sym_card} guardado en Favoritos")
+                                st.success(f"⭐ {contract_sym_card} guardado en Favoritos")
                                 st.rerun()
 
                     with col_chart:
@@ -931,9 +931,9 @@ if pagina == "­ƒöì Live Scanning":
                             hist_df_card, hist_err_card = obtener_historial_contrato(contract_sym_card)
 
                         if hist_err_card:
-                            st.warning(f"ÔÜá´©Å Error al cargar historial: {hist_err_card}")
+                            st.warning(f"⚠️ Error al cargar historial: {hist_err_card}")
                         elif hist_df_card.empty:
-                            st.info("Ôä╣´©Å No hay datos históricos disponibles para este contrato.")
+                            st.info("ℹ️ No hay datos históricos disponibles para este contrato.")
                         else:
                             st.markdown(f"**Precio del contrato** — `{contract_sym_card}`")
                             chart_price = hist_df_card[["Close"]].copy()
@@ -945,7 +945,7 @@ if pagina == "­ƒöì Live Scanning":
                                 chart_vol.columns = ["Volumen"]
                                 st.bar_chart(chart_vol, height=180)
 
-                            with st.expander("­ƒùô´©Å Datos históricos completos"):
+                            with st.expander("🗓️ Datos históricos completos"):
                                 display_hist = hist_df_card.copy()
                                 display_hist.index = display_hist.index.strftime("%Y-%m-%d %H:%M")
                                 for col in ["Open", "High", "Low", "Close"]:
@@ -955,9 +955,9 @@ if pagina == "­ƒöì Live Scanning":
                                         )
                                 st.dataframe(display_hist, width="stretch", hide_index=False)
                 else:
-                    st.info("Ôä╣´©Å No se encontró el símbolo del contrato.")
+                    st.info("ℹ️ No se encontró el símbolo del contrato.")
 
-        # ÔöÇÔöÇ Two-column dashboard layout ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+        # ── Two-column dashboard layout ──────────────────────────────
         alertas_df = pd.DataFrame(alertas_sorted)
 
         def asignar_prioridad(row):
@@ -985,14 +985,14 @@ if pagina == "­ƒöì Live Scanning":
 
         _col_left, _col_right = st.columns([1, 1], gap="medium")
 
-        # ÔöÇÔöÇ LEFT COLUMN: Unusual Activity + Net Flow + Clusters ÔöÇÔöÇ
+        # ── LEFT COLUMN: Unusual Activity + Net Flow + Clusters ──
         with _col_left:
             st.markdown(
                 render_pro_table(
                     _tbl_df,
-                    title="­ƒôï Unusual Activity — Alertas",
+                    title="📋 Unusual Activity — Alertas",
                     badge_count=f"{len(_tbl_df)} alertas",
-                    footer_text=f"Ordenadas por prima ┬À {len(_tbl_df)} resultados",
+                    footer_text=f"Ordenadas por prima · {len(_tbl_df)} resultados",
                     special_format={"Prioridad": _priority_badge},
                 ),
                 unsafe_allow_html=True,
@@ -1035,11 +1035,11 @@ if pagina == "­ƒöì Live Scanning":
 
             # --- CLUSTERS ---
             if st.session_state.clusters_detectados:
-                st.markdown("#### ­ƒöù Compras Continuas")
+                st.markdown("#### 🔗 Compras Continuas")
                 st.markdown(
                     '<div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);'
                     'border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:0.78rem;color:#c4b5fd;">'
-                    'ÔÜá´©Å <b>Actividad institucional fragmentada</b> — Múltiples contratos similares con strikes '
+                    '⚠️ <b>Actividad institucional fragmentada</b> — Múltiples contratos similares con strikes '
                     'cercanos y primas cerca del umbral.</div>',
                     unsafe_allow_html=True,
                 )
@@ -1052,7 +1052,7 @@ if pagina == "­ƒöì Live Scanning":
                     )
                     st.markdown(
                         f'<div class="alerta-cluster">'
-                        f'<strong>­ƒƒú COMPRA CONTINUA</strong> '
+                        f'<strong>🟣 COMPRA CONTINUA</strong> '
                         f'<span class="cluster-badge">{cluster["Contratos"]} contratos</span><br>'
                         f'<b>{cluster["Tipo_Opcion"]}</b> | Venc: <b>{cluster["Vencimiento"]}</b> | '
                         f'Rango: <b>{rango_str}</b><br>'
@@ -1074,16 +1074,16 @@ if pagina == "­ƒöì Live Scanning":
                         })
                     st.markdown(
                         render_pro_table(pd.DataFrame(clusters_table),
-                                         title="­ƒöù Clusters Detectados",
+                                         title="🔗 Clusters Detectados",
                                          badge_count=f"{len(clusters_table)}"),
                         unsafe_allow_html=True,
                     )
 
-        # ÔöÇÔöÇ RIGHT COLUMN: Options Flow Screener ÔöÇÔöÇ
+        # ── RIGHT COLUMN: Options Flow Screener ──
         with _col_right:
             st.markdown(
                 '<div style="font-size:1.05rem;font-weight:700;color:#e2e8f0;margin-bottom:8px;">'
-                '­ƒöì Options Flow Screener</div>',
+                '🔍 Options Flow Screener</div>',
                 unsafe_allow_html=True,
             )
             if st.session_state.datos_completos:
@@ -1130,13 +1130,13 @@ if pagina == "­ƒöì Live Scanning":
                 st.info("Ejecuta un escaneo para ver el flujo de opciones.")
 
     elif st.session_state.scan_count > 0 and not st.session_state.scan_error:
-        st.success("Ô£à Sin alertas relevantes en este ciclo.")
+        st.success("✅ Sin alertas relevantes en este ciclo.")
 
     # --- Options Flow Screener (when no alerts but data exists) ---
     if not st.session_state.alertas_actuales and st.session_state.datos_completos:
         st.markdown(
             '<div style="font-size:1.05rem;font-weight:700;color:#e2e8f0;margin-bottom:8px;">'
-            '­ƒöì Options Flow Screener</div>',
+            '🔍 Options Flow Screener</div>',
             unsafe_allow_html=True,
         )
         datos_df = pd.DataFrame(st.session_state.datos_completos)
@@ -1183,7 +1183,7 @@ if pagina == "­ƒöì Live Scanning":
     # --- Datos del Último Escaneo ---
     if st.session_state.datos_completos:
         st.markdown("---")
-        st.markdown("#### ­ƒôè Datos del Último Escaneo")
+        st.markdown("#### 📊 Datos del Último Escaneo")
         datos_df_esc = pd.DataFrame(st.session_state.datos_completos)
         _a_calls = len(datos_df_esc[datos_df_esc["Tipo"] == "CALL"])
         _a_puts = len(datos_df_esc[datos_df_esc["Tipo"] == "PUT"])
@@ -1201,7 +1201,7 @@ if pagina == "­ƒöì Live Scanning":
             render_metric_card("Clusters", f"{_a_clusters}"),
         ]), unsafe_allow_html=True)
 
-        with st.expander("­ƒöì Ver todas las opciones escaneadas", expanded=False):
+        with st.expander("🔍 Ver todas las opciones escaneadas", expanded=False):
             datos_enriquecidos = _enriquecer_datos_opcion(
                 st.session_state.datos_completos,
                 precio_subyacente=st.session_state.get('precio_subyacente')
@@ -1238,7 +1238,7 @@ if pagina == "­ƒöì Live Scanning":
 
             csv_enriquecido = pd.DataFrame(datos_enriquecidos).to_csv(index=False).encode("utf-8")
             st.download_button(
-                "­ƒôê Descargar Datos Enriquecidos (CSV)",
+                "📈 Descargar Datos Enriquecidos (CSV)",
                 csv_enriquecido,
                 f"opciones_enriquecidas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 "text/csv",
@@ -1248,7 +1248,7 @@ if pagina == "­ƒöì Live Scanning":
 
         # --- Clusters de Compra Continua ---
         if st.session_state.clusters_detectados:
-            st.markdown("##### ­ƒöù Clusters de Compra Continua")
+            st.markdown("##### 🔗 Clusters de Compra Continua")
             clusters_table_esc = []
             for c in st.session_state.clusters_detectados:
                 clusters_table_esc.append({
@@ -1264,7 +1264,7 @@ if pagina == "­ƒöì Live Scanning":
                 })
             st.markdown(
                 render_pro_table(pd.DataFrame(clusters_table_esc),
-                                 title="­ƒöù Clusters de Compra Continua",
+                                 title="🔗 Clusters de Compra Continua",
                                  badge_count=f"{len(clusters_table_esc)}"),
                 unsafe_allow_html=True,
             )
@@ -1280,7 +1280,7 @@ if pagina == "­ƒöì Live Scanning":
             placeholder.markdown(
                 f'<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;'
                 f'padding:10px 18px;display:flex;align-items:center;gap:12px;font-size:0.85rem;">'
-                f'<span style="color:#00ff88;font-size:1.1rem;">­ƒöä</span>'
+                f'<span style="color:#00ff88;font-size:1.1rem;">🔄</span>'
                 f'<span style="color:#94a3b8;">Próximo escaneo en</span>'
                 f'<span style="color:#ffffff;font-weight:700;font-family:JetBrains Mono,monospace;">'
                 f'{mins}:{secs:02d}</span>'
@@ -1295,22 +1295,22 @@ if pagina == "­ƒöì Live Scanning":
 
 
 # ============================================================================
-#   ­ƒôè OPEN INTEREST
+#   📊 OPEN INTEREST
 # ============================================================================
-elif pagina == "­ƒôè Open Interest":
-    st.markdown("### ­ƒôè Open Interest")
+elif pagina == "📊 Open Interest":
+    st.markdown("### 📊 Open Interest")
 
     # ================================================================
     #  TOP OI CHANGES (Barchart) — Auto-cargado al escanear
     # ================================================================
-    st.markdown("#### ­ƒöÑ Top Cambios en OI — Barchart")
-    st.caption("Se actualiza automíticamente con cada escaneo ÔÇó Fuente: Barchart.com")
+    st.markdown("#### 🔥 Top Cambios en OI — Barchart")
+    st.caption("Se actualiza automíticamente con cada escaneo • Fuente: Barchart.com")
 
     # Filtro tipo + OI Chg mínimo
     col_f1, col_f2 = st.columns([1, 1])
     with col_f1:
         bc_tipo_filtro = st.radio(
-            "Filtrar por tipo", ["Todos", "­ƒô× CALL", "­ƒôï PUT"],
+            "Filtrar por tipo", ["Todos", "📞 CALL", "📋 PUT"],
             horizontal=True, key="bc_tipo_filtro", index=0,
         )
     with col_f2:
@@ -1321,26 +1321,26 @@ elif pagina == "­ƒôè Open Interest":
     # Botón para recarga manual (sin necesidad de re-escanear)
     col_btn1, col_btn2 = st.columns([1, 3])
     with col_btn1:
-        bc_refresh = st.button("­ƒöä Actualizar OI", key="bc_refresh")
+        bc_refresh = st.button("🔄 Actualizar OI", key="bc_refresh")
 
     if bc_refresh:
-        with st.spinner("­ƒîÉ Consultando Barchart.com..."):
+        with st.spinner("🌐 Consultando Barchart.com..."):
             sim_bc = st.session_state.get("ticker_anterior", "SPY")
             _fetch_barchart_oi(sim_bc)
             _inyectar_oi_chg_barchart()
 
     # Mostrar error
     if st.session_state.barchart_error:
-        st.warning(f"ÔÜá´©Å {st.session_state.barchart_error}")
+        st.warning(f"⚠️ {st.session_state.barchart_error}")
 
     # Mostrar datos
     if st.session_state.barchart_data is not None and not st.session_state.barchart_data.empty:
         df_bc_all = st.session_state.barchart_data.copy()
 
         # Aplicar filtro tipo
-        if bc_tipo_filtro == "­ƒô× CALL":
+        if bc_tipo_filtro == "📞 CALL":
             df_bc_all = df_bc_all[df_bc_all["Tipo"] == "CALL"]
-        elif bc_tipo_filtro == "­ƒôï PUT":
+        elif bc_tipo_filtro == "📋 PUT":
             df_bc_all = df_bc_all[df_bc_all["Tipo"] == "PUT"]
 
         # Aplicar filtro OI Chg mínimo (valor absoluto)
@@ -1384,7 +1384,7 @@ elif pagina == "­ƒôè Open Interest":
 
             # Segunda fila de mîtricas: Contratos abiertos vs cerrados
             st.markdown("---")
-            st.markdown("##### ­ƒôê Flujo de Contratos")
+            st.markdown("##### 📈 Flujo de Contratos")
             _net_flow = contratos_abiertos_total + contratos_cerrados_total
             _open_spk = [max(0, v) for v in df_positivos["OI_Chg"].head(10).tolist()] if n_pos > 1 else None
             _close_spk = [abs(v) for v in df_negativos["OI_Chg"].head(10).tolist()] if n_neg > 1 else None
@@ -1456,14 +1456,14 @@ elif pagina == "­ƒôè Open Interest":
             # ========================================
             # TABLA 1: OI Chg POSITIVO (Abriendo posiciones)
             # ========================================
-            st.markdown("#### ­ƒƒó OI Chg Positivo — Abriendo Posiciones")
-            st.caption("Contratos donde el Open Interest aumentó ÔåÆ nuevas posiciones abiertas")
+            st.markdown("#### 🟢 OI Chg Positivo — Abriendo Posiciones")
+            st.caption("Contratos donde el Open Interest aumentó → nuevas posiciones abiertas")
 
             if n_pos > 0:
                 df_pos_fmt = _formatear_tabla_oi(df_positivos)
                 _mostrar_tabla_paginada(
                     df_positivos, df_pos_fmt, "oi_pos",
-                    lambda x: "­ƒöÑ" if x >= 50 else ("­ƒƒó" if x >= 20 else "")
+                    lambda x: "🔥" if x >= 50 else ("🟢" if x >= 20 else "")
                 )
             else:
                 st.info("Sin contratos con OI Chg positivo.")
@@ -1473,30 +1473,30 @@ elif pagina == "­ƒôè Open Interest":
             # ========================================
             # TABLA 2: OI Chg NEGATIVO (Cerrando posiciones)
             # ========================================
-            st.markdown("#### ­ƒö┤ OI Chg Negativo — Cerrando Posiciones")
-            st.caption("Contratos donde el Open Interest disminuyó ÔåÆ posiciones cerradas o ejercidas")
+            st.markdown("#### 🔴 OI Chg Negativo — Cerrando Posiciones")
+            st.caption("Contratos donde el Open Interest disminuyó → posiciones cerradas o ejercidas")
 
             if n_neg > 0:
                 df_neg_fmt = _formatear_tabla_oi(df_negativos)
                 _mostrar_tabla_paginada(
                     df_negativos, df_neg_fmt, "oi_neg",
-                    lambda x: "­ƒöÑ" if x <= -50 else ("­ƒö┤" if x <= -20 else "")
+                    lambda x: "🔥" if x <= -50 else ("🔴" if x <= -20 else "")
                 )
             else:
                 st.info("Sin contratos con OI Chg negativo.")
     elif st.session_state.scan_count == 0:
-        st.info("ÔÅ│ **Ejecutí un escaneo** en ­ƒöì Live Scanning para cargar los datos de Open Interest automíticamente.")
+        st.info("⏳ **Ejecutí un escaneo** en 🔍 Live Scanning para cargar los datos de Open Interest automíticamente.")
 
 
 # ============================================================================
-#   ­ƒôï REPORTS
+#   📋 REPORTS
 # ============================================================================
-elif pagina == "­ƒôï Reports":
-    st.markdown("### ­ƒôï Reports")
+elif pagina == "📋 Reports":
+    st.markdown("### 📋 Reports")
     st.markdown(
         """
         <div class="watchlist-info">
-            ­ƒÆ¥ <b>Centro de Reportes</b> — Descarga reportes detallados en formato DOCX.
+            💾 <b>Centro de Reportes</b> — Descarga reportes detallados en formato DOCX.
             Los reportes se generan con los datos cargados en cada sección.
         </div>
         """,
@@ -2068,7 +2068,7 @@ elif pagina == "­ƒôï Reports":
                 })
 
                 # Fundamental
-                _agregar_titulo_report(doc, "­ƒôè Anílisis Fundamental", level=3)
+                _agregar_titulo_report(doc, "📊 Anílisis Fundamental", level=3)
                 _tabla_info_report(doc, {
                     "Ingresos Totales": f"${r.get('revenue', 0)/1e9:.1f}B" if r.get('revenue', 0) > 0 else "N/A",
                     "Crecimiento Ingresos": f"{r['revenue_growth']*100:.1f}%",
@@ -2084,7 +2084,7 @@ elif pagina == "­ƒôï Reports":
 
                 # Tîcnico
                 if tecnico:
-                    _agregar_titulo_report(doc, "­ƒôê Anílisis Tîcnico", level=3)
+                    _agregar_titulo_report(doc, "📈 Anílisis Tîcnico", level=3)
                     _tabla_info_report(doc, {
                         "Tendencia": tecnico.get("tendencia", "N/A"),
                         "RSI (14)": f"{tecnico.get('rsi', 0):.0f}",
@@ -2099,7 +2099,7 @@ elif pagina == "­ƒôï Reports":
                     })
 
                 # Sentimiento
-                _agregar_titulo_report(doc, "­ƒÄ» Sentimiento", level=3)
+                _agregar_titulo_report(doc, "🎯 Sentimiento", level=3)
                 _tabla_info_report(doc, {
                     "Recomendación": r.get("recommendation", "N/A").upper(),
                     "Número Analistas": r.get("num_analysts", 0),
@@ -2237,12 +2237,12 @@ elif pagina == "­ƒôï Reports":
         doc.add_paragraph("")
 
         # Explicación
-        _agregar_titulo_report(doc, "┬┐QUÉ ES EL RANGO ESPERADO?", level=1)
+        _agregar_titulo_report(doc, "¿QUÉ ES EL RANGO ESPERADO?", level=1)
         p_exp = doc.add_paragraph()
         run_exp = p_exp.add_run(
             "El rango esperado es una estimación estadística del movimiento probable del precio del activo "
             "hasta la fecha de expiración, basado en la volatilidad implícita (IV) de las opciones. "
-            "Se calcula con una desviación estíndar (1¤â), lo que significa que hay aproximadamente 68% de "
+            "Se calcula con una desviación estíndar (1σ), lo que significa que hay aproximadamente 68% de "
             "probabilidad de que el precio permanezca dentro del rango calculado."
         )
         run_exp.font.size = Pt(10)
@@ -2258,11 +2258,11 @@ elif pagina == "­ƒôï Reports":
             "Precio Actual del Subyacente": f"${r['underlying_price']:,.2f}",
             "Fecha de Expiración": r["expiration"],
             "Días Restantes (DTE)": dias if dias else "N/A",
-            "Delta Objetivo": f"┬▒{r.get('target_delta', 'N/A')}",
+            "Delta Objetivo": f"±{r.get('target_delta', 'N/A')}",
         })
 
         # Rango calculado
-        _agregar_titulo_report(doc, "RANGO DE PRECIOS ESPERADO (1¤â)", level=1)
+        _agregar_titulo_report(doc, "RANGO DE PRECIOS ESPERADO (1σ)", level=1)
         _tabla_info_report(doc, {
             "Rango Inferior": f"${r['expected_range_low']:,.2f}",
             "Precio Actual": f"${r['underlying_price']:,.2f}",
@@ -2297,12 +2297,12 @@ elif pagina == "­ƒôï Reports":
         run_int = p_int.add_run(
             f"Basíndose en la volatilidad implícita actual, se espera que {ticker_name} se mueva "
             f"entre ${r['expected_range_low']:,.2f} y ${r['expected_range_high']:,.2f} antes del "
-            f"{r['expiration']}. Esto representa un rango de movimiento de ┬▒{r['total_range_pct']:.1f}%.\n\n"
+            f"{r['expiration']}. Esto representa un rango de movimiento de ±{r['total_range_pct']:.1f}%.\n\n"
             f"Este rango puede utilizarse para:\n"
-            f"ÔÇó Planificar estrategias de trading direccionales (si esperas movimiento fuera del rango)\n"
-            f"ÔÇó Diseñar estrategias neutrales (si esperas que el precio permanezca dentro del rango)\n"
-            f"ÔÇó Identificar niveles de soporte y resistencia probables\n"
-            f"ÔÇó Evaluar el riesgo de posiciones existentes"
+            f"• Planificar estrategias de trading direccionales (si esperas movimiento fuera del rango)\n"
+            f"• Diseñar estrategias neutrales (si esperas que el precio permanezca dentro del rango)\n"
+            f"• Identificar niveles de soporte y resistencia probables\n"
+            f"• Evaluar el riesgo de posiciones existentes"
         )
         run_int.font.size = Pt(10)
         run_int.font.name = "Calibri"
@@ -2311,7 +2311,7 @@ elif pagina == "­ƒôï Reports":
         doc.add_paragraph("")
         p_aviso = doc.add_paragraph()
         run_aviso = p_aviso.add_run(
-            "ÔÜá´©Å AVISO: Este cílculo es una estimación estadística basada en la volatilidad implícita "
+            "⚠️ AVISO: Este cílculo es una estimación estadística basada en la volatilidad implícita "
             "y no garantiza que el precio permanecerí dentro del rango. Los movimientos del mercado "
             "pueden ser impredecibles, especialmente ante eventos inesperados o noticias significativas."
         )
@@ -2339,7 +2339,7 @@ elif pagina == "­ƒôï Reports":
     # BOTONES DE DESCARGA
     # =============================================
     st.markdown("---")
-    st.markdown("#### ­ƒôÑ Descargar Reportes")
+    st.markdown("#### 📥 Descargar Reportes")
     st.caption("Genera reportes detallados en formato DOCX con los datos cargados en cada sección.")
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -2354,11 +2354,11 @@ elif pagina == "­ƒôï Reports":
     # Botón 1: Live Scanning
     if tiene_scanning:
         ticker_name = st.session_state.get("ticker_anterior", "SCAN")
-        with st.spinner("­ƒôè Generando reporte de Live Scanning..."):
+        with st.spinner("📊 Generando reporte de Live Scanning..."):
             try:
                 docx_scanning = _generar_reporte_live_scanning()
                 st.download_button(
-                    "­ƒôè Descargar Reporte Live Scanning (DOCX)",
+                    "📊 Descargar Reporte Live Scanning (DOCX)",
                     docx_scanning,
                     f"reporte_live_scanning_{ticker_name}_{timestamp}.docx",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -2367,18 +2367,18 @@ elif pagina == "­ƒôï Reports":
                     help="Descarga todos los datos escaneados: alertas, clusters, y todas las opciones analizadas.",
                 )
             except Exception as e:
-                st.error(f"ÔÜá´©Å Error al generar reporte de Live Scanning: {e}")
+                st.error(f"⚠️ Error al generar reporte de Live Scanning: {e}")
     else:
-        st.info("­ƒôè **Reporte Live Scanning** — Ejecuta un escaneo primero en ­ƒöì Live Scanning")
+        st.info("📊 **Reporte Live Scanning** — Ejecuta un escaneo primero en 🔍 Live Scanning")
 
     # Botón 2: Open Interest
     if tiene_oi:
         ticker_name = st.session_state.get("ticker_anterior", "SCAN")
-        with st.spinner("­ƒôè Generando reporte de Open Interest..."):
+        with st.spinner("📊 Generando reporte de Open Interest..."):
             try:
                 docx_oi = _generar_reporte_open_interest()
                 st.download_button(
-                    "­ƒôè Descargar Reporte Open Interest (DOCX)",
+                    "📊 Descargar Reporte Open Interest (DOCX)",
                     docx_oi,
                     f"reporte_open_interest_{ticker_name}_{timestamp}.docx",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -2387,17 +2387,17 @@ elif pagina == "­ƒôï Reports":
                     help="Descarga el anílisis completo de cambios en Open Interest (OI positivo y negativo).",
                 )
             except Exception as e:
-                st.error(f"ÔÜá´©Å Error al generar reporte de Open Interest: {e}")
+                st.error(f"⚠️ Error al generar reporte de Open Interest: {e}")
     else:
-        st.info("­ƒôè **Reporte Open Interest** — Ejecuta un escaneo primero en ­ƒöì Live Scanning")
+        st.info("📊 **Reporte Open Interest** — Ejecuta un escaneo primero en 🔍 Live Scanning")
 
     # Botón 3: Data Analysis
     if tiene_analysis:
-        with st.spinner("­ƒôè Generando reporte de Data Analysis..."):
+        with st.spinner("📊 Generando reporte de Data Analysis..."):
             try:
                 docx_analysis = _generar_reporte_data_analysis()
                 st.download_button(
-                    "­ƒôê Descargar Reporte Data Analysis (DOCX)",
+                    "📈 Descargar Reporte Data Analysis (DOCX)",
                     docx_analysis,
                     f"reporte_data_analysis_{timestamp}.docx",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -2406,18 +2406,18 @@ elif pagina == "­ƒôï Reports":
                     help="Descarga el anílisis completo de Important Companies: fundamental, tîcnico, sentimiento y veredicto.",
                 )
             except Exception as e:
-                st.error(f"ÔÜá´©Å Error al generar reporte de Data Analysis: {e}")
+                st.error(f"⚠️ Error al generar reporte de Data Analysis: {e}")
     else:
-        st.info("­ƒôê **Reporte Data Analysis** — Ejecuta el anílisis en ­ƒÅó Important Companies primero")
+        st.info("📈 **Reporte Data Analysis** — Ejecuta el anílisis en 🏢 Important Companies primero")
 
     # Botón 4: Range
     if tiene_range:
         ticker_name = st.session_state.rango_resultado.get("symbol", "RANGE")
-        with st.spinner("­ƒôè Generando reporte de Rango Esperado..."):
+        with st.spinner("📊 Generando reporte de Rango Esperado..."):
             try:
                 docx_range = _generar_reporte_range()
                 st.download_button(
-                    "­ƒôÉ Descargar Reporte Rango Esperado (DOCX)",
+                    "📐 Descargar Reporte Rango Esperado (DOCX)",
                     docx_range,
                     f"reporte_rango_{ticker_name}_{timestamp}.docx",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -2426,19 +2426,19 @@ elif pagina == "­ƒôï Reports":
                     help="Descarga el cílculo detallado del rango esperado con explicación e interpretación.",
                 )
             except Exception as e:
-                st.error(f"ÔÜá´©Å Error al generar reporte de Rango: {e}")
+                st.error(f"⚠️ Error al generar reporte de Rango: {e}")
     else:
-        st.info("­ƒôÉ **Reporte Rango Esperado** — Calcula el rango en ­ƒôÉ Range primero")
+        st.info("📐 **Reporte Rango Esperado** — Calcula el rango en 📐 Range primero")
 
     st.markdown("---")
-    st.success("Ô£à Selecciona los reportes que deseas descargar. Los archivos .docx son editables y tienen estructura profesional.")
+    st.success("✅ Selecciona los reportes que deseas descargar. Los archivos .docx son editables y tienen estructura profesional.")
 
 
 # ============================================================================
-#   ­ƒôê DATA ANALYSIS
+#   📈 DATA ANALYSIS
 # ============================================================================
-elif pagina == "­ƒôê Data Analysis":
-    st.markdown("### ­ƒôê Data Analysis")
+elif pagina == "📈 Data Analysis":
+    st.markdown("### 📈 Data Analysis")
 
     if not st.session_state.datos_completos:
         st.info("Ejecuta un escaneo primero para ver los anílisis.")
@@ -2455,7 +2455,7 @@ elif pagina == "­ƒôê Data Analysis":
         # ================================================================
         # DESGLOSE DE SENTIMIENTO POR PRIMAS
         # ================================================================
-        st.markdown("### ­ƒÆ░ Desglose de Sentimiento por Primas")
+        st.markdown("### 💰 Desglose de Sentimiento por Primas")
         st.markdown("---")
 
         # Clasificar opciones por lado de ejecución (Bid vs Ask)
@@ -2467,10 +2467,10 @@ elif pagina == "­ƒôê Data Analysis":
         mask_ask = df_sent["Ultimo"] >= df_sent["_mid"]
         mask_bid = df_sent["Ultimo"] < df_sent["_mid"]
 
-        # CALL Ask = compra agresiva de calls ÔåÆ ALCISTA
-        # CALL Bid = venta agresiva de calls ÔåÆ BAJISTA
-        # PUT Ask = compra agresiva de puts ÔåÆ BAJISTA
-        # PUT Bid = venta agresiva de puts ÔåÆ ALCISTA
+        # CALL Ask = compra agresiva de calls → ALCISTA
+        # CALL Bid = venta agresiva de calls → BAJISTA
+        # PUT Ask = compra agresiva de puts → BAJISTA
+        # PUT Bid = venta agresiva de puts → ALCISTA
         call_ask_val = df_sent.loc[mask_call & mask_ask, "Prima_Vol"].sum()
         call_bid_val = df_sent.loc[mask_call & mask_bid, "Prima_Vol"].sum()
         put_ask_val = df_sent.loc[mask_put & mask_ask, "Prima_Vol"].sum()
@@ -2481,10 +2481,10 @@ elif pagina == "­ƒôê Data Analysis":
         if total_sent > 0:
             # Porcentajes con signo: + alcista, - bajista
             rows_data = [
-                ("­ƒô× CALL Ask", "Compra agresiva", call_ask_val, +(call_ask_val / total_sent * 100), True),
-                ("­ƒô× CALL Bid", "Venta agresiva", call_bid_val, -(call_bid_val / total_sent * 100), False),
-                ("­ƒôï PUT Ask", "Compra agresiva", put_ask_val, -(put_ask_val / total_sent * 100), False),
-                ("­ƒôï PUT Bid", "Venta agresiva", put_bid_val, +(put_bid_val / total_sent * 100), True),
+                ("📞 CALL Ask", "Compra agresiva", call_ask_val, +(call_ask_val / total_sent * 100), True),
+                ("📞 CALL Bid", "Venta agresiva", call_bid_val, -(call_bid_val / total_sent * 100), False),
+                ("📋 PUT Ask", "Compra agresiva", put_ask_val, -(put_ask_val / total_sent * 100), False),
+                ("📋 PUT Bid", "Venta agresiva", put_bid_val, +(put_bid_val / total_sent * 100), True),
             ]
 
             bullish_total = call_ask_val + put_bid_val
@@ -2519,7 +2519,7 @@ elif pagina == "­ƒôê Data Analysis":
             # Barra de sentimiento neto
             net_color = "#10b981" if net_pct >= 0 else "#ef4444"
             net_label = "ALCISTA" if net_pct >= 0 else "BAJISTA"
-            net_emoji = "­ƒƒó" if net_pct >= 0 else "­ƒö┤"
+            net_emoji = "🟢" if net_pct >= 0 else "🔴"
             net_pct_str = f"+{net_pct:.1f}%" if net_pct >= 0 else f"{net_pct:.1f}%"
             bull_pct = bullish_total / total_sent * 100
             bear_pct = bearish_total / total_sent * 100
@@ -2597,7 +2597,7 @@ elif pagina == "­ƒôê Data Analysis":
 
             st.markdown(
                 f'<div class="sp0">'
-                f'<div class="tt">­ƒÆ░ Desglose de Sentimiento por Primas</div>'
+                f'<div class="tt">💰 Desglose de Sentimiento por Primas</div>'
                 f'<div class="ts">Prima ejecutada por lado del order book — Compras vs Ventas agresivas</div>'
                 f'{rows_html}'
                 f'<div class="sn"><div class="snr">'
@@ -2607,9 +2607,9 @@ elif pagina == "­ƒôê Data Analysis":
                 f'<div class="sp {nc}">{net_pct_str}</div>'
                 f'</div></div>'
                 f'<div class="ssum">'
-                f'<div class="ssi"><div class="ssh">­ƒƒó Alcista</div><div class="ssv g">{_fmt_monto(bullish_total)}</div><div class="ssp g">{bull_pct:.1f}%</div></div>'
-                f'<div class="ssi"><div class="ssh">­ƒôè Total</div><div class="ssv w">{_fmt_monto(total_sent)}</div><div class="ssp gy">100%</div></div>'
-                f'<div class="ssi"><div class="ssh">­ƒö┤ Bajista</div><div class="ssv r">{_fmt_monto(bearish_total)}</div><div class="ssp r">{bear_pct:.1f}%</div></div>'
+                f'<div class="ssi"><div class="ssh">🟢 Alcista</div><div class="ssv g">{_fmt_monto(bullish_total)}</div><div class="ssp g">{bull_pct:.1f}%</div></div>'
+                f'<div class="ssi"><div class="ssh">📊 Total</div><div class="ssv w">{_fmt_monto(total_sent)}</div><div class="ssp gy">100%</div></div>'
+                f'<div class="ssi"><div class="ssh">🔴 Bajista</div><div class="ssv r">{_fmt_monto(bearish_total)}</div><div class="ssp r">{bear_pct:.1f}%</div></div>'
                 f'</div></div>',
                 unsafe_allow_html=True,
             )
@@ -2621,12 +2621,12 @@ elif pagina == "­ƒôê Data Analysis":
         # ================================================================
         # SOPORTES Y RESISTENCIAS POR VOLUMEN DE OPCIONES
         # ================================================================
-        st.markdown("### ­ƒøí´©Å Soportes y Resistencias por Opciones")
+        st.markdown("### 🛡️ Soportes y Resistencias por Opciones")
         st.markdown(
             """
             <div style="background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.15); 
                  border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #93c5fd;">
-                ­ƒôè <b>┬┐Cómo se determinan?</b> Los strikes con mayor volumen en <b>CALLs</b> actúan como 
+                📊 <b>¿Cómo se determinan?</b> Los strikes con mayor volumen en <b>CALLs</b> actúan como 
                 <b style="color:#ef4444">resistencias</b> (techos) y los strikes con mayor volumen en <b>PUTs</b> 
                 actúan como <b style="color:#10b981">soportes</b> (pisos). Donde se concentra el volumen, 
                 hay mayor interîs institucional y es probable que el precio reaccione.
@@ -2643,7 +2643,7 @@ elif pagina == "­ƒôê Data Analysis":
         df_puts_sr = df_analisis[(df_analisis["Tipo"] == "PUT") & (df_analisis["Volumen"] > 0)].copy()
 
         if not df_calls_sr.empty and not df_puts_sr.empty:
-            # Top 5 strikes con mís volumen en CALLs ÔåÆ Resistencias
+            # Top 5 strikes con mís volumen en CALLs → Resistencias
             top_calls = df_calls_sr.groupby("Strike").agg(
                 Vol_Total=("Volumen", "sum"),
                 OI_Total=("OI", "sum"),
@@ -2651,7 +2651,7 @@ elif pagina == "­ƒôê Data Analysis":
                 Contratos=("Volumen", "count"),
             ).sort_values("Vol_Total", ascending=False).head(5).reset_index()
 
-            # Top 5 strikes con mís volumen en PUTs ÔåÆ Soportes
+            # Top 5 strikes con mís volumen en PUTs → Soportes
             top_puts = df_puts_sr.groupby("Strike").agg(
                 Vol_Total=("Volumen", "sum"),
                 OI_Total=("OI", "sum"),
@@ -2662,7 +2662,7 @@ elif pagina == "­ƒôê Data Analysis":
             col_sr1, col_sr2 = st.columns(2)
 
             with col_sr1:
-                st.markdown("#### ­ƒö┤ Resistencias (CALLs mís tradeados)")
+                st.markdown("#### 🔴 Resistencias (CALLs mís tradeados)")
                 for idx_r, row_r in top_calls.iterrows():
                     pct_dist = ""
                     if precio_actual and precio_actual > 0:
@@ -2694,7 +2694,7 @@ elif pagina == "­ƒôê Data Analysis":
                     )
 
             with col_sr2:
-                st.markdown("#### ­ƒƒó Soportes (PUTs mís tradeados)")
+                st.markdown("#### 🟢 Soportes (PUTs mís tradeados)")
                 for idx_s, row_s in top_puts.iterrows():
                     pct_dist = ""
                     if precio_actual and precio_actual > 0:
@@ -2728,7 +2728,7 @@ elif pagina == "­ƒôê Data Analysis":
             # Barra visual de niveles
             if precio_actual and precio_actual > 0:
                 st.markdown("---")
-                st.markdown("#### ­ƒôì Mapa de Niveles vs Precio Actual")
+                st.markdown("#### 📍 Mapa de Niveles vs Precio Actual")
 
                 # Combinar todos los niveles
                 niveles_r = [(s, "R", v) for s, v in zip(top_calls["Strike"], top_calls["Vol_Total"])]
@@ -2767,7 +2767,7 @@ elif pagina == "­ƒôê Data Analysis":
                     f'width:3px; background:#f59e0b; z-index:5;"></div>'
                     f'<div style="position:absolute; left:{pos_precio:.1f}%; top:50%; transform:translate(-50%,-50%); '
                     f'background:#f59e0b; color:#000; font-size:0.7rem; font-weight:800; padding:2px 6px; '
-                    f'border-radius:4px; z-index:6; white-space:nowrap;">­ƒôì ${precio_actual:,.2f}</div>'
+                    f'border-radius:4px; z-index:6; white-space:nowrap;">📍 ${precio_actual:,.2f}</div>'
                 )
 
                 mapa_html += '</div>'
@@ -2782,7 +2782,7 @@ elif pagina == "­ƒôê Data Analysis":
                     if resistencias_arriba:
                         r_cercana = resistencias_arriba[0]
                         dist_r = ((r_cercana[0] - precio_actual) / precio_actual) * 100
-                        st.metric("­ƒö┤ Resistencia mís cercana", f"${r_cercana[0]:,.1f}", 
+                        st.metric("🔴 Resistencia mís cercana", f"${r_cercana[0]:,.1f}", 
                                  delta=f"+{dist_r:.2f}% arriba", delta_color="inverse")
                     else:
                         st.info("Sin resistencias por encima del precio actual")
@@ -2790,7 +2790,7 @@ elif pagina == "­ƒôê Data Analysis":
                     if soportes_abajo:
                         s_cercano = soportes_abajo[0]
                         dist_s = ((s_cercano[0] - precio_actual) / precio_actual) * 100
-                        st.metric("­ƒƒó Soporte mís cercano", f"${s_cercano[0]:,.1f}", 
+                        st.metric("🟢 Soporte mís cercano", f"${s_cercano[0]:,.1f}", 
                                  delta=f"{dist_s:.2f}% abajo", delta_color="normal")
                     else:
                         st.info("Sin soportes por debajo del precio actual")
@@ -2802,7 +2802,7 @@ elif pagina == "­ƒôê Data Analysis":
         col_a1, col_a2 = st.columns(2)
 
         with col_a1:
-            st.markdown("#### ­ƒôè Distribución CALL vs PUT")
+            st.markdown("#### 📊 Distribución CALL vs PUT")
             tipo_counts = df_analisis["Tipo"].value_counts()
             st.bar_chart(tipo_counts)
 
@@ -2811,14 +2811,14 @@ elif pagina == "­ƒôê Data Analysis":
             ratio_pc = n_puts / n_calls if n_calls > 0 else 0
             st.metric("Put/Call Ratio", f"{ratio_pc:.3f}")
             if ratio_pc > 1:
-                st.warning("ÔÜá´©Å Ratio > 1: Mayor actividad en PUTs (sentimiento bajista)")
+                st.warning("⚠️ Ratio > 1: Mayor actividad en PUTs (sentimiento bajista)")
             elif ratio_pc < 0.7:
-                st.success("­ƒôê Ratio < 0.7: Mayor actividad en CALLs (sentimiento alcista)")
+                st.success("📈 Ratio < 0.7: Mayor actividad en CALLs (sentimiento alcista)")
             else:
-                st.info("Ôåö´©Å Ratio neutral")
+                st.info("↔️ Ratio neutral")
 
         with col_a2:
-            st.markdown("#### ­ƒôà Volumen por Vencimiento")
+            st.markdown("#### 📅 Volumen por Vencimiento")
             vol_by_date = (
                 df_analisis.groupby("Vencimiento")["Volumen"]
                 .sum()
@@ -2826,7 +2826,7 @@ elif pagina == "­ƒôê Data Analysis":
             )
             st.bar_chart(vol_by_date)
 
-        st.markdown("#### ­ƒÄ» Top 20 Strikes por Volumen")
+        st.markdown("#### 🎯 Top 20 Strikes por Volumen")
         vol_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
         top_vol = (
             df_analisis.nlargest(20, "Volumen")[[c for c in vol_cols if c in df_analisis.columns]]
@@ -2844,11 +2844,11 @@ elif pagina == "­ƒôê Data Analysis":
         if "Lado" in top_vol_display.columns:
             top_vol_display["Lado"] = top_vol_display["Lado"].apply(_fmt_lado)
         st.markdown(
-            render_pro_table(top_vol_display, title="­ƒÄ» Top 20 por Volumen", badge_count="20"),
+            render_pro_table(top_vol_display, title="🎯 Top 20 por Volumen", badge_count="20"),
             unsafe_allow_html=True,
         )
 
-        st.markdown("#### ­ƒÅø´©Å Top 20 Strikes por Open Interest")
+        st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
         oi_cols = ["Vencimiento", "Tipo", "Strike", "OI", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
         top_oi = (
             df_analisis.nlargest(20, "OI")[[c for c in oi_cols if c in df_analisis.columns]]
@@ -2866,13 +2866,13 @@ elif pagina == "­ƒôê Data Analysis":
         if "Lado" in top_oi_display.columns:
             top_oi_display["Lado"] = top_oi_display["Lado"].apply(_fmt_lado)
         st.markdown(
-            render_pro_table(top_oi_display, title="­ƒÅø´©Å Top 20 por Open Interest", badge_count="20"),
+            render_pro_table(top_oi_display, title="🏛️ Top 20 por Open Interest", badge_count="20"),
             unsafe_allow_html=True,
         )
 
         col_iv1, col_iv2 = st.columns(2)
         with col_iv1:
-            st.markdown("#### ­ƒôë Volatilidad Implícita por Strike (CALLs)")
+            st.markdown("#### 📉 Volatilidad Implícita por Strike (CALLs)")
             calls_iv = df_analisis[
                 (df_analisis["Tipo"] == "CALL") & (df_analisis["IV"] > 0)
             ].sort_values("Strike")
@@ -2880,7 +2880,7 @@ elif pagina == "­ƒôê Data Analysis":
                 chart_data_calls = calls_iv[["Strike", "IV"]].set_index("Strike")
                 st.line_chart(chart_data_calls)
         with col_iv2:
-            st.markdown("#### ­ƒôë Volatilidad Implícita por Strike (PUTs)")
+            st.markdown("#### 📉 Volatilidad Implícita por Strike (PUTs)")
             puts_iv = df_analisis[
                 (df_analisis["Tipo"] == "PUT") & (df_analisis["IV"] > 0)
             ].sort_values("Strike")
@@ -2894,7 +2894,7 @@ elif pagina == "­ƒôê Data Analysis":
         col_pv1, col_pv2 = st.columns(2)
 
         with col_pv1:
-            st.markdown("#### ­ƒô× Prima Total en CALLs por Vencimiento")
+            st.markdown("#### 📞 Prima Total en CALLs por Vencimiento")
             if not df_calls_s.empty:
                 prima_calls_venc = df_calls_s.groupby("Vencimiento").agg(
                     Prima_Total=("Prima_Vol", "sum"),
@@ -2906,14 +2906,14 @@ elif pagina == "­ƒôê Data Analysis":
                 display_pc["Prima_Total"] = display_pc["Prima_Total"].apply(_fmt_dolar)
                 display_pc["Volumen_Total"] = display_pc["Volumen_Total"].apply(_fmt_entero)
                 st.markdown(
-                    render_pro_table(display_pc, title="­ƒô× CALLs por Vencimiento"),
+                    render_pro_table(display_pc, title="📞 CALLs por Vencimiento"),
                     unsafe_allow_html=True,
                 )
             else:
                 st.info("Sin datos de CALLs.")
 
         with col_pv2:
-            st.markdown("#### ­ƒôï Prima Total en PUTs por Vencimiento")
+            st.markdown("#### 📋 Prima Total en PUTs por Vencimiento")
             if not df_puts_s.empty:
                 prima_puts_venc = df_puts_s.groupby("Vencimiento").agg(
                     Prima_Total=("Prima_Vol", "sum"),
@@ -2925,14 +2925,14 @@ elif pagina == "­ƒôê Data Analysis":
                 display_pp["Prima_Total"] = display_pp["Prima_Total"].apply(_fmt_dolar)
                 display_pp["Volumen_Total"] = display_pp["Volumen_Total"].apply(_fmt_entero)
                 st.markdown(
-                    render_pro_table(display_pp, title="­ƒôï PUTs por Vencimiento"),
+                    render_pro_table(display_pp, title="📋 PUTs por Vencimiento"),
                     unsafe_allow_html=True,
                 )
             else:
                 st.info("Sin datos de PUTs.")
 
         # Top strikes donde se concentra el dinero
-        st.markdown("#### ­ƒÄ» Top 15 Strikes con Mayor Prima Total Ejecutada")
+        st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Total Ejecutada")
         df_prima_strike = df_analisis.copy()
         prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "IV", "Ultimo", "Lado"]
         top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
@@ -2956,12 +2956,12 @@ elif pagina == "­ƒôê Data Analysis":
             top_prima_display["Lado"] = top_prima_display["Lado"].apply(_fmt_lado)
 
         st.markdown(
-            render_pro_table(top_prima_display, title="­ƒÄ» Top 15 Mayor Prima Ejecutada", badge_count="15"),
+            render_pro_table(top_prima_display, title="🎯 Top 15 Mayor Prima Ejecutada", badge_count="15"),
             unsafe_allow_html=True,
         )
 
         # Grífica de prima por strike
-        st.markdown("#### ­ƒôè Flujo de Prima por Strike (CALL vs PUT)")
+        st.markdown("#### 📊 Flujo de Prima por Strike (CALL vs PUT)")
         pivot_prima = df_analisis.pivot_table(
             index="Strike", columns="Tipo",
             values="Prima_Vol", aggfunc="sum", fill_value=0,
@@ -2974,15 +2974,15 @@ elif pagina == "­ƒôê Data Analysis":
 
 
 # ============================================================================
-#   Ô¡É FAVORITES — CONTRATOS FAVORITOS
+#   ⭐ FAVORITES — CONTRATOS FAVORITOS
 # ============================================================================
-elif pagina == "Ô¡É Favorites":
-    st.markdown("### Ô¡É Contratos Favoritos")
+elif pagina == "⭐ Favorites":
+    st.markdown("### ⭐ Contratos Favoritos")
     st.markdown(
         """
         <div style="background: rgba(250, 204, 21, 0.06); border: 1px solid rgba(250, 204, 21, 0.15); 
              border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #fde68a;">
-            ­ƒôî <b>Contratos guardados para seguimiento.</b> Marcí cualquier contrato como favorito desde las alertas del Live Scanning. 
+            📌 <b>Contratos guardados para seguimiento.</b> Marcí cualquier contrato como favorito desde las alertas del Live Scanning. 
             Se guardan entre sesiones y se eliminan automíticamente cuando expiran.
         </div>
         """,
@@ -2992,7 +2992,7 @@ elif pagina == "Ô¡É Favorites":
     favoritos = st.session_state.get("favoritos", [])
 
     if not favoritos:
-        st.info("No hay contratos en favoritos. Ejecutí un escaneo y usí el botón Ôÿå **Guardar en Favoritos** en cualquier alerta.")
+        st.info("No hay contratos en favoritos. Ejecutí un escaneo y usí el botón ☆ **Guardar en Favoritos** en cualquier alerta.")
     else:
         # Mîtricas rípidas
         n_calls_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "CALL")
@@ -3023,14 +3023,14 @@ elif pagina == "Ô¡É Favorites":
             display_fav_df = display_fav_df.rename(columns={"Prima_Volumen": "Prima Total"})
             display_fav_df["Prima Total"] = display_fav_df["Prima Total"].apply(_fmt_monto)
         st.markdown(
-            render_pro_table(display_fav_df, title="Ô¡É Favoritos", badge_count=f"{len(favoritos)}"),
+            render_pro_table(display_fav_df, title="⭐ Favoritos", badge_count=f"{len(favoritos)}"),
             unsafe_allow_html=True,
         )
 
         st.markdown("---")
 
         # Detalle individual de cada favorito
-        st.markdown("#### ­ƒöì Detalle de Contratos")
+        st.markdown("#### 🔍 Detalle de Contratos")
         for idx_fav, fav in enumerate(favoritos):
             fav_sym = fav.get("Contrato", "N/A")
             fav_tipo = fav.get("Tipo_Opcion", "N/A")
@@ -3046,7 +3046,7 @@ elif pagina == "Ô¡É Favorites":
                 dias_str = "N/A"
 
             fav_label = (
-                f"Ô¡É {fav_tipo} ${fav_strike} | Venc: {fav_venc} ({dias_str}) | "
+                f"⭐ {fav_tipo} ${fav_strike} | Venc: {fav_venc} ({dias_str}) | "
                 f"Prima: ${fav_prima:,.0f} | {fav_sym}"
             )
 
@@ -3054,7 +3054,7 @@ elif pagina == "Ô¡É Favorites":
                 col_fav_info, col_fav_chart = st.columns([1, 2])
 
                 with col_fav_info:
-                    st.markdown("**­ƒôä Información del Contrato**")
+                    st.markdown("**📄 Información del Contrato**")
                     st.markdown(f"- **Símbolo:** `{fav_sym}`")
                     st.markdown(f"- **Ticker:** {fav.get('Ticker', 'N/A')}")
                     st.markdown(f"- **Tipo:** {fav_tipo}")
@@ -3075,9 +3075,9 @@ elif pagina == "Ô¡É Favorites":
                     st.markdown(f"- **Guardado:** {fav.get('Guardado_En', 'N/A')}")
 
                     # Botón eliminar
-                    if st.button(f"­ƒùæ´©Å Eliminar de Favoritos", key=f"del_fav_{idx_fav}_{fav_sym}", use_container_width=True):
+                    if st.button(f"🗑️ Eliminar de Favoritos", key=f"del_fav_{idx_fav}_{fav_sym}", use_container_width=True):
                         _eliminar_favorito(fav_sym)
-                        st.success(f"­ƒùæ´©Å {fav_sym} eliminado de Favoritos")
+                        st.success(f"🗑️ {fav_sym} eliminado de Favoritos")
                         st.rerun()
 
                 with col_fav_chart:
@@ -3086,9 +3086,9 @@ elif pagina == "Ô¡É Favorites":
                             hist_fav, err_fav = obtener_historial_contrato(fav_sym)
 
                         if err_fav:
-                            st.warning(f"ÔÜá´©Å Error al cargar historial: {err_fav}")
+                            st.warning(f"⚠️ Error al cargar historial: {err_fav}")
                         elif hist_fav.empty:
-                            st.info("Ôä╣´©Å No hay datos históricos disponibles.")
+                            st.info("ℹ️ No hay datos históricos disponibles.")
                         else:
                             st.markdown(f"**Precio del contrato** — `{fav_sym}`")
                             chart_fav_price = hist_fav[["Close"]].copy()
@@ -3104,7 +3104,7 @@ elif pagina == "Ô¡É Favorites":
         st.markdown("---")
         col_limpiar, _ = st.columns([1, 3])
         with col_limpiar:
-            if st.button("­ƒùæ´©Å Limpiar todos los favoritos", use_container_width=True, type="secondary"):
+            if st.button("🗑️ Limpiar todos los favoritos", use_container_width=True, type="secondary"):
                 st.session_state.favoritos = []
                 _guardar_favoritos([])
                 st.success("Se eliminaron todos los favoritos")
@@ -3112,25 +3112,25 @@ elif pagina == "Ô¡É Favorites":
 
 
 # ============================================================================
-#   ­ƒôÉ RANGE — RANGO ESPERADO
+#   📐 RANGE — RANGO ESPERADO
 # ============================================================================
-elif pagina == "­ƒôÉ Range":
-    st.markdown("### ­ƒôÉ Rango Esperado de Movimiento (1¤â)")
+elif pagina == "📐 Range":
+    st.markdown("### 📐 Rango Esperado de Movimiento (1σ)")
     st.markdown(
         """
         <div class="rango-info">
-            ­ƒôè <b>┬┐Quî es esto?</b> Usando opciones reales del mercado y el modelo <b>Black-Scholes</b>
-            para calcular delta (Ôëê 0.16), determina el rango de precio donde la acción tiene ~68%
+            📊 <b>¿Quî es esto?</b> Usando opciones reales del mercado y el modelo <b>Black-Scholes</b>
+            para calcular delta (≈ 0.16), determina el rango de precio donde la acción tiene ~68%
             de probabilidad de permanecer hasta la fecha de expiración (<b>1 desviación estíndar</b>).<br>
-            ­ƒåô <b>100% gratuito</b> — Datos de Yahoo Finance + cílculo matemítico de greeks.
+            🆓 <b>100% gratuito</b> — Datos de Yahoo Finance + cílculo matemítico de greeks.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     rango_delta = st.slider(
-        "Delta objetivo (¤â)", min_value=0.01, max_value=1.00, value=st.session_state.rango_delta, step=0.01,
-        help="0.16 Ôëê 1¤â (68%). 0.05 Ôëê 2¤â (95%). Menor delta = rango mís amplio.", key="rango_delta_slider"
+        "Delta objetivo (σ)", min_value=0.01, max_value=1.00, value=st.session_state.rango_delta, step=0.01,
+        help="0.16 ≈ 1σ (68%). 0.05 ≈ 2σ (95%). Menor delta = rango mís amplio.", key="rango_delta_slider"
     )
     st.session_state.rango_delta = rango_delta
 
@@ -3169,7 +3169,7 @@ elif pagina == "­ƒôÉ Range":
             )
     with col_r3:
         st.markdown("<br>", unsafe_allow_html=True)
-        calc_btn = st.button("­ƒôÉ Calcular Rango", type="primary", use_container_width=True,
+        calc_btn = st.button("📐 Calcular Rango", type="primary", use_container_width=True,
                                 disabled=st.session_state.scanning_active)
 
     if calc_btn:
@@ -3184,7 +3184,7 @@ elif pagina == "­ƒôÉ Range":
         st.session_state.scanning_active = False
 
     if st.session_state.rango_error:
-        st.error(f"ÔØî {st.session_state.rango_error}")
+        st.error(f"❌ {st.session_state.rango_error}")
 
     if st.session_state.rango_resultado:
         r = st.session_state.rango_resultado
@@ -3205,37 +3205,37 @@ elif pagina == "­ƒôÉ Range":
 
         dias_str = f" ({r['dias_restantes']} días)" if r['dias_restantes'] is not None else ""
 
-        st.markdown(f"#### ­ƒôÉ {r['symbol']} — Rango Esperado 1¤â")
-        st.caption(f"Expiración: {r['expiration']}{dias_str} ┬À Delta objetivo: ┬▒{r['target_delta']}")
+        st.markdown(f"#### 📐 {r['symbol']} — Rango Esperado 1σ")
+        st.caption(f"Expiración: {r['expiration']}{dias_str} · Delta objetivo: ±{r['target_delta']}")
 
         col_r1, col_r2, col_r3, col_r4 = st.columns(4)
         with col_r1:
-            st.metric("­ƒÆÁ Precio Actual", f"${r['underlying_price']:,.2f}")
+            st.metric("💵 Precio Actual", f"${r['underlying_price']:,.2f}")
         with col_r2:
-            st.metric("­ƒôê Subida Esperada", f"+${r['upside_points']:,.2f}", f"+{r['upside_percent']:.2f}%")
+            st.metric("📈 Subida Esperada", f"+${r['upside_points']:,.2f}", f"+{r['upside_percent']:.2f}%")
         with col_r3:
-            st.metric("­ƒôë Bajada Esperada", f"-${r['downside_points']:,.2f}", f"-{r['downside_percent']:.2f}%", delta_color="inverse")
+            st.metric("📉 Bajada Esperada", f"-${r['downside_points']:,.2f}", f"-{r['downside_percent']:.2f}%", delta_color="inverse")
         with col_r4:
-            st.metric("Ôåö´©Å Rango Total", f"${r['total_range_points']:,.2f}", f"{r['total_range_pct']:.2f}%", delta_color="off")
+            st.metric("↔️ Rango Total", f"${r['total_range_points']:,.2f}", f"{r['total_range_pct']:.2f}%", delta_color="off")
 
         st.markdown("")
         bar_col1, bar_col2, bar_col3 = st.columns([1, 6, 1])
         with bar_col1:
-            st.markdown(f"**Ôû╝ ${r['expected_range_low']:,.2f}**")
+            st.markdown(f"**▼ ${r['expected_range_low']:,.2f}**")
         with bar_col2:
             progress_val = max(0.0, min(1.0, precio_pos / 100.0))
-            st.progress(progress_val, text=f"ÔùÅ Precio actual: ${r['underlying_price']:,.2f}  —  Rango: ${r['expected_range_low']:,.2f} a ${r['expected_range_high']:,.2f}")
+            st.progress(progress_val, text=f"● Precio actual: ${r['underlying_price']:,.2f}  —  Rango: ${r['expected_range_low']:,.2f} a ${r['expected_range_high']:,.2f}")
         with bar_col3:
-            st.markdown(f"**Ôû▓ ${r['expected_range_high']:,.2f}**")
+            st.markdown(f"**▲ ${r['expected_range_high']:,.2f}**")
 
         st.divider()
 
-        st.markdown("#### ­ƒÄ» Contratos Usados para el Cílculo")
+        st.markdown("#### 🎯 Contratos Usados para el Cílculo")
         col_d1, col_d2 = st.columns(2)
 
         with col_d1:
             st.success(f"""
-**­ƒôê CALL (límite superior)**
+**📈 CALL (límite superior)**
 - Strike: **${r['call_strike']}**
 - Delta: **{r['call_delta']}**
 - IV: **{r['call_iv']:.1f}%**
@@ -3244,14 +3244,14 @@ elif pagina == "­ƒôÉ Range":
 
         with col_d2:
             st.error(f"""
-**­ƒôë PUT (límite inferior)**
+**📉 PUT (límite inferior)**
 - Strike: **${r['put_strike']}**
 - Delta: **{r['put_delta']}**
 - IV: **{r['put_iv']:.1f}%**
 - _Precio debe caer bajo ${r['put_strike']} para salir del rango_
 """)
 
-        with st.expander("­ƒôï Ver datos completos del cílculo"):
+        with st.expander("📋 Ver datos completos del cílculo"):
             resumen_data = {
                 "Campo": [
                     "Símbolo", "Precio Actual", "Expiración", "Días Restantes",
@@ -3265,7 +3265,7 @@ elif pagina == "­ƒôÉ Range":
                 "Valor": [
                     r["symbol"], f"${r['underlying_price']:,.2f}", r["expiration"],
                     r["dias_restantes"] if r["dias_restantes"] else "N/A",
-                    f"┬▒{r['target_delta']}",
+                    f"±{r['target_delta']}",
                     f"+${r['upside_points']:,.2f}", f"+{r['upside_percent']:.2f}%",
                     f"-${r['downside_points']:,.2f}", f"-{r['downside_percent']:.2f}%",
                     f"${r['expected_range_low']:,.2f}", f"${r['expected_range_high']:,.2f}",
@@ -3276,20 +3276,20 @@ elif pagina == "­ƒôÉ Range":
                 ]
             }
             st.markdown(
-                render_pro_table(pd.DataFrame(resumen_data), title="­ƒôï Datos del Cílculo"),
+                render_pro_table(pd.DataFrame(resumen_data), title="📋 Datos del Cílculo"),
                 unsafe_allow_html=True,
             )
 
         st.markdown(
             f"""
             <div class="rango-info">
-                ­ƒºá <b>Interpretación:</b> El mercado de opciones estima que <b>{r['symbol']}</b>
+                🧠 <b>Interpretación:</b> El mercado de opciones estima que <b>{r['symbol']}</b>
                 se moverí entre <b>${r['expected_range_low']:,.2f}</b> y <b>${r['expected_range_high']:,.2f}</b>
                 (un rango de <b>${r['total_range_points']:,.2f}</b> / <b>{r['total_range_pct']:.2f}%</b>)
                 hasta el <b>{r['expiration']}</b> con ~68% de probabilidad.
-                Esto equivale a ┬▒1 desviación estíndar implícita del mercado.<br>
+                Esto equivale a ±1 desviación estíndar implícita del mercado.<br>
                 <span style="font-size: 0.72rem; color: #7dd3fc;">
-                    ­ƒôî Mîtodo: IV de Yahoo Finance + Black-Scholes para cílculo de delta ┬À Perfil TLS: {r.get('perfil_tls', 'N/A')}
+                    📌 Mîtodo: IV de Yahoo Finance + Black-Scholes para cílculo de delta · Perfil TLS: {r.get('perfil_tls', 'N/A')}
                 </span>
             </div>
             """,
@@ -3298,17 +3298,17 @@ elif pagina == "­ƒôÉ Range":
 
 
 # ============================================================================
-#   ­ƒÅó IMPORTANT COMPANIES
+#   🏢 IMPORTANT COMPANIES
 # ============================================================================
-elif pagina == "­ƒÅó Important Companies":
-    st.markdown("### ­ƒÅó Proyecciones de Crecimiento a 10 Años")
+elif pagina == "🏢 Important Companies":
+    st.markdown("### 🏢 Proyecciones de Crecimiento a 10 Años")
     st.markdown(
         """
         <div class="watchlist-info">
-            ­ƒôè <b>Monitor de Proyecciones</b> — Analiza empresas con potencial de crecimiento
+            📊 <b>Monitor de Proyecciones</b> — Analiza empresas con potencial de crecimiento
             a largo plazo usando datos fundamentales de Yahoo Finance. El score evalúa:
             crecimiento de ingresos, mírgenes, consenso de analistas, flujo de caja y valuación PEG.<br>
-            ­ƒåô <b>100% gratuito</b> — Todos los datos provienen de Yahoo Finance.
+            🆓 <b>100% gratuito</b> — Todos los datos provienen de Yahoo Finance.
         </div>
         """,
         unsafe_allow_html=True,
@@ -3318,13 +3318,13 @@ elif pagina == "­ƒÅó Important Companies":
     #  SECCIÓN 1: EMPRESAS CONSOLIDADAS
     # ==============================================================
     st.markdown("---")
-    st.markdown("## ­ƒÅó Empresas Consolidadas — Top Corporations")
+    st.markdown("## 🏢 Empresas Consolidadas — Top Corporations")
     st.caption("Grandes corporaciones con historial probado y proyección de crecimiento sostenido a 10 años.")
 
     col_btn_c, col_info_c = st.columns([1, 3])
     with col_btn_c:
         analizar_consol_btn = st.button(
-            "­ƒôè Analizar Consolidadas en Vivo",
+            "📊 Analizar Consolidadas en Vivo",
             type="primary",
             use_container_width=True,
             key="btn_analizar_consolidadas",
@@ -3332,7 +3332,7 @@ elif pagina == "­ƒÅó Important Companies":
         )
     with col_info_c:
         if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
-            st.success(f"Ô£à Datos en vivo cargados — {len(st.session_state.proyecciones_resultados)} empresas analizadas")
+            st.success(f"✅ Datos en vivo cargados — {len(st.session_state.proyecciones_resultados)} empresas analizadas")
         else:
             st.caption("Presiona para obtener mîtricas financieras en tiempo real de Yahoo Finance.")
 
@@ -3358,19 +3358,19 @@ elif pagina == "­ƒÅó Important Companies":
             info_emp = WATCHLIST_EMPRESAS.get(r["symbol"])
             st.html(render_empresa_card(r, info_emp, WATCHLIST_EMPRESAS))
 
-        st.markdown("#### ­ƒôï Tabla Comparativa")
+        st.markdown("#### 📋 Tabla Comparativa")
         df_tabla = render_tabla_comparativa(resultados)
         st.markdown(
-            render_pro_table(df_tabla, title="­ƒôï Tabla Comparativa Consolidadas", badge_count=f"{len(df_tabla)}"),
+            render_pro_table(df_tabla, title="📋 Tabla Comparativa Consolidadas", badge_count=f"{len(df_tabla)}"),
             unsafe_allow_html=True,
         )
         # Botón CSV eliminado según solicitud
 
     else:
-        st.markdown("#### ­ƒÅø´©Å Top Empresas Consolidadas")
+        st.markdown("#### 🏛️ Top Empresas Consolidadas")
         render_watchlist_preview(WATCHLIST_EMPRESAS)
 
-    with st.expander("­ƒôè Anílisis de las Empresas Consolidadas", expanded=False):
+    with st.expander("📊 Anílisis de las Empresas Consolidadas", expanded=False):
         if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
             render_analisis_completo(st.session_state.proyecciones_resultados, WATCHLIST_EMPRESAS)
         else:
@@ -3380,13 +3380,13 @@ elif pagina == "­ƒÅó Important Companies":
     #  SECCIÓN 2: EMPRESAS EMERGENTES
     # ==============================================================
     st.markdown("---")
-    st.markdown("## ­ƒÜÇ Empresas Emergentes — Futuras Transnacionales")
+    st.markdown("## 🚀 Empresas Emergentes — Futuras Transnacionales")
     st.caption("Empresas de menor capitalización con tecnologías disruptivas y potencial de convertirse en gigantes. Mayor riesgo, mayor recompensa.")
 
     col_btn_e, col_info_e = st.columns([1, 3])
     with col_btn_e:
         analizar_emerg_btn = st.button(
-            "­ƒÜÇ Analizar Emergentes en Vivo",
+            "🚀 Analizar Emergentes en Vivo",
             type="primary",
             use_container_width=True,
             key="btn_analizar_emergentes",
@@ -3394,7 +3394,7 @@ elif pagina == "­ƒÅó Important Companies":
         )
     with col_info_e:
         if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
-            st.success(f"Ô£à Datos en vivo cargados — {len(st.session_state.emergentes_resultados)} empresas analizadas")
+            st.success(f"✅ Datos en vivo cargados — {len(st.session_state.emergentes_resultados)} empresas analizadas")
         else:
             st.caption("Presiona para obtener mîtricas financieras en tiempo real de Yahoo Finance.")
 
@@ -3420,19 +3420,19 @@ elif pagina == "­ƒÅó Important Companies":
             info_emp = WATCHLIST_EMERGENTES.get(r["symbol"])
             st.html(render_empresa_card(r, info_emp, WATCHLIST_EMERGENTES, es_emergente=True))
 
-        st.markdown("#### ­ƒôï Tabla Comparativa Emergentes")
+        st.markdown("#### 📋 Tabla Comparativa Emergentes")
         df_emerg = render_tabla_comparativa(resultados_em, es_emergente=True)
         st.markdown(
-            render_pro_table(df_emerg, title="­ƒôï Tabla Comparativa Emergentes", badge_count=f"{len(df_emerg)}"),
+            render_pro_table(df_emerg, title="📋 Tabla Comparativa Emergentes", badge_count=f"{len(df_emerg)}"),
             unsafe_allow_html=True,
         )
         # Botón CSV eliminado según solicitud
 
     else:
-        st.markdown("#### ­ƒÜÇ Top Empresas Emergentes")
+        st.markdown("#### 🚀 Top Empresas Emergentes")
         render_watchlist_preview(WATCHLIST_EMERGENTES)
 
-    with st.expander("­ƒôè Anílisis de las Empresas Emergentes", expanded=False):
+    with st.expander("📊 Anílisis de las Empresas Emergentes", expanded=False):
         if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
             render_analisis_completo(st.session_state.emergentes_resultados, WATCHLIST_EMERGENTES, es_emergente=True)
         else:
@@ -3440,16 +3440,16 @@ elif pagina == "­ƒÅó Important Companies":
 
 
 # ============================================================================
-#   ­ƒô░ NEWS & CALENDAR — NOTICIAS
+#   📰 NEWS & CALENDAR — NOTICIAS
 # ============================================================================
-elif pagina == "­ƒô░ News & Calendar":
-    st.markdown("### ­ƒô░ Noticias Financieras en Tiempo Real")
+elif pagina == "📰 News & Calendar":
+    st.markdown("### 📰 Noticias Financieras en Tiempo Real")
     st.markdown(
         """
         <div class="watchlist-info">
-            ­ƒôí <b>Centro de Noticias</b> — Noticias financieras de
+            📡 <b>Centro de Noticias</b> — Noticias financieras de
             Yahoo Finance, MarketWatch, CNBC, Reuters e Investing.com.
-            Filtra por relevancia, tendencia mundial o categoría. ­ƒåô 100% gratuito vía RSS.
+            Filtra por relevancia, tendencia mundial o categoría. 🆓 100% gratuito vía RSS.
         </div>
         """,
         unsafe_allow_html=True,
@@ -3460,21 +3460,21 @@ elif pagina == "­ƒô░ News & Calendar":
 
     with col_load:
         cargar_noticias_btn = st.button(
-            "­ƒôí Cargar Noticias" if not st.session_state.noticias_data else "­ƒôí Recargar Todo",
+            "📡 Cargar Noticias" if not st.session_state.noticias_data else "📡 Recargar Todo",
             type="primary",
             use_container_width=True,
             key="btn_cargar_noticias_main",
         )
     with col_refresh:
         refresh_noticias_btn = st.button(
-            "­ƒöä Refrescar",
+            "🔄 Refrescar",
             use_container_width=True,
             key="btn_refresh_noticias",
             disabled=not st.session_state.noticias_data,
         )
     with col_auto:
         auto_refresh_noticias = st.checkbox(
-            "ÔÅ▒´©Å Auto-refresco cada 5 min",
+            "⏱️ Auto-refresco cada 5 min",
             value=st.session_state.noticias_auto_refresh,
             key="chk_auto_refresh_noticias",
             help="Actualiza las noticias automíticamente cada 5 minutos",
@@ -3485,11 +3485,11 @@ elif pagina == "­ƒô░ News & Calendar":
     col_filtro1, col_filtro2 = st.columns([3, 2])
     with col_filtro1:
         filtro_noticias = st.selectbox(
-            "­ƒÅÀ´©Å Filtrar por:",
+            "🏷️ Filtrar por:",
             [
                 "Todas",
-                "­ƒöÑ Mís relevantes",
-                "­ƒîì Mís vistas a nivel mundial",
+                "🔥 Mís relevantes",
+                "🌍 Mís vistas a nivel mundial",
                 "Mís relevantes para trading",
                 "Top Stories",
                 "Earnings",
@@ -3505,7 +3505,7 @@ elif pagina == "­ƒô░ News & Calendar":
         )
     with col_filtro2:
         ordenar_por = st.selectbox(
-            "­ƒôè Ordenar por:",
+            "📊 Ordenar por:",
             ["Mís recientes", "Mís relevantes primero"],
             index=0,
             key="sel_orden_noticias",
@@ -3523,7 +3523,7 @@ elif pagina == "­ƒô░ News & Calendar":
                 necesita_refresh = True
 
     if cargar_noticias_btn or refresh_noticias_btn or necesita_refresh:
-        with st.spinner("­ƒôí Obteniendo noticias de múltiples fuentes..."):
+        with st.spinner("📡 Obteniendo noticias de múltiples fuentes..."):
             noticias = obtener_noticias_financieras()
             if noticias:
                 st.session_state.noticias_data = noticias
@@ -3538,25 +3538,25 @@ elif pagina == "­ƒô░ News & Calendar":
         mins_left = int(remaining // 60)
         secs_left = int(remaining % 60)
         st.caption(
-            f"­ƒöä Auto-refresco activo — Próxima actualización en **{mins_left}:{secs_left:02d}** ┬À "
+            f"🔄 Auto-refresco activo — Próxima actualización en **{mins_left}:{secs_left:02d}** · "
             f"Último: **{st.session_state.noticias_last_refresh.strftime('%H:%M:%S')}**"
         )
 
     # --- CONTENIDO ---
     if not st.session_state.noticias_data:
         st.info(
-            "­ƒæå Presiona **Cargar Noticias** para obtener las últimas noticias financieras "
+            "👆 Presiona **Cargar Noticias** para obtener las últimas noticias financieras "
             "de Yahoo Finance, MarketWatch, CNBC, Reuters e Investing.com."
         )
     else:
         # Mîtricas
         col_status1, col_status2, col_status3 = st.columns(3)
         with col_status1:
-            st.metric("­ƒòÉ Última actualización", st.session_state.noticias_last_refresh.strftime('%H:%M:%S'))
+            st.metric("🕐 Última actualización", st.session_state.noticias_last_refresh.strftime('%H:%M:%S'))
         with col_status2:
-            st.metric("­ƒô░ Total noticias", len(st.session_state.noticias_data))
+            st.metric("📰 Total noticias", len(st.session_state.noticias_data))
         with col_status3:
-            st.metric("­ƒÅÀ´©Å Filtro activo", filtro_noticias)
+            st.metric("🏷️ Filtro activo", filtro_noticias)
 
         # Distribución por categoría
         cat_counts = {}
@@ -3576,30 +3576,30 @@ elif pagina == "­ƒô░ News & Calendar":
         # Filtrar y ordenar
         noticias_filtradas = filtrar_noticias(st.session_state.noticias_data, filtro_noticias)
 
-        if ordenar_por == "Mís relevantes primero" and filtro_noticias not in ("­ƒöÑ Mís relevantes", "­ƒîì Mís vistas a nivel mundial"):
+        if ordenar_por == "Mís relevantes primero" and filtro_noticias not in ("🔥 Mís relevantes", "🌍 Mís vistas a nivel mundial"):
             from core.news import calcular_relevancia
             noticias_filtradas = sorted(noticias_filtradas, key=calcular_relevancia, reverse=True)
 
         if not noticias_filtradas:
             st.info(f"No hay noticias para el filtro '{filtro_noticias}'. Prueba con 'Todas'.")
         else:
-            st.markdown(f"#### ­ƒôï {len(noticias_filtradas)} noticias — {filtro_noticias}")
+            st.markdown(f"#### 📋 {len(noticias_filtradas)} noticias — {filtro_noticias}")
 
             cat_emoji_map = {
-                "Earnings": "­ƒÆ░",
-                "Fed / Tasas": "­ƒÅø´©Å",
-                "Economía": "­ƒôè",
-                "Trading": "­ƒôê",
-                "Crypto": "Ôé┐",
-                "Commodities": "­ƒøó´©Å",
-                "Geopolítica": "­ƒîì",
-                "Top Stories": "Ô¡É",
-                "Mercados": "­ƒôê",
+                "Earnings": "💰",
+                "Fed / Tasas": "🏛️",
+                "Economía": "📊",
+                "Trading": "📈",
+                "Crypto": "₿",
+                "Commodities": "🛢️",
+                "Geopolítica": "🌍",
+                "Top Stories": "⭐",
+                "Mercados": "📈",
             }
 
             for n in noticias_filtradas:
                 cat = n["categoria"]
-                emoji = cat_emoji_map.get(cat, "­ƒô░")
+                emoji = cat_emoji_map.get(cat, "📰")
 
                 with st.container():
                     col_noticia, col_cat = st.columns([5, 1])
@@ -3614,11 +3614,11 @@ elif pagina == "­ƒô░ News & Calendar":
 
                         meta_parts = []
                         if n["fuente"]:
-                            meta_parts.append(f"­ƒô░ {n['fuente']}")
+                            meta_parts.append(f"📰 {n['fuente']}")
                         if n["tiempo"]:
-                            meta_parts.append(f"­ƒòÉ {n['tiempo']}")
+                            meta_parts.append(f"🕐 {n['tiempo']}")
                         if meta_parts:
-                            st.caption(" ┬À ".join(meta_parts))
+                            st.caption(" · ".join(meta_parts))
 
                     with col_cat:
                         st.markdown(f"**{emoji} {cat}**")
@@ -3645,14 +3645,14 @@ elif pagina == "­ƒô░ News & Calendar":
 st.markdown(
     """
     <div class="footer-pro">
-        <div>­ƒææ OPTIONS<span style="color: #00ff88;">KING</span> Analytics v5.0 — Datos de Yahoo Finance</div>
+        <div>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics v5.0 — Datos de Yahoo Finance</div>
         <div class="footer-badges">
-            <span class="footer-badge">­ƒöÆ curl_cffi TLS</span>
-            <span class="footer-badge">­ƒôè Yahoo Finance</span>
-            <span class="footer-badge">­ƒôÉ Black-Scholes</span>
-            <span class="footer-badge">­ƒô░ RSS Feeds</span>
-            <span class="footer-badge">­ƒÄ¿ Streamlit</span>
-            <span class="footer-badge">­ƒÉì Python</span>
+            <span class="footer-badge">🔒 curl_cffi TLS</span>
+            <span class="footer-badge">📊 Yahoo Finance</span>
+            <span class="footer-badge">📐 Black-Scholes</span>
+            <span class="footer-badge">📰 RSS Feeds</span>
+            <span class="footer-badge">🎨 Streamlit</span>
+            <span class="footer-badge">🐍 Python</span>
         </div>
     </div>
     """,

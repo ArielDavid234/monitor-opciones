@@ -12,7 +12,7 @@ for fn in os.listdir('.'):
 
 # Git
 subprocess.run(["git", "add", "-A"])
-subprocess.run(["git", "commit", "-m", "Fix encoding: convert UTF-16 to clean UTF-8 + fix mojibake"])
+subprocess.run(["git", "commit", "-m", "Fix all emoji: restore CP850 mojibake to proper Unicode"])
 t = "ghp_" + "0p8sbzKrRJDgB8Gl5OUBx4iSpkS9Uz3EIv0B"
 subprocess.run(["git", "push", f"https://{t}@github.com/ArielDavid234/monitor-opciones.git", "main"])
 print("OK")
