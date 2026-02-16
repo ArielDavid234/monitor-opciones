@@ -9,6 +9,7 @@ import json
 import os
 import logging
 import time
+import threading
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -54,6 +55,35 @@ from ui.components import (
     render_metric_card, render_metric_row, render_plotly_sparkline,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge, _badge_html,
 )
+
+
+# ============================================================================
+#                    THREADING - ESCANEO EN SEGUNDO PLANO
+# ============================================================================
+def _ejecutar_escaneo_thread(results_dict, ticker_symbol, umbral_vol, umbral_oi, 
+                             umbral_prima, umbral_filtro, csv_carpeta, guardar_csv):
+    """Ejecuta el escaneo en un thread separado y almacena resultados."""
+    try:
+        alertas, datos, error, perfil, fechas = ejecutar_escaneo(
+            ticker_symbol,
+            umbral_vol,
+            umbral_oi,
+            umbral_prima,
+            umbral_filtro,
+            csv_carpeta,
+            guardar_csv,
+        )
+        
+        results_dict['alertas'] = alertas
+        results_dict['datos'] = datos
+        results_dict['error'] = error
+        results_dict['perfil'] = perfil
+        results_dict['fechas'] = fechas
+        results_dict['completed'] = True
+        results_dict['ticker'] = ticker_symbol
+    except Exception as e:
+        results_dict['error'] = str(e)
+        results_dict['completed'] = True
 
 
 # ============================================================================
@@ -448,6 +478,8 @@ _DEFAULTS = {
     "rango_resultado": None,
     "rango_error": None,
     "scanning_active": False,
+    "scan_thread": None,
+    "scan_thread_results": None,
     "noticias_data": [],
     "noticias_last_refresh": None,
     "barchart_data": None,
@@ -643,29 +675,22 @@ if pagina == "🔍 Live Scanning":
     if auto_trigger:
         st.session_state.trigger_scan = False
 
-    if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
-        st.session_state.scanning_active = True
-        with st.status("🔍 Escaneando opciones...", expanded=True) as status:
-            st.write(f"Creando sesión TLS anti-ban...")
-            st.write(f"Descargando cadena de opciones de **{ticker_symbol}**...")
-            st.write(f"Analizando **todas** las fechas de vencimiento disponibles...")
-
-            # Guardar datos anteriores para comparar OI
-            if st.session_state.datos_completos:
-                st.session_state.datos_anteriores = st.session_state.datos_completos.copy()
-
-            alertas, datos, error, perfil, fechas = ejecutar_escaneo(
-                ticker_symbol,
-                umbral_vol,
-                umbral_oi,
-                umbral_prima,
-                umbral_filtro,
-                csv_carpeta,
-                guardar_csv,
-            )
-
+    # Verificar si hay un thread de escaneo activo
+    if st.session_state.scan_thread is not None:
+        thread = st.session_state.scan_thread
+        results = st.session_state.scan_thread_results
+        
+        # Verificar si el thread ha terminado
+        if not thread.is_alive() and results.get('completed', False):
+            # Procesar resultados del thread
+            alertas = results.get('alertas', [])
+            datos = results.get('datos', [])
+            error = results.get('error', None)
+            perfil = results.get('perfil', None)
+            fechas = results.get('fechas', [])
+            
             if error:
-                status.update(label=f"❌ Error: {error}", state="error")
+                st.error(f"❌ Error en escaneo: {error}")
                 st.session_state.scan_error = error
             else:
                 st.session_state.alertas_actuales = alertas
@@ -673,7 +698,7 @@ if pagina == "🔍 Live Scanning":
                 st.session_state.scan_count += 1
                 st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
                 
-                # Capturar precio subyacente usando cachî TTL (evita rate-limiting)
+                # Capturar precio subyacente usando caché TTL (evita rate-limiting)
                 precio, _err_precio = obtener_precio_actual(ticker_symbol)
                 if precio is not None:
                     st.session_state.precio_subyacente = precio
@@ -689,15 +714,15 @@ if pagina == "🔍 Live Scanning":
                         datos, st.session_state.datos_anteriores
                     )
 
-                # Inicializar OI_Chg en 0 (serí sobrescrito por Barchart)
+                # Inicializar OI_Chg en 0 (será sobrescrito por Barchart)
                 for d in st.session_state.datos_completos:
                     d["OI_Chg"] = 0
                 for a in st.session_state.alertas_actuales:
                     a["OI_Chg"] = 0
 
                 # Auto-fetch Barchart OI Changes (fuente real de OI_Chg)
-                st.write("Obteniendo datos de Open Interest de Barchart...")
-                _fetch_barchart_oi(ticker_symbol)
+                with st.spinner("🌐 Obteniendo datos de Open Interest de Barchart..."):
+                    _fetch_barchart_oi(ticker_symbol)
 
                 # Inyectar OI_Chg real de Barchart en datos_completos y alertas
                 _inyectar_oi_chg_barchart()
@@ -706,11 +731,47 @@ if pagina == "🔍 Live Scanning":
                 clusters = detectar_compras_continuas(alertas, umbral_prima)
                 st.session_state.clusters_detectados = clusters
 
-                status.update(
-                    label=f"✅ Escaneo completado — {n_alertas} alertas en {n_opciones:,} opciones",
-                    state="complete",
-                )
-        st.session_state.scanning_active = False
+                st.success(f"✅ Escaneo completado — {n_alertas} alertas en {n_opciones:,} opciones")
+            
+            # Limpiar thread y resultados
+            st.session_state.scan_thread = None
+            st.session_state.scan_thread_results = None
+            st.session_state.scanning_active = False
+            st.rerun()
+        else:
+            # Thread todavía está corriendo - mostrar indicador
+            st.info(f"🔄 Escaneo en progreso para **{ticker_symbol}**... Puedes navegar libremente mientras tanto.")
+            # Forzar rerun para actualizar estado
+            time.sleep(0.5)
+            st.rerun()
+
+    # Iniciar nuevo escaneo si se presionó el botón
+    if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
+        # Solo iniciar si no hay un thread activo
+        if st.session_state.scan_thread is None or not st.session_state.scan_thread.is_alive():
+            st.session_state.scanning_active = True
+            
+            # Guardar datos anteriores para comparar OI
+            if st.session_state.datos_completos:
+                st.session_state.datos_anteriores = st.session_state.datos_completos.copy()
+
+            # Crear diccionario compartido para resultados
+            results_dict = {}
+            st.session_state.scan_thread_results = results_dict
+            
+            # Iniciar thread de escaneo
+            thread = threading.Thread(
+                target=_ejecutar_escaneo_thread,
+                args=(results_dict, ticker_symbol, umbral_vol, umbral_oi, 
+                      umbral_prima, umbral_filtro, csv_carpeta, guardar_csv),
+                daemon=True
+            )
+            thread.start()
+            st.session_state.scan_thread = thread
+            
+            st.info(f"🚀 Escaneo iniciado para **{ticker_symbol}**... Puedes continuar usando la aplicación.")
+            time.sleep(0.5)
+            st.rerun()
 
     st.session_state.auto_scan = auto_scan
 
