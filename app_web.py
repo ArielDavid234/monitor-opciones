@@ -491,47 +491,28 @@ with st.sidebar:
         <hr style="border-color: #334155; margin: 0.5rem 0 1rem 0;">
     """, unsafe_allow_html=True)
 
-    # Si hay un escaneo activo, bloquear el sidebar
-    if st.session_state.scanning_active:
-        st.markdown("""
-            <div style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); 
-                        border-radius: 12px; border: 2px solid #00ff88; margin: 1rem 0;">
-                <div style="font-size: 48px; margin-bottom: 1rem; animation: pulse 2s infinite;">⏳</div>
-                <h3 style="color: #00ff88; margin: 0 0 0.5rem 0;">Escaneo Activo</h3>
-                <p style="color: #94a3b8; font-size: 14px; margin: 0;">
-                    El panel estí bloqueado hasta que finalice el anílisis
-                </p>
-            </div>
-            <style>
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.5; }
-                }
-            </style>
-        """, unsafe_allow_html=True)
-    else:
-        # -- Menú de navegación con emojis --
-        pagina = st.radio(
-            "Navegación",
-            ["🔍 Live Scanning", "📊 Open Interest", "📈 Data Analysis",
-             "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News & Calendar", "📋 Reports"],
-            index=0,
-            label_visibility="collapsed",
-        )
+# -- Menú de navegación con emojis (siempre disponible) --
+    pagina = st.radio(
+        "Navegación",
+        ["🔍 Live Scanning", "📊 Open Interest", "📈 Data Analysis",
+         "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News & Calendar", "📋 Reports"],
+        index=0,
+        label_visibility="collapsed",
+    )
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # -- Avatar / User Section --
-        st.markdown(
-            '<div style="text-align:center; margin-top:2rem; padding:1rem 0;">'
-            '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#00ff88,#10b981);'
-            'display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#0f172a;'
-            'margin-bottom:8px;box-shadow:0 0 16px rgba(0,255,136,0.2);">AD</div>'
-            '<div style="color:white;font-weight:600;font-size:0.9rem;">Ariel David</div>'
-            '<div style="color:#64748b;font-size:0.75rem;">● Pro Plan</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+    # -- Avatar / User Section --
+    st.markdown(
+        '<div style="text-align:center; margin-top:2rem; padding:1rem 0;">'  
+        '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#00ff88,#10b981);'
+        'display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#0f172a;'
+        'margin-bottom:8px;box-shadow:0 0 16px rgba(0,255,136,0.2);">AD</div>'
+        '<div style="color:white;font-weight:600;font-size:0.9rem;">Ariel David</div>'
+        '<div style="color:#64748b;font-size:0.75rem;">● Pro Plan</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 # Valores por defecto de umbrales (se configuran en Live Scanning)
 if "umbral_vol" not in st.session_state:
@@ -552,11 +533,10 @@ if "rango_delta" not in st.session_state:
     st.session_state.rango_delta = DEFAULT_TARGET_DELTA
 rango_delta = st.session_state.rango_delta
 
-# Obtener pígina actual (con fallback si scanning_active bloqueó el radio)
+# Obtener pígina actual (navegación siempre disponible)
 if "current_page" not in st.session_state:
     st.session_state.current_page = "🔍 Live Scanning"
-if not st.session_state.scanning_active:
-    st.session_state.current_page = pagina
+st.session_state.current_page = pagina
 pagina = st.session_state.current_page
 
 # ============================================================================
@@ -568,7 +548,6 @@ ticker_symbol = st.text_input(
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
     placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
     label_visibility="collapsed",
-    disabled=st.session_state.scanning_active,
 ).strip().upper()
 
 # Detectar cambio de ticker → auto-escanear
@@ -641,10 +620,9 @@ if pagina == "🔍 Live Scanning":
     col_btn1, col_btn2 = st.columns([1, 1])
 
     with col_btn1:
-        scan_btn = st.button("🚀 Escanear Ahora", type="primary", use_container_width=True,
-                                disabled=st.session_state.scanning_active)
+        scan_btn = st.button("🚀 Escanear Ahora", type="primary", use_container_width=True)
     with col_btn2:
-        auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)", disabled=st.session_state.scanning_active)
+        auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)")
 
     if st.session_state.last_scan_time:
         st.markdown(
@@ -3169,8 +3147,7 @@ elif pagina == "📐 Range":
             )
     with col_r3:
         st.markdown("<br>", unsafe_allow_html=True)
-        calc_btn = st.button("📐 Calcular Rango", type="primary", use_container_width=True,
-                                disabled=st.session_state.scanning_active)
+        calc_btn = st.button("📐 Calcular Rango", type="primary", use_container_width=True)
 
     if calc_btn:
         st.session_state.scanning_active = True
@@ -3328,7 +3305,6 @@ elif pagina == "🏢 Important Companies":
             type="primary",
             use_container_width=True,
             key="btn_analizar_consolidadas",
-            disabled=st.session_state.scanning_active,
         )
     with col_info_c:
         if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
@@ -3390,7 +3366,6 @@ elif pagina == "🏢 Important Companies":
             type="primary",
             use_container_width=True,
             key="btn_analizar_emergentes",
-            disabled=st.session_state.scanning_active,
         )
     with col_info_e:
         if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
