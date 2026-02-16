@@ -123,9 +123,11 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
     Obtiene las opciones con mayor cambio en OI de TODO el mercado.
     Equivale a: https://www.barchart.com/options/open-interest-change?view=calls
 
+    Usa paginación automática para obtener todos los resultados disponibles.
+
     Args:
         tipo: "call" o "put"
-        limite: número máximo de resultados (máx 500)
+        limite: número máximo total de resultados
         min_oi_chg: cambio mínimo en OI para incluir (filtra después)
 
     Returns:
@@ -135,44 +137,70 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
         session = _crear_sesion()
         token = _obtener_xsrf(session)
 
-        resp = session.get(
-            "https://www.barchart.com/proxies/core-api/v1/options/get",
-            params={
-                "fields": (
-                    "symbol,baseSymbol,strikePrice,expirationDate,"
-                    "daysToExpiration,lastPrice,priceChange,percentChange,"
-                    "volume,openInterest,openInterestChange,volatility,"
-                    "delta,tradeTime"
+        PAGE_SIZE = 500
+        all_frames = []
+        page = 1
+        total_fetched = 0
+
+        while total_fetched < limite:
+            resp = session.get(
+                "https://www.barchart.com/proxies/core-api/v1/options/get",
+                params={
+                    "fields": (
+                        "symbol,baseSymbol,strikePrice,expirationDate,"
+                        "daysToExpiration,lastPrice,priceChange,percentChange,"
+                        "volume,openInterest,openInterestChange,volatility,"
+                        "delta,tradeTime"
+                    ),
+                    "orderBy": "openInterestChange",
+                    "orderDir": "desc",
+                    "optionType": tipo,
+                    "hasOptions": "true",
+                    "raw": "1",
+                    "page": str(page),
+                    "limit": str(PAGE_SIZE),
+                    "meta": "field.shortName,field.type,field.description",
+                },
+                headers=_headers_api(
+                    token,
+                    "https://www.barchart.com/options/open-interest-change",
                 ),
-                "orderBy": "openInterestChange",
-                "orderDir": "desc",
-                "optionType": tipo,
-                "hasOptions": "true",
-                "raw": "1",
-                "page": "1",
-                "limit": str(min(limite, 500)),
-                "meta": "field.shortName,field.type,field.description",
-            },
-            headers=_headers_api(
-                token,
-                "https://www.barchart.com/options/open-interest-change",
-            ),
-            timeout=20,
-        )
-
-        if resp.status_code == 403:
-            return None, (
-                "Barchart bloqueó la solicitud (403). "
-                "Esto puede ocurrir por rate-limiting. "
-                "Esperá 1-2 minutos e intentá de nuevo."
+                timeout=20,
             )
-        if resp.status_code != 200:
-            return None, f"Error HTTP {resp.status_code} de Barchart"
 
-        df = _parsear_respuesta(resp.json())
+            if resp.status_code == 403:
+                if all_frames:
+                    break
+                return None, (
+                    "Barchart bloqueó la solicitud (403). "
+                    "Esto puede ocurrir por rate-limiting. "
+                    "Esperá 1-2 minutos e intentá de nuevo."
+                )
+            if resp.status_code != 200:
+                if all_frames:
+                    break
+                return None, f"Error HTTP {resp.status_code} de Barchart"
 
-        if df.empty:
+            resp_json = resp.json()
+            df_page = _parsear_respuesta(resp_json)
+
+            if df_page.empty:
+                break
+
+            all_frames.append(df_page)
+            total_fetched += len(df_page)
+
+            # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
+            total_count = resp_json.get("count", 0)
+            if len(df_page) < PAGE_SIZE or total_fetched >= total_count:
+                break
+
+            page += 1
+
+        if not all_frames:
             return None, "Barchart no devolvió datos. Intentá de nuevo."
+
+        df = pd.concat(all_frames, ignore_index=True)
 
         # Filtrar por OI_Chg mínimo
         if min_oi_chg > 0:
@@ -192,10 +220,13 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
     Obtiene cambios en OI para un símbolo específico.
     Equivale a: https://www.barchart.com/stocks/quotes/SPY/options?view=stacked
 
+    Usa paginación automática para obtener TODOS los contratos disponibles
+    (el API de Barchart limita a 500 por página).
+
     Args:
         simbolo: ticker del underlying (ej: "SPY", "AAPL")
         tipo: "call", "put" o "ambos"
-        limite: número máximo de resultados
+        limite: número máximo total de resultados
 
     Returns:
         (DataFrame, None) en éxito, o (None, str_error) en fallo
@@ -204,51 +235,76 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
         session = _crear_sesion()
         token = _obtener_xsrf(session)
 
-        params = {
-            "fields": (
-                "symbol,baseSymbol,strikePrice,expirationDate,"
-                "daysToExpiration,lastPrice,volume,openInterest,"
-                "openInterestChange,volatility,delta,gamma,theta,"
-                "vega,tradeTime"
-            ),
-            "orderBy": "openInterestChange",
-            "orderDir": "desc",
-            "baseSymbol": simbolo.upper(),
-            "hasOptions": "true",
-            "raw": "1",
-            "page": "1",
-            "limit": str(min(limite, 500)),
-            "meta": "field.shortName,field.type,field.description",
-        }
+        PAGE_SIZE = 500
+        all_frames = []
+        page = 1
+        total_fetched = 0
 
-        if tipo != "ambos":
-            params["optionType"] = tipo
+        while total_fetched < limite:
+            params = {
+                "fields": (
+                    "symbol,baseSymbol,strikePrice,expirationDate,"
+                    "daysToExpiration,lastPrice,volume,openInterest,"
+                    "openInterestChange,volatility,delta,gamma,theta,"
+                    "vega,tradeTime"
+                ),
+                "orderBy": "openInterestChange",
+                "orderDir": "desc",
+                "baseSymbol": simbolo.upper(),
+                "hasOptions": "true",
+                "raw": "1",
+                "page": str(page),
+                "limit": str(PAGE_SIZE),
+                "meta": "field.shortName,field.type,field.description",
+            }
 
-        sim = simbolo.upper()
-        resp = session.get(
-            "https://www.barchart.com/proxies/core-api/v1/options/get",
-            params=params,
-            headers=_headers_api(
-                token,
-                f"https://www.barchart.com/stocks/quotes/{sim}/options",
-            ),
-            timeout=20,
-        )
+            if tipo != "ambos":
+                params["optionType"] = tipo
 
-        if resp.status_code == 403:
-            return None, (
-                "Barchart bloqueó la solicitud (403). "
-                "Esperá 1-2 minutos e intentá de nuevo."
+            sim = simbolo.upper()
+            resp = session.get(
+                "https://www.barchart.com/proxies/core-api/v1/options/get",
+                params=params,
+                headers=_headers_api(
+                    token,
+                    f"https://www.barchart.com/stocks/quotes/{sim}/options",
+                ),
+                timeout=20,
             )
-        if resp.status_code != 200:
-            return None, f"Error HTTP {resp.status_code}"
 
-        incluir_tipo = (tipo == "ambos")
-        df = _parsear_respuesta(resp.json(), incluir_tipo=incluir_tipo)
+            if resp.status_code == 403:
+                if all_frames:
+                    break  # Devolver lo que ya tenemos si Barchart nos cortó
+                return None, (
+                    "Barchart bloqueó la solicitud (403). "
+                    "Esperá 1-2 minutos e intentá de nuevo."
+                )
+            if resp.status_code != 200:
+                if all_frames:
+                    break
+                return None, f"Error HTTP {resp.status_code}"
 
-        if df.empty:
-            return None, f"Sin datos de Barchart para {sim}"
+            resp_json = resp.json()
+            incluir_tipo = (tipo == "ambos")
+            df_page = _parsear_respuesta(resp_json, incluir_tipo=incluir_tipo)
 
+            if df_page.empty:
+                break  # No hay más datos
+
+            all_frames.append(df_page)
+            total_fetched += len(df_page)
+
+            # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
+            total_count = resp_json.get("count", 0)
+            if len(df_page) < PAGE_SIZE or total_fetched >= total_count:
+                break
+
+            page += 1
+
+        if not all_frames:
+            return None, f"Sin datos de Barchart para {simbolo.upper()}"
+
+        df = pd.concat(all_frames, ignore_index=True)
         df = df.sort_values("OI_Chg", ascending=False).reset_index(drop=True)
         return df, None
 
