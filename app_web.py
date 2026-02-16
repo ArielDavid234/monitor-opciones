@@ -1715,7 +1715,7 @@ elif pagina == "📋 Reports":
                     i, a["Tipo_Opcion"], _fmt_precio(a['Strike']), a["Vencimiento"],
                     _fmt_entero(a['Volumen']), _fmt_entero(a['OI']),
                     _fmt_precio(a['Ask']), _fmt_precio(a['Bid']), _fmt_precio(a['Ultimo']),
-                    _fmt_iv(a['IV']),
+                    _fmt_iv(a.get('IV', 0)),
                     f"{sent_emoji} {sent_txt}", _fmt_lado(a.get('Lado', 'N/A')),
                     _fmt_monto(a['Prima_Volumen']),
                     a.get("Contrato", "N/A"),
@@ -1744,7 +1744,7 @@ elif pagina == "📋 Reports":
                     i, a["Tipo_Opcion"], _fmt_precio(a['Strike']), a["Vencimiento"],
                     _fmt_entero(a['Volumen']), _fmt_entero(a['OI']),
                     _fmt_precio(a['Ask']), _fmt_precio(a['Bid']), _fmt_precio(a['Ultimo']),
-                    _fmt_iv(a['IV']),
+                    _fmt_iv(a.get('IV', 0)),
                     f"{sent_emoji} {sent_txt}", _fmt_lado(a.get('Lado', 'N/A')),
                     _fmt_monto(a['Prima_Volumen']),
                 ])
@@ -1817,7 +1817,7 @@ elif pagina == "📋 Reports":
                     d["Tipo"], d["Vencimiento"], _fmt_precio(d['Strike']),
                     _fmt_entero(d['Volumen']), _fmt_entero(d['OI']),
                     _fmt_precio(d['Ask']), _fmt_precio(d['Bid']), _fmt_precio(d['Ultimo']),
-                    _fmt_lado(d.get('Lado', 'N/A')), _fmt_iv(d['IV']),
+                    _fmt_lado(d.get('Lado', 'N/A')), _fmt_iv(d.get('IV', 0)),
                     _fmt_monto(d.get('Prima_Volumen', 0)),
                 ])
             _tabla_datos_report(doc, headers_opt, rows_opt)

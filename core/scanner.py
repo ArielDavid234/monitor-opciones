@@ -367,6 +367,7 @@ def ejecutar_escaneo(
                             "Ask": round(ask_val, 2),
                             "Bid": round(bid_val, 2),
                             "Ultimo": round(last_val, 2),
+                            "IV": round(iv * 100, 2) if iv else 0,
                             "Contrato": contract_sym,
                             "Lado": lado,
                         }
