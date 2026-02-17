@@ -318,7 +318,7 @@ def _inyectar_oi_chg_barchart():
 
 
 def _enriquecer_datos_opcion(datos, precio_subyacente=None):
-    """Enriquece datos de opciones con mîtricas derivadas calculadas."""
+    """Enriquece datos de opciones con métricas derivadas calculadas."""
     if not isinstance(datos, (list, pd.DataFrame)):
         return datos
     
@@ -406,7 +406,7 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
                 item['Time_Value_Pct'] = 0
                 
         except (ValueError, TypeError, KeyError) as e:
-            # Si hay error en algún cílculo, continuar con valores por defecto
+            # Si hay error en algún cálculo, continuar con valores por defecto
             continue
     
     return datos_lista if not isinstance(datos, pd.DataFrame) else pd.DataFrame(datos_lista)
@@ -445,7 +445,7 @@ _CUSTOM_CSS = """
         border: 1px solid #334155;
     }
 
-    /* Mîtricas superiores */
+    /* Métricas superiores */
     .stMetric { background-color: #1e293b; border-radius: 12px; padding: 1rem; }
     .stMetric > label { color: #94a3b8; }
     .stMetric > div { color: white; font-size: 1.8rem; }
@@ -636,7 +636,7 @@ st.markdown(
 # ============================================================================
 #                    NAVEGACIÓN POR RADIO (SIDEBAR)
 # ============================================================================
-# Variables de umbrales (disponibles en todas las píginas)
+# Variables de umbrales (disponibles en todas las páginas)
 umbral_vol = st.session_state.umbral_vol
 umbral_oi = st.session_state.umbral_oi
 umbral_prima = st.session_state.umbral_prima
@@ -660,9 +660,9 @@ if pagina == "🔍 Live Scanning":
             umbral_prima = st.number_input("Prima Total mínima ($)", value=st.session_state.umbral_prima, step=500_000, format="%d",
                                             help="Prima Total = Volumen × Precio × 100", key="inp_umbral_prima")
         with _umb_c4:
-            umbral_filtro = st.number_input("Filtro rípido (vol/oi mín.)", value=st.session_state.umbral_filtro, step=100, format="%d",
+            umbral_filtro = st.number_input("Filtro rápido (vol/oi mín.)", value=st.session_state.umbral_filtro, step=100, format="%d",
                                              help="Ignora opciones con vol Y oi debajo de este umbral", key="inp_umbral_filtro")
-        # Guardar en session_state para persistir entre píginas
+        # Guardar en session_state para persistir entre páginas
         st.session_state.umbral_vol = umbral_vol
         st.session_state.umbral_oi = umbral_oi
         st.session_state.umbral_prima = umbral_prima
@@ -795,9 +795,9 @@ if pagina == "🔍 Live Scanning":
 
     st.session_state.auto_scan = auto_scan
 
-    # --- Mîtricas rípidas ---
+    # --- Métricas rápidas ---
     if st.session_state.datos_completos:
-        st.markdown("### 📊 Mîtricas del Escaneo")
+        st.markdown("### 📊 Métricas del Escaneo")
         datos_df = pd.DataFrame(st.session_state.datos_completos)
         _n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
         _n_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
@@ -890,7 +890,7 @@ if pagina == "🔍 Live Scanning":
             )
 
             with st.expander(expander_label, expanded=False):
-                # ⭐ Botón de favorito rípido (arriba del detalle)
+                # ⭐ Botón de favorito rápido (arriba del detalle)
                 if contract_sym_card:
                     ya_fav_top = _es_favorito(contract_sym_card)
                     star_icon = "⭐" if ya_fav_top else "☆"
@@ -1301,7 +1301,7 @@ if pagina == "🔍 Live Scanning":
                 f"opciones_enriquecidas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 "text/csv",
                 key="dl_datos_enriquecidos_escaneo",
-                help="Incluye mîtricas adicionales: spread, moneyness, liquidez, ratios, etc."
+                help="Incluye métricas adicionales: spread, moneyness, liquidez, ratios, etc."
             )
 
         # --- Clusters de Compra Continua ---
@@ -1362,7 +1362,7 @@ elif pagina == "📊 Open Interest":
     #  TOP OI CHANGES (Barchart) — Auto-cargado al escanear
     # ================================================================
     st.markdown("#### 🔥 Top Cambios en OI — Barchart")
-    st.caption("Se actualiza automíticamente con cada escaneo • Fuente: Barchart.com")
+    st.caption("Se actualiza automáticamente con cada escaneo • Fuente: Barchart.com")
 
     # Filtro tipo + OI Chg mínimo
     col_f1, col_f2 = st.columns([1, 1])
@@ -1430,7 +1430,7 @@ elif pagina == "📊 Open Interest":
             calls_abiertos = int(df_positivos[df_positivos["Tipo"] == "CALL"]["OI_Chg"].sum()) if n_pos > 0 and "Tipo" in df_positivos.columns else 0
             puts_abiertos = int(df_positivos[df_positivos["Tipo"] == "PUT"]["OI_Chg"].sum()) if n_pos > 0 and "Tipo" in df_positivos.columns else 0
 
-            # Mîtricas rípidas
+            # Métricas rápidas
             _pos_pct = (n_pos / n_total * 100) if n_total else 0
             _neg_pct = (n_neg / n_total * 100) if n_total else 0
             st.markdown(render_metric_row([
@@ -1441,7 +1441,7 @@ elif pagina == "📊 Open Interest":
                 render_metric_card("Señales Negativas", f"{n_neg:,}", delta=_neg_pct, color_override="#ef4444"),
             ]), unsafe_allow_html=True)
 
-            # Segunda fila de mîtricas: Contratos abiertos vs cerrados
+            # Segunda fila de métricas: Contratos abiertos vs cerrados
             st.markdown("---")
             st.markdown("##### 📈 Flujo de Contratos")
             _net_flow = contratos_abiertos_total + contratos_cerrados_total
@@ -1544,7 +1544,7 @@ elif pagina == "📊 Open Interest":
             else:
                 st.info("Sin contratos con OI Chg negativo.")
     elif st.session_state.scan_count == 0:
-        st.info("⏳ **Ejecutí un escaneo** en 🔍 Live Scanning para cargar los datos de Open Interest automíticamente.")
+        st.info("⏳ **Ejecuta un escaneo** en 🔍 Live Scanning para cargar los datos de Open Interest automáticamente.")
 
 
 # ============================================================================
@@ -2069,7 +2069,7 @@ elif pagina == "📋 Reports":
             run_d.font.italic = True
             run_d.font.name = "Calibri"
 
-            # Resumen mîtricas
+            # Resumen métricas
             alta = sum(1 for r in resultados if r.get("veredicto", "").startswith("OPORTUNIDAD"))
             considerar = sum(1 for r in resultados if "CONSIDERAR" in r.get("veredicto", ""))
             mantener = sum(1 for r in resultados if "MANTENER" in r.get("veredicto", ""))
@@ -2541,7 +2541,7 @@ elif pagina == "📋 Reports":
 
         doc.add_paragraph("")
 
-        # Parímetros del cílculo
+        # Parámetros del cálculo
         dias = r.get('dias_restantes')
         _agregar_titulo_report(doc, "PARÁMETROS DEL CÁLCULO", level=1)
         _tabla_info_report(doc, {
@@ -2602,7 +2602,7 @@ elif pagina == "📋 Reports":
         doc.add_paragraph("")
         p_aviso = doc.add_paragraph()
         run_aviso = p_aviso.add_run(
-            "⚠️ AVISO: Este cílculo es una estimación estadística basada en la volatilidad implícita "
+            "⚠️ AVISO: Este cálculo es una estimación estadística basada en la volatilidad implícita "
             "y no garantiza que el precio permanecerí dentro del rango. Los movimientos del mercado "
             "pueden ser impredecibles, especialmente ante eventos inesperados o noticias significativas."
         )
@@ -2734,7 +2734,7 @@ elif pagina == "📋 Reports":
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                     key="dl_range",
-                    help="Descarga el cílculo detallado del rango esperado con explicación e interpretación.",
+                    help="Descarga el cálculo detallado del rango esperado con explicación e interpretación.",
                 )
             except Exception as e:
                 st.error(f"⚠️ Error al generar reporte de Rango: {e}")
@@ -3279,9 +3279,9 @@ elif pagina == "⭐ Favorites":
     favoritos = st.session_state.get("favoritos", [])
 
     if not favoritos:
-        st.info("No hay contratos en favoritos. Ejecutí un escaneo y usí el botón ☆ **Guardar en Favoritos** en cualquier alerta.")
+        st.info("No hay contratos en favoritos. Ejecuta un escaneo y usa el botón ☆ **Guardar en Favoritos** en cualquier alerta.")
     else:
-        # Mîtricas rípidas
+        # Métricas rápidas
         n_calls_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "CALL")
         n_puts_fav = sum(1 for f in favoritos if f.get("Tipo_Opcion") == "PUT")
         prima_total_fav = sum(f.get("Prima_Volumen", 0) for f in favoritos)
@@ -3505,7 +3505,7 @@ elif pagina == "📐 Range":
 
         st.divider()
 
-        st.markdown("#### 🎯 Contratos Usados para el Cílculo")
+        st.markdown("#### 🎯 Contratos Usados para el Cálculo")
         col_d1, col_d2 = st.columns(2)
 
         with col_d1:
@@ -3526,7 +3526,7 @@ elif pagina == "📐 Range":
 - _Precio debe caer bajo ${r['put_strike']} para salir del rango_
 """)
 
-        with st.expander("📋 Ver datos completos del cílculo"):
+        with st.expander("📋 Ver datos completos del cálculo"):
             resumen_data = {
                 "Campo": [
                     "Símbolo", "Precio Actual", "Expiración", "Días Restantes",
@@ -3551,7 +3551,7 @@ elif pagina == "📐 Range":
                 ]
             }
             st.markdown(
-                render_pro_table(pd.DataFrame(resumen_data), title="📋 Datos del Cílculo"),
+                render_pro_table(pd.DataFrame(resumen_data), title="📋 Datos del Cálculo"),
                 unsafe_allow_html=True,
             )
 
@@ -3728,7 +3728,7 @@ elif pagina == "📰 News & Calendar":
             "⏱️ Auto-refresco cada 5 min",
             value=st.session_state.noticias_auto_refresh,
             key="chk_auto_refresh_noticias",
-            help="Actualiza las noticias automíticamente cada 5 minutos",
+            help="Actualiza las noticias automáticamente cada 5 minutos",
         )
         st.session_state.noticias_auto_refresh = auto_refresh_noticias
 
@@ -3800,7 +3800,7 @@ elif pagina == "📰 News & Calendar":
             "de Yahoo Finance, MarketWatch, CNBC, Reuters e Investing.com."
         )
     else:
-        # Mîtricas
+        # Métricas
         col_status1, col_status2, col_status3 = st.columns(3)
         with col_status1:
             st.metric("🕐 Última actualización", st.session_state.noticias_last_refresh.strftime('%H:%M:%S'))
