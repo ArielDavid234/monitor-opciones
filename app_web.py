@@ -676,11 +676,16 @@ if pagina == "🔍 Live Scanning":
         auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)")
 
     if st.session_state.last_scan_time:
+        # Extraer fecha del timestamp completo
+        scan_date = st.session_state.last_scan_time.split()[0] if ' ' in st.session_state.last_scan_time else ''
+        hoy = datetime.now().strftime("%Y-%m-%d")
+        es_hoy = (scan_date == hoy)
+        
         st.markdown(
             f"""
             <div class="status-bar">
                 <div class="status-dot"></div>
-                <span>Último escaneo: <b>{st.session_state.last_scan_time}</b></span>
+                <span>Último escaneo: <b>{st.session_state.last_scan_time}</b> {'<span style="color: #00ff88;">✓ HOY</span>' if es_hoy else '<span style="color: #fbbf24;">⚠️ Histórico</span>'}</span>
                 <span>Perfil TLS: <b>{st.session_state.last_perfil}</b></span>
                 <span>Ciclos: <b>{st.session_state.scan_count}</b></span>
                 <span>Fechas: <b>{len(st.session_state.fechas_escaneadas)}</b></span>
@@ -715,7 +720,7 @@ if pagina == "🔍 Live Scanning":
                 st.session_state.alertas_actuales = alertas
                 st.session_state.datos_completos = datos
                 st.session_state.scan_count += 1
-                st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
+                st.session_state.last_scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 # Capturar precio subyacente usando caché TTL (evita rate-limiting)
                 precio, _err_precio = obtener_precio_actual(ticker_symbol)
@@ -883,8 +888,20 @@ if pagina == "🔍 Live Scanning":
             prima_vol_fmt = f"${alerta['Prima_Volumen']:,.0f}"
             contract_sym_card = alerta.get("Contrato", "")
 
+            # Agregar indicador de fecha para distinguir alertas de hoy vs históricas
+            fecha_alerta = alerta.get("Fecha_Hora", "")
+            if fecha_alerta:
+                fecha_alerta_solo = fecha_alerta.split()[0]  # Obtener solo la fecha (YYYY-MM-DD)
+                hoy_alerta = datetime.now().strftime("%Y-%m-%d")
+                if fecha_alerta_solo == hoy_alerta:
+                    badge_fecha = "🟢 HOY"
+                else:
+                    badge_fecha = f"📅 {fecha_alerta_solo}"
+            else:
+                badge_fecha = ""
+
             expander_label = (
-                f"{emoji} {etiqueta} — {alerta['Tipo_Opcion']} Strike ${alerta['Strike']} | "
+                f"{emoji} {etiqueta} {badge_fecha} — {alerta['Tipo_Opcion']} Strike ${alerta['Strike']} | "
                 f"Venc: {alerta['Vencimiento']} | Vol: {alerta['Volumen']:,} | "
                 f"Prima: ${prima_mayor:,.0f}"
             )
