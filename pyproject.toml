@@ -1,0 +1,57 @@
+# ── OptionsKing Analytics — Project Configuration ──────────────────────────
+[project]
+name = "optionsking-analytics"
+version = "5.0.0"
+description = "Real-time unusual options activity scanner & analytics dashboard"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+readme = "README.md"
+
+# ── Black — Code formatter ─────────────────────────────────────────────────
+[tool.black]
+line-length = 120
+target-version = ["py311", "py312", "py313"]
+
+# ── Ruff — Linter & import sorter ──────────────────────────────────────────
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import sorting)
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "N",    # pep8-naming
+]
+ignore = [
+    "E501",   # line too long — handled by black
+    "B008",   # do not perform function calls in argument defaults (st.cache)
+    "SIM108", # use ternary operator — readability preference
+    "N802",   # function name should be lowercase — many financial acronyms
+    "N803",   # argument name should be lowercase — financial conventions (S, K, T)
+    "N806",   # variable in function should be lowercase — same
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "core", "ui"]
+force-single-line = false
+lines-after-imports = 2
+
+# ── Mypy — Type checker ───────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false        # gradual adoption — enable later
+ignore_missing_imports = true        # many stubs missing for finance libs
+
+# ── Pytest ─────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
