@@ -191,8 +191,10 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
             total_fetched += len(df_page)
 
             # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
-            total_count = resp_json.get("count", 0)
-            if len(df_page) < PAGE_SIZE or total_fetched >= total_count:
+            total_count = resp_json.get("count", None)
+            if len(df_page) < PAGE_SIZE:
+                break
+            if total_count is not None and total_fetched >= total_count:
                 break
 
             page += 1
@@ -295,8 +297,10 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
             total_fetched += len(df_page)
 
             # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
-            total_count = resp_json.get("count", 0)
-            if len(df_page) < PAGE_SIZE or total_fetched >= total_count:
+            total_count = resp_json.get("count", None)
+            if len(df_page) < PAGE_SIZE:
+                break
+            if total_count is not None and total_fetched >= total_count:
                 break
 
             page += 1
