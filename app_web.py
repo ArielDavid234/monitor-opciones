@@ -226,11 +226,26 @@ def _es_favorito(contrato_id):
     return any(f.get("Contrato") == contrato_id for f in favoritos)
 
 
-def _fetch_barchart_oi(simbolo):
-    """Obtiene datos de OI de Barchart para un símbolo y actualiza session_state."""
+def _fetch_barchart_oi(simbolo, progress_bar=None):
+    """Obtiene datos de OI de Barchart para un símbolo y actualiza session_state.
+    
+    Args:
+        simbolo: Ticker del símbolo
+        progress_bar: (opcional) Objeto st.progress() para actualizar durante el fetch
+    """
     try:
+        if progress_bar:
+            progress_bar.progress(0.1, text="🔍 Obteniendo CALLs de Barchart...")
+        
         df_calls, err_c = obtener_oi_simbolo(simbolo, tipo="call")
+        
+        if progress_bar:
+            progress_bar.progress(0.5, text="🔍 Obteniendo PUTs de Barchart...")
+        
         df_puts, err_p = obtener_oi_simbolo(simbolo, tipo="put")
+        
+        if progress_bar:
+            progress_bar.progress(0.8, text="⚙️ Procesando datos...")
 
         frames = []
         if df_calls is not None and not df_calls.empty:
@@ -249,6 +264,9 @@ def _fetch_barchart_oi(simbolo):
             err_msg = err_c or err_p or "Sin datos de Barchart"
             st.session_state.barchart_data = None
             st.session_state.barchart_error = err_msg
+        
+        if progress_bar:
+            progress_bar.progress(1.0, text="✅ Datos de Barchart obtenidos")
     except Exception as e:
         st.session_state.barchart_data = None
         st.session_state.barchart_error = f"Error Barchart: {e}"
@@ -722,8 +740,9 @@ if pagina == "🔍 Live Scanning":
                     a["OI_Chg"] = 0
 
                 # Auto-fetch Barchart OI Changes (fuente real de OI_Chg)
-                with st.spinner("🌐 Obteniendo datos de Open Interest de Barchart..."):
-                    _fetch_barchart_oi(ticker_symbol)
+                progress_bar = st.progress(0, text="🌐 Conectando a Barchart...")
+                _fetch_barchart_oi(ticker_symbol, progress_bar=progress_bar)
+                progress_bar.empty()  # Limpiar barra al terminar
 
                 # Inyectar OI_Chg real de Barchart en datos_completos y alertas
                 _inyectar_oi_chg_barchart()
@@ -1363,10 +1382,11 @@ elif pagina == "📊 Open Interest":
         bc_refresh = st.button("🔄 Actualizar OI", key="bc_refresh")
 
     if bc_refresh:
-        with st.spinner("🌐 Consultando Barchart.com..."):
-            sim_bc = st.session_state.get("ticker_anterior", "SPY")
-            _fetch_barchart_oi(sim_bc)
-            _inyectar_oi_chg_barchart()
+        sim_bc = st.session_state.get("ticker_anterior", "SPY")
+        progress_bar = st.progress(0, text="🌐 Conectando a Barchart...")
+        _fetch_barchart_oi(sim_bc, progress_bar=progress_bar)
+        _inyectar_oi_chg_barchart()
+        progress_bar.empty()
 
     # Mostrar error
     if st.session_state.barchart_error:
