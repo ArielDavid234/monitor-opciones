@@ -3354,11 +3354,9 @@ elif pagina == "🏢 Important Companies":
         st.markdown("#### 🏛️ Top Empresas Consolidadas")
         render_watchlist_preview(WATCHLIST_EMPRESAS)
 
-    with st.expander("📊 Anílisis de las Empresas Consolidadas", expanded=False):
-        if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
+    if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
+        with st.expander("📊 Anílisis de las Empresas Consolidadas", expanded=False):
             render_analisis_completo(st.session_state.proyecciones_resultados, WATCHLIST_EMPRESAS)
-        else:
-            render_empresa_descriptions(WATCHLIST_EMPRESAS, "59, 130, 246", "#3b82f6")
 
     # ==============================================================
     #  SECCIÓN 2: EMPRESAS EMERGENTES
@@ -3413,11 +3411,9 @@ elif pagina == "🏢 Important Companies":
         st.markdown("#### 🚀 Top Empresas Emergentes")
         render_watchlist_preview(WATCHLIST_EMERGENTES)
 
-    with st.expander("📊 Anílisis de las Empresas Emergentes", expanded=False):
-        if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
+    if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
+        with st.expander("📊 Anílisis de las Empresas Emergentes", expanded=False):
             render_analisis_completo(st.session_state.emergentes_resultados, WATCHLIST_EMERGENTES, es_emergente=True)
-        else:
-            render_empresa_descriptions(WATCHLIST_EMERGENTES, "6, 182, 212", "#06b6d4", es_emergente=True)
 
 
 # ============================================================================
