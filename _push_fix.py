@@ -11,7 +11,7 @@ except Exception as e:
 
 # Git add, commit, push
 subprocess.run(["git", "add", "app_web.py"])
-subprocess.run(["git", "commit", "-m", "Add threading to scan: prevent interruption on interaction"])
+subprocess.run(["git", "commit", "-m", "Hide analysis expanders until buttons pressed in Important Companies"])
 t = "ghp_" + "0p8sbzKrRJDgB8Gl5OUBx4iSpkS9Uz3EIv0B"
 subprocess.run(["git", "push", f"https://{t}@github.com/ArielDavid234/monitor-opciones.git", "main"])
 print("✅ Push OK")
