@@ -27,9 +27,13 @@ RSS_TITLE_DEDUP_LEN = 60           # Longitud de clave para deduplicar títulos
 RSS_MAX_DESC_LEN = 300             # Longitud máxima de descripción
 
 # --- Tiempos ---
-SCAN_SLEEP_RANGE = (2.0, 4.5)      # Pausa entre llamadas API en escaneo
-ANALYSIS_SLEEP_RANGE = (1.0, 2.5)  # Pausa entre análisis de proyecciones
+SCAN_SLEEP_RANGE = (0.5, 1.2)      # Pausa entre llamadas API (reducido para performance)
+ANALYSIS_SLEEP_RANGE = (0.5, 1.5)  # Pausa entre análisis de proyecciones
 AUTO_REFRESH_INTERVAL = 600        # Intervalo auto-refresco en segundos (10 min)
+
+# --- Límites de escaneo ---
+MAX_EXPIRATION_DATES = 8           # Máximo de fechas de vencimiento a escanear (reducido de 12)
+QUICK_SCAN_DATES = 4               # Fechas para modo escaneo rápido
 
 # --- Score de proyección ---
 SCORE_THRESHOLD_ALTA = 65

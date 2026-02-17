@@ -64,6 +64,7 @@ def _ejecutar_escaneo_thread(results_dict, ticker_symbol, umbral_vol, umbral_oi,
                              umbral_prima, umbral_filtro, csv_carpeta, guardar_csv):
     """Ejecuta el escaneo en un thread separado y almacena resultados."""
     try:
+        # Usar modo paralelo para mejor performance (paralelo=True)
         alertas, datos, error, perfil, fechas = ejecutar_escaneo(
             ticker_symbol,
             umbral_vol,
@@ -72,6 +73,7 @@ def _ejecutar_escaneo_thread(results_dict, ticker_symbol, umbral_vol, umbral_oi,
             umbral_filtro,
             csv_carpeta,
             guardar_csv,
+            paralelo=True,  # ← Escaneo paralelo activado
         )
         
         results_dict['alertas'] = alertas

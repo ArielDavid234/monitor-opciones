@@ -16,7 +16,8 @@ from functools import wraps
 from random import uniform, choice
 from curl_cffi.requests import Session as CurlSession
 
-from config.constants import SCAN_SLEEP_RANGE
+from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +217,7 @@ def obtener_historial_contrato(contract_symbol):
                 for kw in ["429", "rate limit", "too many requests"]
             )
             if attempt < max_retries - 1:
-                wait = 5 * (3 ** attempt) if is_rate_limit else uniform(1.5, 3.0)
+                wait = 2 * (2 ** attempt) if is_rate_limit else uniform(0.8, 1.5)
                 logger.warning(
                     "Error en historial %s (intento %d/%d): %s. Esperando %.1fs...",
                     contract_symbol, attempt + 1, max_retries, e, wait,
@@ -226,13 +227,48 @@ def obtener_historial_contrato(contract_symbol):
                 return pd.DataFrame(), str(e)
 
 
+def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
+    """Obtiene una sola cadena de opciones con retries y caché.
+    
+    Función auxiliar para paralelización. Retorna (exp_date, chain_data, error).
+    """
+    # Intentar del caché primero
+    try:
+        chain_data = _cached_option_chain(ticker_sym, exp_date)
+        return exp_date, chain_data, None
+    except Exception:
+        pass
+    
+    # Cache miss — fetch con retries
+    for attempt in range(max_retries):
+        try:
+            session, _ = crear_sesion_nueva()
+            ticker = yf.Ticker(ticker_sym, session=session)
+            raw_chain = ticker.option_chain(exp_date)
+            chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
+            return exp_date, chain_data, None
+        except Exception as e:
+            error_msg = str(e).lower()
+            is_rate_limit = any(
+                kw in error_msg for kw in ["429", "rate limit", "too many requests"]
+            )
+            if attempt < max_retries - 1:
+                wait = 2 * (2 ** attempt) if is_rate_limit else uniform(0.8, 1.5)
+                time.sleep(wait)
+            else:
+                return exp_date, None, str(e)
+
+
 def ejecutar_escaneo(
-    ticker_sym, u_vol, u_oi, u_prima, u_filtro, carpeta_csv, guardar
+    ticker_sym, u_vol, u_oi, u_prima, u_filtro, carpeta_csv, guardar, paralelo=True
 ):
     """Ejecuta un ciclo completo de escaneo y retorna alertas + datos.
 
     Usa caché TTL: si los datos de una fecha ya se descargaron en los
     últimos 5 minutos, se reutilizan sin hacer nueva petición a Yahoo.
+    
+    Args:
+        paralelo: Si True, procesa múltiples fechas simultáneamente (más rápido)
     """
     alertas = []
     datos = []
@@ -261,54 +297,82 @@ def ejecutar_escaneo(
     if not options_dates:
         return [], [], "No se encontraron fechas de vencimiento", perfil, []
 
-    # Limitar a las 12 fechas más cercanas para evitar rate-limiting
-    MAX_DATES = 12
-    dates_to_scan = list(options_dates)[:MAX_DATES]
-    max_retries = 3
+    # Limitar fechas para evitar rate-limiting y mejorar performance
+    dates_to_scan = list(options_dates)[:MAX_EXPIRATION_DATES]
+    
+    # Fetch de cadenas de opciones (paralelo o secuencial)
+    chains_map = {}  # {exp_date: chain_data}
+    
+    if paralelo and len(dates_to_scan) > 2:
+        # Modo paralelo: fetch múltiples fechas simultáneamente
+        logger.info("Escaneo paralelo activado para %d fechas", len(dates_to_scan))
+        with ThreadPoolExecutor(max_workers=min(4, len(dates_to_scan))) as executor:
+            future_to_date = {
+                executor.submit(_fetch_single_chain, ticker_sym, exp_date): exp_date
+                for exp_date in dates_to_scan
+            }
+            
+            for future in as_completed(future_to_date):
+                exp_date, chain_data, error = future.result()
+                if chain_data:
+                    chains_map[exp_date] = chain_data
+                elif error:
+                    logger.warning("Error fetch paralelo %s: %s", exp_date, error)
+    else:
+        # Modo secuencial (original) — fallback para pocas fechas
+        max_retries = 3
+        for idx, exp_date in enumerate(dates_to_scan):
+            if idx > 0:
+                time.sleep(uniform(*SCAN_SLEEP_RANGE))
 
-    for idx, exp_date in enumerate(dates_to_scan):
-        if idx > 0:
-            time.sleep(uniform(*SCAN_SLEEP_RANGE))
-
-        # Intentar obtener del caché primero
-        chain_data = None
-        try:
-            chain_data = _cached_option_chain(ticker_sym, exp_date)
-        except Exception:
-            # Cache miss o error — retry con backoff
-            for attempt in range(max_retries):
-                try:
-                    session, perfil = crear_sesion_nueva()
-                    ticker_retry = yf.Ticker(ticker_sym, session=session)
-                    raw_chain = ticker_retry.option_chain(exp_date)
-                    chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
-                    break
-                except Exception as e:
-                    error_msg = str(e).lower()
-                    is_rate_limit = any(
-                        kw in error_msg
-                        for kw in ["429", "rate limit", "too many requests"]
-                    )
-                    if attempt < max_retries - 1:
-                        wait = 5 * (3 ** attempt) if is_rate_limit else uniform(1.5, 3.0)
-                        logger.warning(
-                            "Error en %s (intento %d/%d). Esperando %.0fs...",
-                            exp_date, attempt + 1, max_retries, wait,
+            # Intentar obtener del caché primero
+            chain_data = None
+            try:
+                chain_data = _cached_option_chain(ticker_sym, exp_date)
+            except Exception:
+                # Cache miss o error — retry con backoff
+                for attempt in range(max_retries):
+                    try:
+                        session, perfil = crear_sesion_nueva()
+                        ticker_retry = yf.Ticker(ticker_sym, session=session)
+                        raw_chain = ticker_retry.option_chain(exp_date)
+                        chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
+                        break
+                    except Exception as e:
+                        error_msg = str(e).lower()
+                        is_rate_limit = any(
+                            kw in error_msg
+                            for kw in ["429", "rate limit", "too many requests"]
                         )
-                        time.sleep(wait)
-                    else:
-                        logger.warning(
-                            "Falló después de %d intentos en %s: %s",
-                            max_retries, exp_date, e,
-                        )
+                        if attempt < max_retries - 1:
+                            wait = 2 * (2 ** attempt) if is_rate_limit else uniform(0.8, 1.5)
+                            logger.warning(
+                                "Error en %s (intento %d/%d). Esperando %.0fs...",
+                                exp_date, attempt + 1, max_retries, wait,
+                            )
+                            time.sleep(wait)
+                        else:
+                            logger.warning(
+                                "Falló después de %d intentos en %s: %s",
+                                max_retries, exp_date, e,
+                            )
 
+            if chain_data:
+                chains_map[exp_date] = chain_data
+    
+    # Procesar todas las cadenas obtenidas
+    for exp_date in dates_to_scan:
+        chain_data = chains_map.get(exp_date)
         if chain_data is None:
             continue
 
         try:
             for opt_type, df in [("CALL", chain_data["calls"]), ("PUT", chain_data["puts"])]:
-                for _, row in df.iterrows():
-                    vol = int(_safe_num(row["volume"])) if _safe_num(row["volume"]) > 0 else 0
+                # Filtrado rápido: eliminar filas con volumen=0 antes de iterar
+                df_filtered = df[df["volume"].notna() & (df["volume"] > 0)].copy()
+                
+                for _, row in df_filtered.iterrows():
+                    vol = int(_safe_num(row["volume"]))
                     oi = int(_safe_num(row["openInterest"]))
 
                     iv = _safe_num(row.get("impliedVolatility", 0))
