@@ -642,7 +642,6 @@ if pagina == "🔍 Live Scanning":
         with _umb_c4:
             umbral_filtro = st.number_input("Filtro rípido (vol/oi mín.)", value=st.session_state.umbral_filtro, step=100, format="%d",
                                              help="Ignora opciones con vol Y oi debajo de este umbral", key="inp_umbral_filtro")
-        st.caption("💡 **Prima Total** = Volumen × Precio × 100 — Flujo de dinero total del contrato basado en el volumen del día.")
         # Guardar en session_state para persistir entre píginas
         st.session_state.umbral_vol = umbral_vol
         st.session_state.umbral_oi = umbral_oi
@@ -818,7 +817,6 @@ if pagina == "🔍 Live Scanning":
             """,
             unsafe_allow_html=True,
         )
-        st.info("💡 **Prima Total** = Volumen × Precio × 100 — Representa el flujo de dinero total del contrato basado en el volumen transaccionado del día (no del Open Interest).")
 
         alertas_sorted = sorted(
             st.session_state.alertas_actuales,
@@ -2661,18 +2659,6 @@ elif pagina == "📈 Data Analysis":
         # SOPORTES Y RESISTENCIAS POR VOLUMEN DE OPCIONES
         # ================================================================
         st.markdown("### 🛡️ Soportes y Resistencias por Opciones")
-        st.markdown(
-            """
-            <div style="background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.15); 
-                 border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #93c5fd;">
-                📊 <b>¿Cómo se determinan?</b> Los strikes con mayor volumen en <b>CALLs</b> actúan como 
-                <b style="color:#10b981">soportes</b> (pisos) y los strikes con mayor volumen en <b>PUTs</b> 
-                actúan como <b style="color:#ef4444">resistencias</b> (techos). Donde se concentra el volumen, 
-                hay mayor interîs institucional y es probable que el precio reaccione.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
         # Obtener precio actual
         precio_actual = st.session_state.get('precio_subyacente', None)
@@ -2849,9 +2835,7 @@ elif pagina == "📈 Data Analysis":
             n_puts = tipo_counts.get("PUT", 0)
             ratio_pc = n_puts / n_calls if n_calls > 0 else 0
             st.metric("Put/Call Ratio", f"{ratio_pc:.3f}")
-            if ratio_pc > 1:
-                st.warning("⚠️ Ratio > 1: Mayor actividad en PUTs (sentimiento bajista)")
-            elif ratio_pc < 0.7:
+            if ratio_pc < 0.7:
                 st.success("📈 Ratio < 0.7: Mayor actividad en CALLs (sentimiento alcista)")
             else:
                 st.info("↔️ Ratio neutral")
@@ -3017,16 +3001,6 @@ elif pagina == "📈 Data Analysis":
 # ============================================================================
 elif pagina == "⭐ Favorites":
     st.markdown("### ⭐ Contratos Favoritos")
-    st.markdown(
-        """
-        <div style="background: rgba(250, 204, 21, 0.06); border: 1px solid rgba(250, 204, 21, 0.15); 
-             border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #fde68a;">
-            📌 <b>Contratos guardados para seguimiento.</b> Marcí cualquier contrato como favorito desde las alertas del Live Scanning. 
-            Se guardan entre sesiones y se eliminan automíticamente cuando expiran.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     favoritos = st.session_state.get("favoritos", [])
 
@@ -3155,17 +3129,6 @@ elif pagina == "⭐ Favorites":
 # ============================================================================
 elif pagina == "📐 Range":
     st.markdown("### 📐 Rango Esperado de Movimiento (1σ)")
-    st.markdown(
-        """
-        <div class="rango-info">
-            📊 <b>¿Quî es esto?</b> Usando opciones reales del mercado y el modelo <b>Black-Scholes</b>
-            para calcular delta (≈ 0.16), determina el rango de precio donde la acción tiene ~68%
-            de probabilidad de permanecer hasta la fecha de expiración (<b>1 desviación estíndar</b>).<br>
-            🆓 <b>100% gratuito</b> — Datos de Yahoo Finance + cílculo matemítico de greeks.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     rango_delta = st.slider(
         "Delta objetivo (σ)", min_value=0.01, max_value=1.00, value=st.session_state.rango_delta, step=0.01,
@@ -3244,7 +3207,7 @@ elif pagina == "📐 Range":
         dias_str = f" ({r['dias_restantes']} días)" if r['dias_restantes'] is not None else ""
 
         st.markdown(f"#### 📐 {r['symbol']} — Rango Esperado 1σ")
-        st.caption(f"Expiración: {r['expiration']}{dias_str} · Delta objetivo: ±{r['target_delta']}")
+        st.caption(f"Expiración: {r['expiration']}{dias_str}")
 
         col_r1, col_r2, col_r3, col_r4 = st.columns(4)
         with col_r1:
@@ -3325,10 +3288,7 @@ elif pagina == "📐 Range":
                 se moverí entre <b>${r['expected_range_low']:,.2f}</b> y <b>${r['expected_range_high']:,.2f}</b>
                 (un rango de <b>${r['total_range_points']:,.2f}</b> / <b>{r['total_range_pct']:.2f}%</b>)
                 hasta el <b>{r['expiration']}</b> con ~68% de probabilidad.
-                Esto equivale a ±1 desviación estíndar implícita del mercado.<br>
-                <span style="font-size: 0.72rem; color: #7dd3fc;">
-                    📌 Mîtodo: IV de Yahoo Finance + Black-Scholes para cílculo de delta · Perfil TLS: {r.get('perfil_tls', 'N/A')}
-                </span>
+                Esto equivale a ±1 desviación estíndar implícita del mercado.
             </div>
             """,
             unsafe_allow_html=True,
@@ -3340,17 +3300,6 @@ elif pagina == "📐 Range":
 # ============================================================================
 elif pagina == "🏢 Important Companies":
     st.markdown("### 🏢 Proyecciones de Crecimiento a 10 Años")
-    st.markdown(
-        """
-        <div class="watchlist-info">
-            📊 <b>Monitor de Proyecciones</b> — Analiza empresas con potencial de crecimiento
-            a largo plazo usando datos fundamentales de Yahoo Finance. El score evalúa:
-            crecimiento de ingresos, mírgenes, consenso de analistas, flujo de caja y valuación PEG.<br>
-            🆓 <b>100% gratuito</b> — Todos los datos provienen de Yahoo Finance.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     # ==============================================================
     #  SECCIÓN 1: EMPRESAS CONSOLIDADAS
@@ -3370,8 +3319,6 @@ elif pagina == "🏢 Important Companies":
     with col_info_c:
         if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
             st.success(f"✅ Datos en vivo cargados — {len(st.session_state.proyecciones_resultados)} empresas analizadas")
-        else:
-            st.caption("Presiona para obtener mîtricas financieras en tiempo real de Yahoo Finance.")
 
     if analizar_consol_btn:
         st.session_state.scanning_active = True
@@ -3431,8 +3378,6 @@ elif pagina == "🏢 Important Companies":
     with col_info_e:
         if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
             st.success(f"✅ Datos en vivo cargados — {len(st.session_state.emergentes_resultados)} empresas analizadas")
-        else:
-            st.caption("Presiona para obtener mîtricas financieras en tiempo real de Yahoo Finance.")
 
     if analizar_emerg_btn:
         st.session_state.scanning_active = True
