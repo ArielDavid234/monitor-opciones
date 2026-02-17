@@ -235,17 +235,17 @@ def _fetch_barchart_oi(simbolo, progress_bar=None):
     """
     try:
         if progress_bar:
-            progress_bar.progress(0.1, text="🔍 Obteniendo CALLs de Barchart...")
+            progress_bar.progress(0.25, text="Cargando datos...")
         
         df_calls, err_c = obtener_oi_simbolo(simbolo, tipo="call")
         
         if progress_bar:
-            progress_bar.progress(0.5, text="🔍 Obteniendo PUTs de Barchart...")
+            progress_bar.progress(0.60, text="Cargando datos...")
         
         df_puts, err_p = obtener_oi_simbolo(simbolo, tipo="put")
         
         if progress_bar:
-            progress_bar.progress(0.8, text="⚙️ Procesando datos...")
+            progress_bar.progress(0.90, text="Cargando datos...")
 
         frames = []
         if df_calls is not None and not df_calls.empty:
@@ -266,7 +266,7 @@ def _fetch_barchart_oi(simbolo, progress_bar=None):
             st.session_state.barchart_error = err_msg
         
         if progress_bar:
-            progress_bar.progress(1.0, text="✅ Datos de Barchart obtenidos")
+            progress_bar.progress(1.0, text="Cargando datos...")
     except Exception as e:
         st.session_state.barchart_data = None
         st.session_state.barchart_error = f"Error Barchart: {e}"
@@ -740,7 +740,7 @@ if pagina == "🔍 Live Scanning":
                     a["OI_Chg"] = 0
 
                 # Auto-fetch Barchart OI Changes (fuente real de OI_Chg)
-                progress_bar = st.progress(0, text="🌐 Conectando a Barchart...")
+                progress_bar = st.progress(0, text="Cargando datos...")
                 _fetch_barchart_oi(ticker_symbol, progress_bar=progress_bar)
                 progress_bar.empty()  # Limpiar barra al terminar
 
@@ -1383,7 +1383,7 @@ elif pagina == "📊 Open Interest":
 
     if bc_refresh:
         sim_bc = st.session_state.get("ticker_anterior", "SPY")
-        progress_bar = st.progress(0, text="🌐 Conectando a Barchart...")
+        progress_bar = st.progress(0, text="Cargando datos...")
         _fetch_barchart_oi(sim_bc, progress_bar=progress_bar)
         _inyectar_oi_chg_barchart()
         progress_bar.empty()
