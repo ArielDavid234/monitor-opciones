@@ -2666,8 +2666,8 @@ elif pagina == "📈 Data Analysis":
             <div style="background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.15); 
                  border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 0.82rem; color: #93c5fd;">
                 📊 <b>¿Cómo se determinan?</b> Los strikes con mayor volumen en <b>CALLs</b> actúan como 
-                <b style="color:#ef4444">resistencias</b> (techos) y los strikes con mayor volumen en <b>PUTs</b> 
-                actúan como <b style="color:#10b981">soportes</b> (pisos). Donde se concentra el volumen, 
+                <b style="color:#10b981">soportes</b> (pisos) y los strikes con mayor volumen en <b>PUTs</b> 
+                actúan como <b style="color:#ef4444">resistencias</b> (techos). Donde se concentra el volumen, 
                 hay mayor interîs institucional y es probable que el precio reaccione.
             </div>
             """,
@@ -2682,7 +2682,7 @@ elif pagina == "📈 Data Analysis":
         df_puts_sr = df_analisis[(df_analisis["Tipo"] == "PUT") & (df_analisis["Volumen"] > 0)].copy()
 
         if not df_calls_sr.empty and not df_puts_sr.empty:
-            # Top 5 strikes con mís volumen en CALLs → Resistencias
+            # Top 5 strikes con mís volumen en CALLs → Soportes
             top_calls = df_calls_sr.groupby("Strike").agg(
                 Vol_Total=("Volumen", "sum"),
                 OI_Total=("OI", "sum"),
@@ -2690,7 +2690,7 @@ elif pagina == "📈 Data Analysis":
                 Contratos=("Volumen", "count"),
             ).sort_values("Vol_Total", ascending=False).head(5).reset_index()
 
-            # Top 5 strikes con mís volumen en PUTs → Soportes
+            # Top 5 strikes con mís volumen en PUTs → Resistencias
             top_puts = df_puts_sr.groupby("Strike").agg(
                 Vol_Total=("Volumen", "sum"),
                 OI_Total=("OI", "sum"),
@@ -2701,40 +2701,8 @@ elif pagina == "📈 Data Analysis":
             col_sr1, col_sr2 = st.columns(2)
 
             with col_sr1:
-                st.markdown("#### 🔴 Resistencias (CALLs mís tradeados)")
-                for idx_r, row_r in top_calls.iterrows():
-                    pct_dist = ""
-                    if precio_actual and precio_actual > 0:
-                        dist = ((row_r["Strike"] - precio_actual) / precio_actual) * 100
-                        pct_dist = f" ({'+' if dist >= 0 else ''}{dist:.1f}%)"
-                    st.markdown(
-                        f"""
-                        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); 
-                             border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">
-                                        R{idx_r + 1}: ${row_r['Strike']:,.1f}
-                                    </span>
-                                    <span style="font-size: 0.8rem; color: #94a3b8;">{pct_dist}</span>
-                                </div>
-                                <div style="text-align: right;">
-                                    <span style="font-size: 0.82rem; color: #f1f5f9;">
-                                        Vol: <b>{row_r['Vol_Total']:,.0f}</b>
-                                    </span>
-                                </div>
-                            </div>
-                            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
-                                OI: {row_r['OI_Total']:,.0f} | Prima: {_fmt_monto(row_r['Prima_Total'])} | {int(row_r['Contratos'])} contratos
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-            with col_sr2:
-                st.markdown("#### 🟢 Soportes (PUTs mís tradeados)")
-                for idx_s, row_s in top_puts.iterrows():
+                st.markdown("#### 🟢 Soportes (Más tradeados)")
+                for idx_s, row_s in top_calls.iterrows():
                     pct_dist = ""
                     if precio_actual and precio_actual > 0:
                         dist = ((row_s["Strike"] - precio_actual) / precio_actual) * 100
@@ -2764,14 +2732,46 @@ elif pagina == "📈 Data Analysis":
                         unsafe_allow_html=True,
                     )
 
+            with col_sr2:
+                st.markdown("#### � Resistencias (Más tradeados)")
+                for idx_r, row_r in top_puts.iterrows():
+                    pct_dist = ""
+                    if precio_actual and precio_actual > 0:
+                        dist = ((row_r["Strike"] - precio_actual) / precio_actual) * 100
+                        pct_dist = f" ({'+' if dist >= 0 else ''}{dist:.1f}%)"
+                    st.markdown(
+                        f"""
+                        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); 
+                             border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">
+                                        R{idx_r + 1}: ${row_r['Strike']:,.1f}
+                                    </span>
+                                    <span style="font-size: 0.8rem; color: #94a3b8;">{pct_dist}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-size: 0.82rem; color: #f1f5f9;">
+                                        Vol: <b>{row_r['Vol_Total']:,.0f}</b>
+                                    </span>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+                                OI: {row_r['OI_Total']:,.0f} | Prima: {_fmt_monto(row_r['Prima_Total'])} | {int(row_r['Contratos'])} contratos
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
             # Barra visual de niveles
             if precio_actual and precio_actual > 0:
                 st.markdown("---")
                 st.markdown("#### 📍 Mapa de Niveles vs Precio Actual")
 
                 # Combinar todos los niveles
-                niveles_r = [(s, "R", v) for s, v in zip(top_calls["Strike"], top_calls["Vol_Total"])]
-                niveles_s = [(s, "S", v) for s, v in zip(top_puts["Strike"], top_puts["Vol_Total"])]
+                niveles_s = [(s, "S", v) for s, v in zip(top_calls["Strike"], top_calls["Vol_Total"])]
+                niveles_r = [(s, "R", v) for s, v in zip(top_puts["Strike"], top_puts["Vol_Total"])]
                 todos_niveles = sorted(niveles_r + niveles_s, key=lambda x: x[0])
 
                 max_vol_nivel = max(n[2] for n in todos_niveles) if todos_niveles else 1
@@ -2786,7 +2786,7 @@ elif pagina == "📈 Data Analysis":
                 for strike_n, tipo_n, vol_n in todos_niveles:
                     pos_pct = ((strike_n - rango_min) / rango_total) * 100
                     pos_pct = max(2, min(98, pos_pct))
-                    color = "#ef4444" if tipo_n == "R" else "#10b981"
+                    color = "#10b981" if tipo_n == "S" else "#ef4444"
                     opacity = 0.4 + 0.6 * (vol_n / max_vol_nivel)
                     label = tipo_n
                     mapa_html += (
@@ -2813,19 +2813,11 @@ elif pagina == "📈 Data Analysis":
                 st.markdown(mapa_html, unsafe_allow_html=True)
 
                 # Resumen de niveles cercanos
-                resistencias_arriba = sorted([n for n in niveles_r if n[0] > precio_actual], key=lambda x: x[0])
                 soportes_abajo = sorted([n for n in niveles_s if n[0] < precio_actual], key=lambda x: x[0], reverse=True)
+                resistencias_arriba = sorted([n for n in niveles_r if n[0] > precio_actual], key=lambda x: x[0])
 
                 col_near1, col_near2 = st.columns(2)
                 with col_near1:
-                    if resistencias_arriba:
-                        r_cercana = resistencias_arriba[0]
-                        dist_r = ((r_cercana[0] - precio_actual) / precio_actual) * 100
-                        st.metric("🔴 Resistencia mís cercana", f"${r_cercana[0]:,.1f}", 
-                                 delta=f"+{dist_r:.2f}% arriba", delta_color="inverse")
-                    else:
-                        st.info("Sin resistencias por encima del precio actual")
-                with col_near2:
                     if soportes_abajo:
                         s_cercano = soportes_abajo[0]
                         dist_s = ((s_cercano[0] - precio_actual) / precio_actual) * 100
@@ -2833,6 +2825,14 @@ elif pagina == "📈 Data Analysis":
                                  delta=f"{dist_s:.2f}% abajo", delta_color="normal")
                     else:
                         st.info("Sin soportes por debajo del precio actual")
+                with col_near2:
+                    if resistencias_arriba:
+                        r_cercana = resistencias_arriba[0]
+                        dist_r = ((r_cercana[0] - precio_actual) / precio_actual) * 100
+                        st.metric("🔴 Resistencia mís cercana", f"${r_cercana[0]:,.1f}", 
+                                 delta=f"+{dist_r:.2f}% arriba", delta_color="inverse")
+                    else:
+                        st.info("Sin resistencias por encima del precio actual")
         else:
             st.info("No hay suficientes datos de CALLs y PUTs para calcular soportes y resistencias.")
 
