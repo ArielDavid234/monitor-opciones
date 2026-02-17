@@ -7,6 +7,7 @@ para TLS fingerprinting y evitar bloqueos anti-bot.
 Fuente: https://www.barchart.com/options/open-interest-change
 """
 
+import time
 import pandas as pd
 from urllib.parse import unquote
 from curl_cffi import requests as curl_requests
@@ -23,7 +24,7 @@ def _crear_sesion():
 
     resp = session.get(
         "https://www.barchart.com/options/open-interest-change",
-        timeout=20,
+        timeout=30,
         headers={
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -137,36 +138,42 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
         session = _crear_sesion()
         token = _obtener_xsrf(session)
 
-        PAGE_SIZE = 500
+        PAGE_SIZE = 1000
         all_frames = []
         page = 1
         total_fetched = 0
 
         while total_fetched < limite:
-            resp = session.get(
-                "https://www.barchart.com/proxies/core-api/v1/options/get",
-                params={
-                    "fields": (
-                        "symbol,baseSymbol,strikePrice,expirationDate,"
-                        "daysToExpiration,lastPrice,priceChange,percentChange,"
-                        "volume,openInterest,openInterestChange,volatility,"
-                        "delta,tradeTime"
+            # Retry con backoff para rate-limiting (429)
+            resp = None
+            for retry in range(4):
+                resp = session.get(
+                    "https://www.barchart.com/proxies/core-api/v1/options/get",
+                    params={
+                        "fields": (
+                            "symbol,baseSymbol,strikePrice,expirationDate,"
+                            "daysToExpiration,lastPrice,priceChange,percentChange,"
+                            "volume,openInterest,openInterestChange,volatility,"
+                            "delta,tradeTime"
+                        ),
+                        "orderBy": "openInterestChange",
+                        "orderDir": "desc",
+                        "optionType": tipo,
+                        "hasOptions": "true",
+                        "raw": "1",
+                        "page": str(page),
+                        "limit": str(PAGE_SIZE),
+                        "meta": "field.shortName,field.type,field.description",
+                    },
+                    headers=_headers_api(
+                        token,
+                        "https://www.barchart.com/options/open-interest-change",
                     ),
-                    "orderBy": "openInterestChange",
-                    "orderDir": "desc",
-                    "optionType": tipo,
-                    "hasOptions": "true",
-                    "raw": "1",
-                    "page": str(page),
-                    "limit": str(PAGE_SIZE),
-                    "meta": "field.shortName,field.type,field.description",
-                },
-                headers=_headers_api(
-                    token,
-                    "https://www.barchart.com/options/open-interest-change",
-                ),
-                timeout=20,
-            )
+                    timeout=30,
+                )
+                if resp.status_code != 429:
+                    break
+                time.sleep(2 ** retry)  # 1s, 2s, 4s backoff
 
             if resp.status_code == 403:
                 if all_frames:
@@ -191,13 +198,14 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
             total_fetched += len(df_page)
 
             # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
-            total_count = resp_json.get("count", None)
+            total_available = resp_json.get("total", None)
             if len(df_page) < PAGE_SIZE:
                 break
-            if total_count is not None and total_fetched >= total_count:
+            if total_available is not None and total_fetched >= total_available:
                 break
 
             page += 1
+            time.sleep(0.3)  # Anti rate-limit
 
         if not all_frames:
             return None, "Barchart no devolvió datos. Intentá de nuevo."
@@ -217,13 +225,14 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
         return None, f"Error al consultar Barchart: {e}"
 
 
-def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
+def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
     """
     Obtiene cambios en OI para un símbolo específico.
     Equivale a: https://www.barchart.com/stocks/quotes/SPY/options?view=stacked
 
     Usa paginación automática para obtener TODOS los contratos disponibles
     (el API de Barchart limita a 500 por página).
+    Renueva la sesión cada 10 páginas para evitar rate-limiting.
 
     Args:
         simbolo: ticker del underlying (ej: "SPY", "AAPL")
@@ -234,15 +243,24 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
         (DataFrame, None) en éxito, o (None, str_error) en fallo
     """
     try:
-        session = _crear_sesion()
-        token = _obtener_xsrf(session)
-
-        PAGE_SIZE = 500
+        PAGE_SIZE = 1000
+        PAGES_PER_SESSION = 10  # Renovar sesión cada N páginas
         all_frames = []
         page = 1
         total_fetched = 0
+        session = None
+        token = None
+        pages_this_session = 0
 
         while total_fetched < limite:
+            # Crear/renovar sesión cada PAGES_PER_SESSION páginas
+            if session is None or pages_this_session >= PAGES_PER_SESSION:
+                if session is not None:
+                    time.sleep(1.5)  # Pausa antes de nueva sesión
+                session = _crear_sesion()
+                token = _obtener_xsrf(session)
+                pages_this_session = 0
+
             params = {
                 "fields": (
                     "symbol,baseSymbol,strikePrice,expirationDate,"
@@ -264,19 +282,32 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
                 params["optionType"] = tipo
 
             sim = simbolo.upper()
-            resp = session.get(
-                "https://www.barchart.com/proxies/core-api/v1/options/get",
-                params=params,
-                headers=_headers_api(
-                    token,
-                    f"https://www.barchart.com/stocks/quotes/{sim}/options",
-                ),
-                timeout=20,
-            )
+            # Retry con backoff para rate-limiting (429)
+            resp = None
+            for retry in range(4):
+                resp = session.get(
+                    "https://www.barchart.com/proxies/core-api/v1/options/get",
+                    params=params,
+                    headers=_headers_api(
+                        token,
+                        f"https://www.barchart.com/stocks/quotes/{sim}/options",
+                    ),
+                    timeout=30,
+                )
+                if resp.status_code == 429:
+                    time.sleep(2 ** retry)  # 1s, 2s, 4s backoff
+                elif resp.status_code == 403 and pages_this_session > 0:
+                    # Sesión expirada, renovar y reintentar
+                    time.sleep(1.5)
+                    session = _crear_sesion()
+                    token = _obtener_xsrf(session)
+                    pages_this_session = 0
+                else:
+                    break
 
             if resp.status_code == 403:
                 if all_frames:
-                    break  # Devolver lo que ya tenemos si Barchart nos cortó
+                    break
                 return None, (
                     "Barchart bloqueó la solicitud (403). "
                     "Esperá 1-2 minutos e intentá de nuevo."
@@ -291,19 +322,21 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=9999):
             df_page = _parsear_respuesta(resp_json, incluir_tipo=incluir_tipo)
 
             if df_page.empty:
-                break  # No hay más datos
+                break
 
             all_frames.append(df_page)
             total_fetched += len(df_page)
+            pages_this_session += 1
 
             # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
-            total_count = resp_json.get("count", None)
+            total_available = resp_json.get("total", None)
             if len(df_page) < PAGE_SIZE:
                 break
-            if total_count is not None and total_fetched >= total_count:
+            if total_available is not None and total_fetched >= total_available:
                 break
 
             page += 1
+            time.sleep(0.3)  # Anti rate-limit
 
         if not all_frames:
             return None, f"Sin datos de Barchart para {simbolo.upper()}"
