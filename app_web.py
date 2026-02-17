@@ -2274,7 +2274,7 @@ elif pagina == "📋 Reports":
             if "Prima_Volumen" in df_analisis.columns:
                 df_analisis = df_analisis.rename(columns={"Prima_Volumen": "Prima_Vol"})
 
-            ticker_symbol = st.session_state.ticker_actual or "N/A"
+            ticker_symbol = st.session_state.get('ticker_actual') or st.session_state.get('ticker_anterior', 'N/A')
             precio_actual = st.session_state.get('precio_subyacente', None)
 
             # Header con ticker y precio
