@@ -334,11 +334,18 @@ def render_watchlist_preview(watchlist_dict, incluir_por_que=False):
     """Muestra una tabla preview del watchlist."""
     preview_data = []
     for sym, info in watchlist_dict.items():
+        if not isinstance(info, dict):
+            info = {}
+
+        nombre = info.get("nombre") or "N/D"
+        sector = info.get("sector") or "N/D"
+        descripcion = info.get("descripcion") or info.get("description") or "N/D"
+
         preview_data.append({
             "Ticker": sym,
-            "Empresa": info["nombre"],
-            "Sector": info["sector"],
-            "Descripción": info["descripcion"],
+            "Empresa": nombre,
+            "Sector": sector,
+            "Descripción": descripcion,
         })
     st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True, height=670)
 
