@@ -513,7 +513,7 @@ with st.sidebar:
     pagina = st.radio(
         "Navegación",
         ["🔍 Live Scanning", "📊 Open Interest", "📈 Data Analysis",
-         "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News & Calendar", "📋 Reports"],
+         "📐 Range", "⭐ Favorites", "🏢 Important Companies", "📰 News", "📅 Calendar", "📋 Reports"],
         index=0,
         label_visibility="collapsed",
     )
@@ -3608,23 +3608,13 @@ elif pagina == "🏢 Important Companies":
 
 
 # ============================================================================
-#   📰 NEWS & CALENDAR — NOTICIAS
+#   📰 NEWS — NOTICIAS
 # ============================================================================
-elif pagina == "📰 News & Calendar":
+elif pagina == "📰 News":
     st.markdown("### 📰 Noticias Financieras en Tiempo Real")
-    st.markdown(
-        """
-        <div class="watchlist-info">
-            📡 <b>Centro de Noticias</b> — Noticias financieras de
-            Yahoo Finance, MarketWatch, CNBC, Reuters e Investing.com.
-            Filtra por relevancia, tendencia mundial o categoría. 🆓 100% gratuito vía RSS.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    # --- CONTROLES SIEMPRE VISIBLES ---
-    col_load, col_refresh, col_auto = st.columns([1.5, 1.5, 2])
+    # --- CONTROLES ---
+    col_load, col_refresh = st.columns([1, 1])
 
     with col_load:
         cargar_noticias_btn = st.button(
@@ -3640,75 +3630,15 @@ elif pagina == "📰 News & Calendar":
             key="btn_refresh_noticias",
             disabled=not st.session_state.noticias_data,
         )
-    with col_auto:
-        auto_refresh_noticias = st.checkbox(
-            "⏱️ Auto-refresco cada 5 min",
-            value=st.session_state.noticias_auto_refresh,
-            key="chk_auto_refresh_noticias",
-            help="Actualiza las noticias automáticamente cada 5 minutos",
-        )
-        st.session_state.noticias_auto_refresh = auto_refresh_noticias
-
-    # --- FILTROS ---
-    col_filtro1, col_filtro2 = st.columns([3, 2])
-    with col_filtro1:
-        filtro_noticias = st.selectbox(
-            "🏷️ Filtrar por:",
-            [
-                "Todas",
-                "🔥 Mís relevantes",
-                "🌍 Mís vistas a nivel mundial",
-                "Mís relevantes para trading",
-                "Top Stories",
-                "Earnings",
-                "Fed / Tasas",
-                "Economía",
-                "Trading",
-                "Crypto",
-                "Commodities",
-                "Geopolítica",
-            ],
-            index=0,
-            key="sel_filtro_noticias",
-        )
-    with col_filtro2:
-        ordenar_por = st.selectbox(
-            "📊 Ordenar por:",
-            ["Mís recientes", "Mís relevantes primero"],
-            index=0,
-            key="sel_orden_noticias",
-        )
 
     # --- CARGAR / REFRESCAR ---
-    necesita_refresh = False
-    if auto_refresh_noticias:
-        last = st.session_state.noticias_last_refresh
-        if last is None:
-            necesita_refresh = True
-        else:
-            elapsed = (datetime.now() - last).total_seconds()
-            if elapsed >= AUTO_REFRESH_INTERVAL:
-                necesita_refresh = True
-
-    if cargar_noticias_btn or refresh_noticias_btn or necesita_refresh:
+    if cargar_noticias_btn or refresh_noticias_btn:
         with st.spinner("📡 Obteniendo noticias de múltiples fuentes..."):
             noticias = obtener_noticias_financieras()
             if noticias:
                 st.session_state.noticias_data = noticias
                 st.session_state.noticias_last_refresh = datetime.now()
-                if cargar_noticias_btn or refresh_noticias_btn:
-                    st.rerun()
-
-    # --- AUTO-REFRESH COUNTDOWN ---
-    if auto_refresh_noticias and st.session_state.noticias_last_refresh:
-        elapsed = (datetime.now() - st.session_state.noticias_last_refresh).total_seconds()
-        remaining = max(0, AUTO_REFRESH_INTERVAL - elapsed)
-        mins_left = int(remaining // 60)
-        secs_left = int(remaining % 60)
-        st.caption(
-            f"🔄 Auto-refresco activo — Próxima actualización en **{mins_left}:{secs_left:02d}** · "
-            f"Último: **{st.session_state.noticias_last_refresh.strftime('%H:%M:%S')}**"
-        )
+                st.rerun()
 
     # --- CONTENIDO ---
     if not st.session_state.noticias_data:
@@ -3717,14 +3647,8 @@ elif pagina == "📰 News & Calendar":
             "de Yahoo Finance, MarketWatch, CNBC, Reuters e Investing.com."
         )
     else:
-        # Métricas
-        col_status1, col_status2, col_status3 = st.columns(3)
-        with col_status1:
-            st.metric("🕐 Última actualización", st.session_state.noticias_last_refresh.strftime('%H:%M:%S'))
-        with col_status2:
-            st.metric("📰 Total noticias", len(st.session_state.noticias_data))
-        with col_status3:
-            st.metric("🏷️ Filtro activo", filtro_noticias)
+        # Última actualización (ocupa todo el ancho)
+        st.metric("🕐 Última actualización", st.session_state.noticias_last_refresh.strftime('%H:%M:%S'))
 
         # Distribución por categoría
         cat_counts = {}
@@ -3741,69 +3665,55 @@ elif pagina == "📰 News & Calendar":
 
         st.divider()
 
-        # Filtrar y ordenar
-        noticias_filtradas = filtrar_noticias(st.session_state.noticias_data, filtro_noticias)
+        # Mostrar todas las noticias ordenadas por más recientes
+        noticias_mostrar = st.session_state.noticias_data
 
-        if ordenar_por == "Mís relevantes primero" and filtro_noticias not in ("🔥 Mís relevantes", "🌍 Mís vistas a nivel mundial"):
-            from core.news import calcular_relevancia
-            noticias_filtradas = sorted(noticias_filtradas, key=calcular_relevancia, reverse=True)
+        st.markdown(f"#### 📋 {len(noticias_mostrar)} noticias")
 
-        if not noticias_filtradas:
-            st.info(f"No hay noticias para el filtro '{filtro_noticias}'. Prueba con 'Todas'.")
-        else:
-            st.markdown(f"#### 📋 {len(noticias_filtradas)} noticias — {filtro_noticias}")
+        cat_emoji_map = {
+            "Earnings": "💰",
+            "Fed / Tasas": "🏛️",
+            "Economía": "📊",
+            "Trading": "📈",
+            "Crypto": "₿",
+            "Commodities": "🛢️",
+            "Geopolítica": "🌍",
+            "Top Stories": "⭐",
+            "Mercados": "📈",
+        }
 
-            cat_emoji_map = {
-                "Earnings": "💰",
-                "Fed / Tasas": "🏛️",
-                "Economía": "📊",
-                "Trading": "📈",
-                "Crypto": "₿",
-                "Commodities": "🛢️",
-                "Geopolítica": "🌍",
-                "Top Stories": "⭐",
-                "Mercados": "📈",
-            }
+        for n in noticias_mostrar:
+            cat = n["categoria"]
+            emoji = cat_emoji_map.get(cat, "📰")
 
-            for n in noticias_filtradas:
-                cat = n["categoria"]
-                emoji = cat_emoji_map.get(cat, "📰")
+            with st.container():
+                col_noticia, col_cat = st.columns([5, 1])
+                with col_noticia:
+                    if n["url"]:
+                        st.markdown(f"**[{n['titulo']}]({n['url']})**")
+                    else:
+                        st.markdown(f"**{n['titulo']}**")
 
-                with st.container():
-                    col_noticia, col_cat = st.columns([5, 1])
-                    with col_noticia:
-                        if n["url"]:
-                            st.markdown(f"**[{n['titulo']}]({n['url']})**")
-                        else:
-                            st.markdown(f"**{n['titulo']}**")
+                    if n["descripcion"]:
+                        st.caption(n["descripcion"])
 
-                        if n["descripcion"]:
-                            st.caption(n["descripcion"])
+                    meta_parts = []
+                    if n["fuente"]:
+                        meta_parts.append(f"📰 {n['fuente']}")
+                    if n["tiempo"]:
+                        meta_parts.append(f"🕐 {n['tiempo']}")
+                    if meta_parts:
+                        st.caption(" · ".join(meta_parts))
 
-                        meta_parts = []
-                        if n["fuente"]:
-                            meta_parts.append(f"📰 {n['fuente']}")
-                        if n["tiempo"]:
-                            meta_parts.append(f"🕐 {n['tiempo']}")
-                        if meta_parts:
-                            st.caption(" · ".join(meta_parts))
+                with col_cat:
+                    st.markdown(f"**{emoji} {cat}**")
 
-                    with col_cat:
-                        st.markdown(f"**{emoji} {cat}**")
+                st.divider()
 
-                    st.divider()
-
-        # Auto-rerun si toca
-        if auto_refresh_noticias and st.session_state.noticias_last_refresh:
-            elapsed = (datetime.now() - st.session_state.noticias_last_refresh).total_seconds()
-            if elapsed >= AUTO_REFRESH_INTERVAL:
-                st.rerun()
-
-
-    # ============================================================================
-    #   CALENDARIO FINANCIERO — Sub-sección de News & Calendar
-    # ============================================================================
-    st.markdown("---")
+# ============================================================================
+#   📅 CALENDAR — CALENDARIO FINANCIERO
+# ============================================================================
+elif pagina == "📅 Calendar":
     from ui.tabs.calendar_tab import render_calendar_tab
     render_calendar_tab()
 

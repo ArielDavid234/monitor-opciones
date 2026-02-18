@@ -24,18 +24,6 @@ def render_calendar_tab():
     """Renderiza el tab del calendario financiero"""
     st.markdown("### 📅 Calendario Financiero")
     
-    # Información del tab
-    st.markdown(
-        """
-        <div class="calendar-info">
-            📅 <b>Eventos Financieros en Tiempo Real</b> — Calendario económico con datos reales 
-            de Investing.com, Yahoo Finance y calendarios oficiales. Incluye reuniones Fed, earnings, 
-            y eventos de bancos centrales actualizados automáticamente.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    
     # Estilos CSS
     st.markdown(CALENDAR_CSS, unsafe_allow_html=True)
     
@@ -53,9 +41,6 @@ def render_calendar_tab():
     
     # Selector de días y detalles
     _render_day_selector_and_details(eventos_financieros, mes_actual, anio_actual)
-    
-    # Nota sobre fuentes
-    _render_data_sources_note()
 
 
 def _render_calendar_controls():
@@ -64,7 +49,7 @@ def _render_calendar_controls():
     
     with col_load_cal:
         cargar_eventos_btn = st.button(
-            "📡 Cargar Eventos" if not st.session_state.eventos_economicos else "📡 Recargar",
+            "📡 Actualizar" if not st.session_state.eventos_economicos else "📡 Actualizar",
             type="primary",
             use_container_width=True,
             key="btn_cargar_eventos"
@@ -238,19 +223,3 @@ def _render_selected_day_details(eventos_del_mes, mes_actual, anio_actual):
             st.markdown(dia_html, unsafe_allow_html=True)
     else:
         st.info("💡 Selecciona un día con eventos arriba para ver los detalles")
-
-
-def _render_data_sources_note():
-    """Renderiza la nota sobre fuentes de datos"""
-    st.markdown(
-        """
-        <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); 
-             padding: 10px; border-radius: 8px; margin-top: 16px;">
-            <small>📡 <b>Datos en Tiempo Real:</b> Los eventos se obtienen automáticamente de 
-            Investing.com (calendario económico), Yahoo Finance (earnings), y calendarios oficiales 
-            de bancos centrales. Los datos se actualizan cada 6 horas y se almacenan en cache local 
-            para mejorar el rendimiento.</small>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
