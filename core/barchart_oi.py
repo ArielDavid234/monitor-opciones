@@ -10,7 +10,12 @@ Fuente: https://www.barchart.com/options/open-interest-change
 import time
 import pandas as pd
 from urllib.parse import unquote
-from curl_cffi import requests as curl_requests
+try:
+    from curl_cffi import requests as curl_requests
+    _HAS_CURL_CFFI = True
+except ImportError:
+    import requests as curl_requests
+    _HAS_CURL_CFFI = False
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -20,7 +25,17 @@ def _crear_sesion():
     Crea una sesión autenticada con cookies de Barchart.
     Visita la página principal para obtener el token XSRF.
     """
-    session = curl_requests.Session(impersonate="chrome110")
+    if _HAS_CURL_CFFI:
+        session = curl_requests.Session(impersonate="chrome110")
+    else:
+        session = curl_requests.Session()
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+        })
 
     resp = session.get(
         "https://www.barchart.com/options/open-interest-change",

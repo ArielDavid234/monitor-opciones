@@ -14,7 +14,13 @@ import yfinance as yf
 from datetime import datetime
 from functools import wraps
 from random import uniform, choice
-from curl_cffi.requests import Session as CurlSession
+try:
+    from curl_cffi.requests import Session as CurlSession
+    _HAS_CURL_CFFI = True
+except ImportError:
+    _HAS_CURL_CFFI = False
+    import requests as _fallback_requests
+    logger.warning("curl_cffi no disponible — usando requests estándar (sin TLS fingerprint)")
 
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -174,19 +180,24 @@ BROWSER_PROFILES = [
 
 
 def crear_sesion_nueva():
-    """Crea sesión curl_cffi con perfil TLS aleatorio.
+    """Crea sesión HTTP con perfil TLS anti-ban.
     
-    curl_cffi con impersonate= ya configura automáticamente:
-    - TLS fingerprint del navegador real
-    - User-Agent correcto para ese navegador
-    - Headers HTTP consistentes (Accept, Accept-Language, etc.)
-    
-    NO sobrescribimos headers para evitar inconsistencias TLS↔HTTP
-    que Yahoo Finance detecta como bot.
+    Si curl_cffi está disponible: usa impersonate con TLS real de navegador.
+    Si no (ej. Streamlit Cloud): usa requests estándar como fallback.
     """
-    perfil = choice(BROWSER_PROFILES)
-    session = CurlSession(impersonate=perfil)
-    return session, perfil
+    if _HAS_CURL_CFFI:
+        perfil = choice(BROWSER_PROFILES)
+        session = CurlSession(impersonate=perfil)
+        return session, perfil
+    else:
+        # Fallback: requests estándar con User-Agent genérico
+        session = _fallback_requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+        return session, "requests-fallback"
 
 
 def construir_simbolo_contrato(ticker_sym, exp_date, opt_type, strike):
