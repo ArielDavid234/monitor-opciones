@@ -57,7 +57,7 @@ def _render_calendar_controls():
     
     with col_refresh_cal:
         force_refresh_btn = st.button(
-            "🔄 Forzar Actualización",
+            "🔄 Actualizar",
             use_container_width=True,
             key="btn_force_refresh_eventos",
             help="Ignora cache y obtiene datos frescos (puede tardar más)"

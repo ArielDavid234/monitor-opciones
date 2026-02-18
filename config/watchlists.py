@@ -9,7 +9,6 @@ Empresas consolidadas y emergentes con proyección a 10 años.
 WATCHLIST_EMPRESAS = {
     "NVDA": {
         "nombre": "NVIDIA Corporation",
-        "descripcion": "Líder mundial en GPUs y chips de IA. Domina aceleradores para data centers, IA generativa, conducción autónoma y gaming.",
         "sector": "Semiconductores / IA",
     },
     "MSFT": {
