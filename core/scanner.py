@@ -403,14 +403,12 @@ def ejecutar_escaneo(
                         }
                     )
 
-                    if vol < u_vol or oi < u_oi:
+                    # Filtrar por los tres umbrales: volumen, OI y prima
+                    if vol < u_vol or oi < u_oi or volume_premium < u_prima:
                         continue
 
-                    tipo_alerta = None
-                    if volume_premium >= u_prima:
-                        tipo_alerta = "PRINCIPAL"
-                    else:
-                        tipo_alerta = "PRIMA_ALTA"
+                    # Si llega aquí, pasó todos los umbrales → es alerta PRINCIPAL
+                    tipo_alerta = "PRINCIPAL"
 
                     if tipo_alerta:
                         contract_sym = construir_simbolo_contrato(
