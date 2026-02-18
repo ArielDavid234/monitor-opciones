@@ -3140,50 +3140,6 @@ elif pagina == "📈 Data Analysis":
             )
             st.bar_chart(vol_by_date)
 
-        st.markdown("#### 🎯 Top 20 Strikes por Volumen")
-        vol_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
-        top_vol = (
-            df_analisis.nlargest(20, "Volumen")[[c for c in vol_cols if c in df_analisis.columns]]
-            .reset_index(drop=True)
-        )
-        top_vol_display = top_vol.copy()
-        top_vol_display = top_vol_display.rename(columns={"Prima_Vol": "Prima Total"})
-        if "Tipo" in top_vol_display.columns and "Lado" in top_vol_display.columns:
-            top_vol_display.insert(0, "Sentimiento", top_vol_display.apply(
-                lambda row: _sentiment_badge(row["Tipo"], row.get("Lado", "N/A")), axis=1
-            ))
-        if "Tipo" in top_vol_display.columns:
-            top_vol_display["Tipo"] = top_vol_display["Tipo"].apply(_type_badge)
-        top_vol_display["Prima Total"] = top_vol_display["Prima Total"].apply(_fmt_dolar)
-        if "Lado" in top_vol_display.columns:
-            top_vol_display["Lado"] = top_vol_display["Lado"].apply(_fmt_lado)
-        st.markdown(
-            render_pro_table(top_vol_display, title="🎯 Top 20 por Volumen", badge_count="20"),
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("#### 🏛️ Top 20 Strikes por Open Interest")
-        oi_cols = ["Vencimiento", "Tipo", "Strike", "OI", "Volumen", "IV", "Ultimo", "Prima_Vol", "Lado"]
-        top_oi = (
-            df_analisis.nlargest(20, "OI")[[c for c in oi_cols if c in df_analisis.columns]]
-            .reset_index(drop=True)
-        )
-        top_oi_display = top_oi.copy()
-        top_oi_display = top_oi_display.rename(columns={"Prima_Vol": "Prima Total"})
-        if "Tipo" in top_oi_display.columns and "Lado" in top_oi_display.columns:
-            top_oi_display.insert(0, "Sentimiento", top_oi_display.apply(
-                lambda row: _sentiment_badge(row["Tipo"], row.get("Lado", "N/A")), axis=1
-            ))
-        if "Tipo" in top_oi_display.columns:
-            top_oi_display["Tipo"] = top_oi_display["Tipo"].apply(_type_badge)
-        top_oi_display["Prima Total"] = top_oi_display["Prima Total"].apply(_fmt_dolar)
-        if "Lado" in top_oi_display.columns:
-            top_oi_display["Lado"] = top_oi_display["Lado"].apply(_fmt_lado)
-        st.markdown(
-            render_pro_table(top_oi_display, title="🏛️ Top 20 por Open Interest", badge_count="20"),
-            unsafe_allow_html=True,
-        )
-
         col_iv1, col_iv2 = st.columns(2)
         with col_iv1:
             st.markdown("#### 📉 Volatilidad Implícita por Strike (CALLs)")
