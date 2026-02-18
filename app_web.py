@@ -2978,7 +2978,7 @@ elif pagina == "📈 Data Analysis":
             col_sr1, col_sr2 = st.columns(2)
 
             with col_sr1:
-                st.markdown("#### 🟢 Soportes (Más tradeados)")
+                st.markdown("#### � Soportes (Calls más tradeados)")
                 for idx_s, row_s in top_calls.iterrows():
                     pct_dist = ""
                     if precio_actual and precio_actual > 0:
@@ -2986,11 +2986,11 @@ elif pagina == "📈 Data Analysis":
                         pct_dist = f" ({'+' if dist >= 0 else ''}{dist:.1f}%)"
                     st.markdown(
                         f"""
-                        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); 
+                        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); 
                              border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div>
-                                    <span style="font-size: 1.1rem; font-weight: 700; color: #10b981;">
+                                    <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">
                                         S{idx_s + 1}: ${row_s['Strike']:,.1f}
                                     </span>
                                     <span style="font-size: 0.8rem; color: #94a3b8;">{pct_dist}</span>
@@ -3010,7 +3010,7 @@ elif pagina == "📈 Data Analysis":
                     )
 
             with col_sr2:
-                st.markdown("#### � Resistencias (Más tradeados)")
+                st.markdown("#### 🟢 Resistencias (Puts más tradeados)")
                 for idx_r, row_r in top_puts.iterrows():
                     pct_dist = ""
                     if precio_actual and precio_actual > 0:
@@ -3018,11 +3018,11 @@ elif pagina == "📈 Data Analysis":
                         pct_dist = f" ({'+' if dist >= 0 else ''}{dist:.1f}%)"
                     st.markdown(
                         f"""
-                        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); 
+                        <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); 
                              border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div>
-                                    <span style="font-size: 1.1rem; font-weight: 700; color: #ef4444;">
+                                    <span style="font-size: 1.1rem; font-weight: 700; color: #10b981;">
                                         R{idx_r + 1}: ${row_r['Strike']:,.1f}
                                     </span>
                                     <span style="font-size: 0.8rem; color: #94a3b8;">{pct_dist}</span>
