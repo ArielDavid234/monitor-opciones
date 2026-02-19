@@ -3064,7 +3064,7 @@ elif pagina == "📈 Data Analysis":
                         unsafe_allow_html=True,
                     )
 
-            # Barra visual de niveles
+            # Gráfica visual de niveles
             if precio_actual and precio_actual > 0:
                 st.markdown("---")
                 st.markdown("#### 📍 Mapa de Niveles vs Precio Actual")
@@ -3074,43 +3074,99 @@ elif pagina == "📈 Data Analysis":
                 niveles_r = [(s, "R", v) for s, v in zip(top_puts["Strike"], top_puts["Vol_Total"])]
                 todos_niveles = sorted(niveles_r + niveles_s, key=lambda x: x[0])
 
-                max_vol_nivel = max(n[2] for n in todos_niveles) if todos_niveles else 1
-                all_strikes = [n[0] for n in todos_niveles] + [precio_actual]
-                rango_min = min(all_strikes) * 0.998
-                rango_max = max(all_strikes) * 1.002
-                rango_total = rango_max - rango_min if rango_max > rango_min else 1
+                if todos_niveles:
+                    strikes_plot   = [n[0] for n in todos_niveles]
+                    tipos_plot     = [n[1] for n in todos_niveles]
+                    vols_plot      = [n[2] for n in todos_niveles]
+                    colores_plot   = ["#10b981" if t == "S" else "#ef4444" for t in tipos_plot]
+                    labels_plot    = [
+                        f"{'🟢 Soporte' if t == 'S' else '🔴 Resistencia'}  ${s:,.2f}<br>Vol: {v:,.0f}"
+                        for s, t, v in todos_niveles
+                    ]
 
-                mapa_html = '<div style="position:relative; height:60px; background:#0f172a; border-radius:10px; margin:10px 0 20px 0; border:1px solid #1e293b;">'
+                    max_vol = max(vols_plot) if vols_plot else 1
 
-                # Líneas de niveles
-                for strike_n, tipo_n, vol_n in todos_niveles:
-                    pos_pct = ((strike_n - rango_min) / rango_total) * 100
-                    pos_pct = max(2, min(98, pos_pct))
-                    color = "#10b981" if tipo_n == "S" else "#ef4444"
-                    opacity = 0.4 + 0.6 * (vol_n / max_vol_nivel)
-                    label = tipo_n
-                    mapa_html += (
-                        f'<div style="position:absolute; left:{pos_pct:.1f}%; top:0; bottom:0; '
-                        f'width:2px; background:{color}; opacity:{opacity:.2f};"></div>'
-                        f'<div style="position:absolute; left:{pos_pct:.1f}%; top:2px; transform:translateX(-50%); '
-                        f'font-size:0.65rem; font-weight:700; color:{color};">{label} ${strike_n:,.0f}</div>'
-                        f'<div style="position:absolute; left:{pos_pct:.1f}%; bottom:2px; transform:translateX(-50%); '
-                        f'font-size:0.6rem; color:#64748b;">{vol_n:,.0f}</div>'
+                    fig_niveles = go.Figure()
+
+                    # Barras horizontales de volumen por nivel
+                    for i, (strike_n, tipo_n, vol_n) in enumerate(todos_niveles):
+                        color = "#10b981" if tipo_n == "S" else "#ef4444"
+                        fig_niveles.add_trace(go.Bar(
+                            x=[vol_n],
+                            y=[f"{'S' if tipo_n == 'S' else 'R'}  ${strike_n:,.1f}"],
+                            orientation="h",
+                            marker_color=color,
+                            marker_opacity=0.55 + 0.45 * (vol_n / max_vol),
+                            showlegend=False,
+                            hovertemplate=(
+                                f"<b>{'🟢 Soporte' if tipo_n == 'S' else '🔴 Resistencia'}</b><br>"
+                                f"Strike: ${strike_n:,.2f}<br>"
+                                f"Volumen: {vol_n:,.0f}<extra></extra>"
+                            ),
+                        ))
+
+                    # Línea vertical del precio actual
+                    fig_niveles.add_vline(
+                        x=0,
+                        line_width=0,
                     )
 
-                # Línea del precio actual
-                pos_precio = ((precio_actual - rango_min) / rango_total) * 100
-                pos_precio = max(2, min(98, pos_precio))
-                mapa_html += (
-                    f'<div style="position:absolute; left:{pos_precio:.1f}%; top:0; bottom:0; '
-                    f'width:3px; background:#f59e0b; z-index:5;"></div>'
-                    f'<div style="position:absolute; left:{pos_precio:.1f}%; top:50%; transform:translate(-50%,-50%); '
-                    f'background:#f59e0b; color:#000; font-size:0.7rem; font-weight:800; padding:2px 6px; '
-                    f'border-radius:4px; z-index:6; white-space:nowrap;">📍 ${precio_actual:,.2f}</div>'
-                )
+                    # Anotación del precio actual como referencia en eje Y
+                    fig_niveles.add_annotation(
+                        x=max_vol * 0.98,
+                        y=len(todos_niveles) - 0.5,
+                        text=f"📍 Precio: ${precio_actual:,.2f}",
+                        showarrow=False,
+                        font=dict(color="#f59e0b", size=13, family="Inter"),
+                        bgcolor="rgba(245,158,11,0.15)",
+                        bordercolor="#f59e0b",
+                        borderwidth=1,
+                        borderpad=5,
+                        xanchor="right",
+                        yanchor="bottom",
+                    )
 
-                mapa_html += '</div>'
-                st.markdown(mapa_html, unsafe_allow_html=True)
+                    # Calcular posición del precio en el eje Y (entre barras)
+                    all_strikes_sorted = sorted(strikes_plot)
+                    # Encontrar entre qué strikes cae el precio para dibujar línea horizontal
+                    y_labels_sorted = [f"{'S' if tipos_plot[strikes_plot.index(s)] == 'S' else 'R'}  ${s:,.1f}" for s in all_strikes_sorted]
+
+                    fig_niveles.update_layout(
+                        height=max(420, 40 * len(todos_niveles) + 80),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(15,23,42,0.8)",
+                        font=dict(color="#94a3b8", family="Inter", size=12),
+                        xaxis=dict(
+                            title="Volumen Total",
+                            gridcolor="rgba(51,65,85,0.4)",
+                            color="#94a3b8",
+                            tickformat=",",
+                        ),
+                        yaxis=dict(
+                            title="",
+                            gridcolor="rgba(51,65,85,0.2)",
+                            color="#e2e8f0",
+                            tickfont=dict(size=11),
+                            autorange="reversed",
+                        ),
+                        margin=dict(l=20, r=20, t=40, b=40),
+                        bargap=0.25,
+                        title=dict(
+                            text=f"Niveles de Soporte (🟢) y Resistencia (🔴)  —  Precio actual: <b>${precio_actual:,.2f}</b>",
+                            font=dict(color="#e2e8f0", size=14),
+                            x=0,
+                        ),
+                    )
+
+                    # Separadores de sección (soporte vs resistencia)
+                    fig_niveles.add_shape(
+                        type="line",
+                        x0=0, x1=1, xref="paper",
+                        y0=-0.5, y1=-0.5, yref="y",
+                        line=dict(color="rgba(245,158,11,0.0)", width=0),
+                    )
+
+                    st.plotly_chart(fig_niveles, use_container_width=True, config={"displayModeBar": False})
 
                 # Resumen de niveles cercanos
                 soportes_abajo = sorted([n for n in niveles_s if n[0] < precio_actual], key=lambda x: x[0], reverse=True)
@@ -3121,7 +3177,7 @@ elif pagina == "📈 Data Analysis":
                     if soportes_abajo:
                         s_cercano = soportes_abajo[0]
                         dist_s = ((s_cercano[0] - precio_actual) / precio_actual) * 100
-                        st.metric("🟢 Soporte mís cercano", f"${s_cercano[0]:,.1f}", 
+                        st.metric("🟢 Soporte más cercano", f"${s_cercano[0]:,.1f}",
                                  delta=f"{dist_s:.2f}% abajo", delta_color="normal")
                     else:
                         st.info("Sin soportes por debajo del precio actual")
@@ -3129,7 +3185,7 @@ elif pagina == "📈 Data Analysis":
                     if resistencias_arriba:
                         r_cercana = resistencias_arriba[0]
                         dist_r = ((r_cercana[0] - precio_actual) / precio_actual) * 100
-                        st.metric("🔴 Resistencia mís cercana", f"${r_cercana[0]:,.1f}", 
+                        st.metric("🔴 Resistencia más cercana", f"${r_cercana[0]:,.1f}",
                                  delta=f"+{dist_r:.2f}% arriba", delta_color="inverse")
                     else:
                         st.info("Sin resistencias por encima del precio actual")
