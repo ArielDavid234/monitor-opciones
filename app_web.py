@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 # --- Importar módulos del proyecto ---
 from config.constants import (
-    DEFAULT_MIN_VOLUME, DEFAULT_MIN_OI, DEFAULT_MIN_PRIMA, DEFAULT_QUICK_FILTER,
+    DEFAULT_MIN_VOLUME, DEFAULT_MIN_OI, DEFAULT_MIN_PRIMA,
     DEFAULT_TARGET_DELTA, AUTO_REFRESH_INTERVAL,
 )
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
@@ -566,8 +566,8 @@ if "umbral_oi" not in st.session_state:
     st.session_state.umbral_oi = DEFAULT_MIN_OI
 if "umbral_prima" not in st.session_state:
     st.session_state.umbral_prima = DEFAULT_MIN_PRIMA
-if "umbral_filtro" not in st.session_state:
-    st.session_state.umbral_filtro = DEFAULT_QUICK_FILTER
+if "umbral_delta" not in st.session_state:
+    st.session_state.umbral_delta = 0.0
 
 # Guardado automítico siempre activo
 csv_carpeta = "alertas"
@@ -633,7 +633,7 @@ st.markdown(
 umbral_vol = st.session_state.umbral_vol
 umbral_oi = st.session_state.umbral_oi
 umbral_prima = st.session_state.umbral_prima
-umbral_filtro = st.session_state.umbral_filtro
+umbral_delta = st.session_state.umbral_delta
 
 # ============================================================================
 #   🔍 LIVE SCANNING
@@ -653,13 +653,25 @@ if pagina == "🔍 Live Scanning":
             umbral_prima = st.number_input("Prima Total mínima ($)", value=st.session_state.umbral_prima, step=500_000, format="%d",
                                             help="Prima Total = Volumen × Precio × 100", key="inp_umbral_prima")
         with _umb_c4:
-            umbral_filtro = st.number_input("Filtro rápido (vol/oi mín.)", value=st.session_state.umbral_filtro, step=100, format="%d",
-                                             help="Ignora opciones con vol Y oi debajo de este umbral", key="inp_umbral_filtro")
+            umbral_delta = st.slider(
+                "Delta mínimo (|Δ|)",
+                min_value=0.00, max_value=1.00, value=float(st.session_state.umbral_delta),
+                step=0.01, format="%.2f",
+                help=(
+                    "Filtra contratos por valor absoluto de Delta.\n\n"
+                    "• Delta mide la sensibilidad del precio de la opción ante movimientos del subyacente.\n"
+                    "• Calls: 0 → 1 | Puts: -1 → 0\n"
+                    "• 0.50 ≈ ATM (mayor probabilidad ITM ~50%)\n"
+                    "• 0.16 ≈ límite 1σ (probabilidad ITM ~16%)\n"
+                    "• 0.00 = sin filtro (mostrar todos)"
+                ),
+                key="inp_umbral_delta",
+            )
         # Guardar en session_state para persistir entre páginas
         st.session_state.umbral_vol = umbral_vol
         st.session_state.umbral_oi = umbral_oi
         st.session_state.umbral_prima = umbral_prima
-        st.session_state.umbral_filtro = umbral_filtro
+        st.session_state.umbral_delta = umbral_delta
 
     col_btn1, col_btn2 = st.columns([1, 1])
 
@@ -707,7 +719,7 @@ if pagina == "🔍 Live Scanning":
                     umbral_vol,
                     umbral_oi,
                     umbral_prima,
-                    umbral_filtro,
+                    0,
                     csv_carpeta,
                     guardar_csv,
                     paralelo=True,
@@ -823,7 +835,15 @@ if pagina == "🔍 Live Scanning":
             key=lambda a: a["Prima_Volumen"],
             reverse=True,
         )
-        max_prima = max(a["Prima_Volumen"] for a in alertas_sorted)
+        # Filtrar por delta mínimo si está configurado
+        if umbral_delta > 0:
+            alertas_sorted = [
+                a for a in alertas_sorted
+                if a.get("Delta") is not None and abs(a["Delta"]) >= umbral_delta
+            ]
+        if not alertas_sorted:
+            st.info(f"⚠️ Sin alertas con |Δ| ≥ {umbral_delta:.2f}. Reduce el filtro Delta en Umbrales de Filtrado.")
+        max_prima = max((a["Prima_Volumen"] for a in alertas_sorted), default=0)
 
         for i, alerta in enumerate(alertas_sorted):
             tipo = alerta["Tipo_Alerta"]
@@ -1181,6 +1201,8 @@ if pagina == "🔍 Live Scanning":
                     display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
                 display_df["IV"] = display_df["IV"].apply(_fmt_iv)
                 if "Delta" in display_df.columns:
+                    if umbral_delta > 0:
+                        display_df = display_df[display_df["Delta"].apply(lambda d: d is not None and abs(d) >= umbral_delta)]
                     display_df["Delta"] = display_df["Delta"].apply(_fmt_delta)
 
                 cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
@@ -1236,6 +1258,8 @@ if pagina == "🔍 Live Scanning":
             display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
         display_df["IV"] = display_df["IV"].apply(_fmt_iv)
         if "Delta" in display_df.columns:
+            if umbral_delta > 0:
+                display_df = display_df[display_df["Delta"].apply(lambda d: d is not None and abs(d) >= umbral_delta)]
             display_df["Delta"] = display_df["Delta"].apply(_fmt_delta)
 
         cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
