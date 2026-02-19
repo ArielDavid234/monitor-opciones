@@ -317,7 +317,7 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
             oi = int(item.get('OI', 0) or 0)
             iv = float(item.get('IV', 0) or 0)
             
-            # Bid/Ask Spread
+            # Bid/Ask Spread (solo calcular si ambos están disponibles)
             if ask > 0 and bid > 0:
                 spread = ask - bid
                 spread_pct = (spread / ask) * 100 if ask > 0 else 0
@@ -325,9 +325,11 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
                 item['Spread_Pct'] = spread_pct
                 item['Mid_Price'] = (ask + bid) / 2
             else:
-                item['Spread'] = 0
-                item['Spread_Pct'] = 0
-                item['Mid_Price'] = ask or bid or 0
+                # Si no hay Ask/Bid válidos, usar lastPrice o marcar como N/D
+                last_price = float(item.get('Ultimo', 0) or 0)
+                item['Spread'] = None  # None para indicar dato no disponible
+                item['Spread_Pct'] = None
+                item['Mid_Price'] = last_price if last_price > 0 else None
             
             # Volume/OI Ratio (liquidez relativa)
             item['Vol_OI_Ratio'] = volumen / oi if oi > 0 else 0
@@ -336,7 +338,11 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
             # Basado en: volumen, OI, spread estrechamente
             vol_score = min(volumen / 100, 1) * 40  # max 40 pts por volumen
             oi_score = min(oi / 500, 1) * 30        # max 30 pts por OI
-            spread_score = max(0, 1 - item.get('Spread_Pct', 100)/10) * 30  # max 30 pts por spread estrecho
+            spread_pct_val = item.get('Spread_Pct')
+            if spread_pct_val is not None and spread_pct_val > 0:
+                spread_score = max(0, 1 - spread_pct_val/10) * 30  # max 30 pts por spread estrecho
+            else:
+                spread_score = 0  # Sin spread data, no score
             item['Liquidity_Score'] = vol_score + oi_score + spread_score
             
             # Moneyness (si tenemos precio subyacente)
@@ -365,14 +371,14 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
                 item['Distance_Pct'] = 0
             
             # Premium/Underlying Ratio
-            mid_price = item.get('Mid_Price', 0)
-            if precio_subyacente and mid_price > 0:
+            mid_price = item.get('Mid_Price')
+            if precio_subyacente and mid_price is not None and mid_price > 0:
                 item['Premium_Ratio'] = (mid_price / precio_subyacente) * 100
             else:
-                item['Premium_Ratio'] = 0
+                item['Premium_Ratio'] = None
             
             # Time Value (si no tenemos valor intrínseco exacto, aproximamos)
-            if precio_subyacente and strike > 0 and mid_price > 0:
+            if precio_subyacente and strike > 0 and mid_price is not None and mid_price > 0:
                 tipo = item.get('Tipo_Opcion', item.get('Tipo', ''))
                 if tipo == 'CALL':
                     intrinsic = max(precio_subyacente - strike, 0)
@@ -381,8 +387,8 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
                 item['Time_Value'] = max(mid_price - intrinsic, 0)
                 item['Time_Value_Pct'] = (item['Time_Value'] / mid_price * 100) if mid_price > 0 else 0
             else:
-                item['Time_Value'] = 0
-                item['Time_Value_Pct'] = 0
+                item['Time_Value'] = None
+                item['Time_Value_Pct'] = None
                 
         except (ValueError, TypeError, KeyError) as e:
             # Si hay error en algún cálculo, continuar con valores por defecto
@@ -977,12 +983,21 @@ if pagina == "🔍 Live Scanning":
 
                             with st.expander("🗓️ Datos históricos completos"):
                                 display_hist = hist_df_card.copy()
+                                # Filtrar columnas irrelevantes para opciones
+                                cols_to_drop = [c for c in ["Dividends", "Stock Splits", "Capital Gains"] if c in display_hist.columns]
+                                if cols_to_drop:
+                                    display_hist = display_hist.drop(columns=cols_to_drop)
+                                
                                 display_hist.index = display_hist.index.strftime("%Y-%m-%d %H:%M")
                                 for col in ["Open", "High", "Low", "Close"]:
                                     if col in display_hist.columns:
                                         display_hist[col] = display_hist[col].apply(
                                             lambda x: f"${x:.2f}" if pd.notna(x) else "-"
                                         )
+                                if "Volume" in display_hist.columns:
+                                    display_hist["Volume"] = display_hist["Volume"].apply(
+                                        lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "-"
+                                    )
                                 st.dataframe(display_hist, width="stretch", hide_index=False)
                 else:
                     st.info("ℹ️ No se encontró el símbolo del contrato.")
@@ -1245,11 +1260,15 @@ if pagina == "🔍 Live Scanning":
             if 'IV' in display_scan.columns:
                 display_scan["IV_F"] = display_scan["IV"].apply(_fmt_iv)
             if 'Spread_Pct' in display_scan.columns:
-                display_scan["Spread_%"] = display_scan["Spread_Pct"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
+                display_scan["Spread_%"] = display_scan["Spread_Pct"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) and x > 0 else "N/D")
             if 'Liquidity_Score' in display_scan.columns:
                 display_scan["Liquidez"] = display_scan["Liquidity_Score"].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
             if 'Lado' in display_scan.columns:
                 display_scan["Lado_F"] = display_scan["Lado"].apply(_fmt_lado)
+            if 'Ask' in display_scan.columns:
+                display_scan["Ask_F"] = display_scan["Ask"].apply(lambda x: f"${x:.2f}" if pd.notna(x) and x > 0 else "N/D")
+            if 'Bid' in display_scan.columns:
+                display_scan["Bid_F"] = display_scan["Bid"].apply(lambda x: f"${x:.2f}" if pd.notna(x) and x > 0 else "N/D")
             if 'OI' in display_scan.columns:
                 display_scan["OI_F"] = display_scan["OI"].apply(_fmt_oi)
             if 'OI_Chg' in display_scan.columns:
@@ -1261,7 +1280,7 @@ if pagina == "🔍 Live Scanning":
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Ask', 'Bid', 'Spread_%',
+            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 
