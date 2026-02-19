@@ -39,7 +39,7 @@ from core.scanner import (
     obtener_precio_actual, limpiar_cache_ticker,
 )
 from core.projections import analizar_proyeccion_empresa
-from core.range_calc import calcular_rango_esperado
+from core.expected_move import calcular_expected_move, calcular_em_straddle
 from core.clusters import detectar_compras_continuas
 from core.news import obtener_noticias_financieras, filtrar_noticias
 from core.oi_tracker import calcular_cambios_oi, resumen_oi, filtrar_contratos_oi
@@ -3377,20 +3377,13 @@ elif pagina == "⭐ Favorites":
 
 
 # ============================================================================
-#   📐 RANGE — RANGO ESPERADO
+#   📐 RANGE — EXPECTED MOVE (Thinkorswim Style)
 # ============================================================================
 elif pagina == "📐 Range":
-    st.markdown("### 📐 Rango Esperado de Movimiento (1σ)")
+    st.markdown("### 📐 Expected Move — Rango Esperado de Movimiento")
+    st.caption("Calcula el rango esperado de movimiento exactamente como lo muestra Thinkorswim / Charles Schwab.")
 
-    rango_delta = st.slider(
-        "Delta objetivo (σ)", min_value=0.01, max_value=1.00, value=st.session_state.rango_delta, step=0.01,
-        help="0.16 ≈ 1σ (68%). 0.05 ≈ 2σ (95%). Menor delta = rango mís amplio.", key="rango_delta_slider"
-    )
-    st.session_state.rango_delta = rango_delta
-
-    st.markdown("")
-
-    # Reusar fechas ya cargadas del último escaneo para evitar llamada extra
+    # ── Obtener fechas de expiración disponibles ──
     fechas_exp_disponibles = list(st.session_state.get("fechas_escaneadas", []))
     if not fechas_exp_disponibles:
         try:
@@ -3398,153 +3391,226 @@ elif pagina == "📐 Range":
             ticker_rango = yf.Ticker(ticker_symbol, session=session_rango)
             fechas_exp_disponibles = list(ticker_rango.options)
         except Exception as e:
-            logger.warning("Error obteniendo fechas de expiración para rango: %s", e)
+            logger.warning("Error obteniendo fechas de expiración: %s", e)
 
-    col_r1, col_r2, col_r3 = st.columns([2, 2, 1])
-    with col_r1:
-        rango_symbol = st.text_input(
-            "Símbolo", value=ticker_symbol, max_chars=10,
-            key="rango_symbol", help="Ticker de la acción (ej: SPY, META, AAPL)"
-        ).upper()
-    with col_r2:
-        if fechas_exp_disponibles:
-            rango_exp_date = st.selectbox(
-                "Fecha de Expiración",
-                fechas_exp_disponibles,
-                key="rango_exp",
-                help="Fechas de expiración disponibles para este ticker",
-            )
+    if not fechas_exp_disponibles:
+        st.warning("⚠️ No se encontraron fechas de expiración. Escanea primero un ticker en Live Scanning.")
+    else:
+        # ── Obtener precio actual ──
+        precio_actual_rango = st.session_state.get("precio_subyacente")
+        if not precio_actual_rango:
+            precio_actual_rango, _err_p = obtener_precio_actual(ticker_symbol)
+            if precio_actual_rango:
+                st.session_state.precio_subyacente = precio_actual_rango
+
+        if not precio_actual_rango:
+            st.error("❌ No se pudo obtener el precio actual. Escanea primero el ticker.")
         else:
-            rango_exp_date = st.text_input(
-                "Fecha de Expiración (YYYY-MM-DD)",
-                value=(datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
-                key="rango_exp",
-                help="Fecha de expiración de las opciones a analizar",
-            )
-    with col_r3:
-        st.markdown("<br>", unsafe_allow_html=True)
-        calc_btn = st.button("📐 Calcular Rango", type="primary", use_container_width=True)
-
-    if calc_btn:
-        st.session_state.scanning_active = True
-        with st.spinner(f"Calculando rango esperado para {rango_symbol} al {rango_exp_date}..."):
-            resultado, error = calcular_rango_esperado(
-                rango_symbol, rango_exp_date,
-                target_delta=rango_delta,
-            )
-        st.session_state.rango_resultado = resultado
-        st.session_state.rango_error = error
-        st.session_state.scanning_active = False
-
-    if st.session_state.rango_error:
-        st.error(f"❌ {st.session_state.rango_error}")
-
-    if st.session_state.rango_resultado:
-        r = st.session_state.rango_resultado
-
-        total_range = r["downside_points"] + r["upside_points"]
-        if total_range > 0:
-            down_pct_bar = (r["downside_points"] / total_range) * 100
-            up_pct_bar = (r["upside_points"] / total_range) * 100
-        else:
-            down_pct_bar = 50
-            up_pct_bar = 50
-
-        full_range = r["expected_range_high"] - r["expected_range_low"]
-        if full_range > 0:
-            precio_pos = ((r["underlying_price"] - r["expected_range_low"]) / full_range) * 100
-        else:
-            precio_pos = 50
-
-        dias_str = f" ({r['dias_restantes']} días)" if r['dias_restantes'] is not None else ""
-
-        st.markdown(f"#### 📐 {r['symbol']} — Rango Esperado 1σ")
-        st.caption(f"Expiración: {r['expiration']}{dias_str}")
-
-        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        with col_r1:
-            st.metric("💵 Precio Actual", f"${r['underlying_price']:,.2f}")
-        with col_r2:
-            st.metric("📈 Subida Esperada", f"+${r['upside_points']:,.2f}", f"+{r['upside_percent']:.2f}%")
-        with col_r3:
-            st.metric("📉 Bajada Esperada", f"-${r['downside_points']:,.2f}", f"-{r['downside_percent']:.2f}%", delta_color="inverse")
-        with col_r4:
-            st.metric("↔️ Rango Total", f"${r['total_range_points']:,.2f}", f"{r['total_range_pct']:.2f}%", delta_color="off")
-
-        st.markdown("")
-        bar_col1, bar_col2, bar_col3 = st.columns([1, 6, 1])
-        with bar_col1:
-            st.markdown(f"**▼ ${r['expected_range_low']:,.2f}**")
-        with bar_col2:
-            progress_val = max(0.0, min(1.0, precio_pos / 100.0))
-            st.progress(progress_val, text=f"● Precio actual: ${r['underlying_price']:,.2f}  —  Rango: ${r['expected_range_low']:,.2f} a ${r['expected_range_high']:,.2f}")
-        with bar_col3:
-            st.markdown(f"**▲ ${r['expected_range_high']:,.2f}**")
-
-        st.divider()
-
-        st.markdown("#### 🎯 Contratos Usados para el Cálculo")
-        col_d1, col_d2 = st.columns(2)
-
-        with col_d1:
-            st.success(f"""
-**📈 CALL (límite superior)**
-- Strike: **${r['call_strike']}**
-- Delta: **{r['call_delta']}**
-- IV: **{r['call_iv']:.1f}%**
-- _Precio debe superar ${r['call_strike']} para salir del rango_
-""")
-
-        with col_d2:
-            st.error(f"""
-**📉 PUT (límite inferior)**
-- Strike: **${r['put_strike']}**
-- Delta: **{r['put_delta']}**
-- IV: **{r['put_iv']:.1f}%**
-- _Precio debe caer bajo ${r['put_strike']} para salir del rango_
-""")
-
-        with st.expander("📋 Ver datos completos del cálculo"):
-            resumen_data = {
-                "Campo": [
-                    "Símbolo", "Precio Actual", "Expiración", "Días Restantes",
-                    "Delta Objetivo", "Subida Esperada (pts)", "Subida Esperada (%)",
-                    "Bajada Esperada (pts)", "Bajada Esperada (%)", "Rango Inferior",
-                    "Rango Superior", "Rango Total (pts)", "Rango Total (%)",
-                    "Call Strike", "Call Delta", "Call IV",
-                    "Put Strike", "Put Delta", "Put IV",
-                    "Calls Analizadas", "Puts Analizadas",
-                ],
-                "Valor": [
-                    r["symbol"], f"${r['underlying_price']:,.2f}", r["expiration"],
-                    r["dias_restantes"] if r["dias_restantes"] else "N/A",
-                    f"±{r['target_delta']}",
-                    f"+${r['upside_points']:,.2f}", f"+{r['upside_percent']:.2f}%",
-                    f"-${r['downside_points']:,.2f}", f"-{r['downside_percent']:.2f}%",
-                    f"${r['expected_range_low']:,.2f}", f"${r['expected_range_high']:,.2f}",
-                    f"${r['total_range_points']:,.2f}", f"{r['total_range_pct']:.2f}%",
-                    f"${r['call_strike']}", f"{r['call_delta']}", f"{r['call_iv']:.1f}%",
-                    f"${r['put_strike']}", f"{r['put_delta']}", f"{r['put_iv']:.1f}%",
-                    r["n_calls"], r["n_puts"],
-                ]
-            }
+            # ── Header con precio actual ──
             st.markdown(
-                render_pro_table(pd.DataFrame(resumen_data), title="📋 Datos del Cálculo"),
+                f'<div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px 20px;margin-bottom:16px;">'
+                f'<span style="color:#94a3b8;font-size:0.85rem;">Ticker:</span> '
+                f'<span style="color:#00ff88;font-size:1.3rem;font-weight:800;">{ticker_symbol}</span>'
+                f'<span style="color:#334155;margin:0 12px;">|</span>'
+                f'<span style="color:#94a3b8;font-size:0.85rem;">Precio Actual:</span> '
+                f'<span style="color:white;font-size:1.3rem;font-weight:700;">${precio_actual_rango:,.2f}</span>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
-        st.markdown(
-            f"""
-            <div class="rango-info">
-                🧠 <b>Interpretación:</b> El mercado de opciones estima que <b>{r['symbol']}</b>
-                se moverí entre <b>${r['expected_range_low']:,.2f}</b> y <b>${r['expected_range_high']:,.2f}</b>
-                (un rango de <b>${r['total_range_points']:,.2f}</b> / <b>{r['total_range_pct']:.2f}%</b>)
-                hasta el <b>{r['expiration']}</b> con ~68% de probabilidad.
-                Esto equivale a ±1 desviación estíndar implícita del mercado.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            # ── Obtener cadena de opciones para cada fecha y calcular EM ──
+            # Obtener IV promedio ATM para cada fecha de expiración
+            em_results = []
+
+            with st.status("📊 Calculando Expected Move para todas las fechas...", expanded=True) as status:
+                try:
+                    session_em, _ = crear_sesion_nueva()
+                    ticker_em = yf.Ticker(ticker_symbol, session=session_em)
+
+                    for idx, exp_date in enumerate(fechas_exp_disponibles):
+                        st.write(f"Procesando {exp_date} ({idx+1}/{len(fechas_exp_disponibles)})...")
+                        try:
+                            chain = ticker_em.option_chain(exp_date)
+
+                            # Calcular DTE
+                            exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
+                            dte = max((exp_dt - datetime.now()).total_seconds() / 86400, 0.01)
+
+                            # Encontrar opciones ATM (las más cercanas al precio actual)
+                            calls_df = chain.calls
+                            puts_df = chain.puts
+
+                            if calls_df.empty or puts_df.empty:
+                                continue
+
+                            # Call ATM: strike más cercano al precio actual
+                            calls_df = calls_df[calls_df["impliedVolatility"].notna() & (calls_df["impliedVolatility"] > 0)]
+                            puts_df = puts_df[puts_df["impliedVolatility"].notna() & (puts_df["impliedVolatility"] > 0)]
+
+                            if calls_df.empty or puts_df.empty:
+                                continue
+
+                            atm_call_idx = (calls_df["strike"] - precio_actual_rango).abs().idxmin()
+                            atm_put_idx = (puts_df["strike"] - precio_actual_rango).abs().idxmin()
+
+                            atm_call = calls_df.loc[atm_call_idx]
+                            atm_put = puts_df.loc[atm_put_idx]
+
+                            # IV promedio ATM (promedio de call y put ATM)
+                            iv_call = float(atm_call.get("impliedVolatility", 0) or 0)
+                            iv_put = float(atm_put.get("impliedVolatility", 0) or 0)
+                            iv_avg = (iv_call + iv_put) / 2 if iv_call > 0 and iv_put > 0 else max(iv_call, iv_put)
+
+                            if iv_avg <= 0:
+                                continue
+
+                            # Calcular EM por fórmula IV (TOS)
+                            em = calcular_expected_move(precio_actual_rango, iv_avg, dte)
+
+                            # Calcular EM por straddle ATM
+                            call_price = float(atm_call.get("lastPrice", 0) or atm_call.get("ask", 0) or 0)
+                            put_price = float(atm_put.get("lastPrice", 0) or atm_put.get("ask", 0) or 0)
+                            em_straddle = None
+                            if call_price > 0 and put_price > 0:
+                                em_straddle = calcular_em_straddle(precio_actual_rango, call_price, put_price)
+
+                            em_results.append({
+                                "expiration": exp_date,
+                                "dte": round(dte, 1),
+                                "iv_atm": round(iv_avg * 100, 2),
+                                "em": em,
+                                "em_straddle": em_straddle,
+                                "call_strike": float(atm_call["strike"]),
+                                "call_price": round(call_price, 2),
+                                "call_iv": round(iv_call * 100, 2),
+                                "put_strike": float(atm_put["strike"]),
+                                "put_price": round(put_price, 2),
+                                "put_iv": round(iv_put * 100, 2),
+                            })
+
+                            # Pausa entre fechas para no triggerear rate limit
+                            if idx < len(fechas_exp_disponibles) - 1:
+                                time.sleep(0.3)
+
+                        except Exception as e:
+                            logger.warning("Error procesando %s: %s", exp_date, e)
+                            continue
+
+                    status.update(label=f"✅ {len(em_results)} fechas procesadas", state="complete", expanded=False)
+
+                except Exception as e:
+                    status.update(label="❌ Error en cálculo", state="error")
+                    st.error(f"Error: {e}")
+
+            # ── Tabla principal de Expected Move por fecha ──
+            if em_results:
+                st.markdown("#### 📊 Expected Move por Fecha de Expiración")
+
+                # Construir tabla
+                tabla_em = []
+                for r in em_results:
+                    em = r["em"]
+                    em_s = r["em_straddle"]
+                    tabla_em.append({
+                        "Expiración": r["expiration"],
+                        "DTE": f"{r['dte']:.0f}d" if r["dte"] >= 1 else f"{r['dte']*24:.0f}h",
+                        "IV ATM": f"{r['iv_atm']:.1f}%",
+                        "EM ±$": f"±${em['em_dolares']:,.2f}",
+                        "EM %": f"±{em['porcentaje']:.2f}%",
+                        "Rango": f"${em['lower']:,.2f} — ${em['upper']:,.2f}",
+                        "Straddle ±$": f"±${em_s['em_dolares']:,.2f}" if em_s else "N/D",
+                        "Call ATM": f"${r['call_strike']:,.1f} (${r['call_price']:.2f})",
+                        "Put ATM": f"${r['put_strike']:,.1f} (${r['put_price']:.2f})",
+                    })
+
+                em_df = pd.DataFrame(tabla_em)
+                st.markdown(
+                    render_pro_table(em_df, title=f"📐 Expected Move — {ticker_symbol}", badge_count=f"{len(tabla_em)} fechas"),
+                    unsafe_allow_html=True,
+                )
+
+                # ── Detalle visual: seleccionar fecha para ver breakdown ──
+                st.markdown("---")
+                st.markdown("#### 🔍 Detalle por Expiración")
+
+                selected_exp = st.selectbox(
+                    "Selecciona una fecha de expiración:",
+                    [r["expiration"] for r in em_results],
+                    format_func=lambda x: f"{x}  ({next((r['dte'] for r in em_results if r['expiration'] == x), 0):.0f} días)",
+                    key="em_detail_select",
+                )
+
+                sel = next((r for r in em_results if r["expiration"] == selected_exp), None)
+                if sel:
+                    em = sel["em"]
+                    em_s = sel["em_straddle"]
+
+                    # Métricas
+                    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+                    with col_e1:
+                        st.metric("📅 DTE", f"{sel['dte']:.1f} días")
+                    with col_e2:
+                        st.metric("📊 IV ATM", f"{sel['iv_atm']:.1f}%")
+                    with col_e3:
+                        st.metric("±$ Expected Move", f"±${em['em_dolares']:,.2f}", f"±{em['porcentaje']:.2f}%")
+                    with col_e4:
+                        if em_s:
+                            st.metric("±$ Straddle EM", f"±${em_s['em_dolares']:,.2f}", f"±{em_s['porcentaje']:.2f}%")
+                        else:
+                            st.metric("±$ Straddle EM", "N/D")
+
+                    # Barra visual de rango
+                    st.markdown("")
+                    full_range = em["upper"] - em["lower"]
+                    if full_range > 0:
+                        precio_pos = (precio_actual_rango - em["lower"]) / full_range
+                    else:
+                        precio_pos = 0.5
+
+                    bar_c1, bar_c2, bar_c3 = st.columns([1, 6, 1])
+                    with bar_c1:
+                        st.markdown(f"**▼ ${em['lower']:,.2f}**")
+                    with bar_c2:
+                        progress_val = max(0.0, min(1.0, precio_pos))
+                        st.progress(progress_val, text=f"● ${precio_actual_rango:,.2f}  —  Rango: ${em['lower']:,.2f} a ${em['upper']:,.2f}")
+                    with bar_c3:
+                        st.markdown(f"**▲ ${em['upper']:,.2f}**")
+
+                    # Contratos ATM usados
+                    st.markdown("")
+                    col_c1, col_c2 = st.columns(2)
+                    with col_c1:
+                        st.success(f"""
+**📈 CALL ATM**
+- Strike: **${sel['call_strike']:,.1f}**
+- Prima: **${sel['call_price']:.2f}**
+- IV: **{sel['call_iv']:.1f}%**
+""")
+                    with col_c2:
+                        st.error(f"""
+**📉 PUT ATM**
+- Strike: **${sel['put_strike']:,.1f}**
+- Prima: **${sel['put_price']:.2f}**
+- IV: **{sel['put_iv']:.1f}%**
+""")
+
+                    # Interpretación
+                    st.markdown(
+                        f"""
+                        <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px 20px;margin-top:12px;">
+                            🧠 <b>Interpretación:</b> El mercado espera que <b>{ticker_symbol}</b>
+                            se mueva <b>±${em['em_dolares']:,.2f}</b> (<b>±{em['porcentaje']:.2f}%</b>)
+                            hasta el <b>{sel['expiration']}</b> ({sel['dte']:.0f} días).
+                            Rango esperado: <b>${em['lower']:,.2f}</b> — <b>${em['upper']:,.2f}</b> con ~68% de probabilidad (1σ).
+                            {"<br>📌 Straddle ATM estima <b>±$" + f"{em_s['em_dolares']:,.2f}</b> (factor 0.85)." if em_s else ""}
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+            else:
+                st.info("No se pudo calcular el Expected Move. Verifica que el ticker tenga opciones disponibles.")
+
 
 
 # ============================================================================
