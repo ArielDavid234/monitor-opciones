@@ -327,9 +327,9 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
             else:
                 # Si no hay Ask/Bid válidos, usar lastPrice o marcar como N/D
                 last_price = float(item.get('Ultimo', 0) or 0)
-                item['Spread'] = None  # None para indicar dato no disponible
-                item['Spread_Pct'] = None
-                item['Mid_Price'] = last_price if last_price > 0 else None
+                item['Spread'] = np.nan  # NaN para indicar dato no disponible
+                item['Spread_Pct'] = np.nan
+                item['Mid_Price'] = last_price if last_price > 0 else np.nan
             
             # Volume/OI Ratio (liquidez relativa)
             item['Vol_OI_Ratio'] = volumen / oi if oi > 0 else 0
@@ -339,7 +339,7 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
             vol_score = min(volumen / 100, 1) * 40  # max 40 pts por volumen
             oi_score = min(oi / 500, 1) * 30        # max 30 pts por OI
             spread_pct_val = item.get('Spread_Pct')
-            if spread_pct_val is not None and spread_pct_val > 0:
+            if pd.notna(spread_pct_val) and spread_pct_val > 0:
                 spread_score = max(0, 1 - spread_pct_val/10) * 30  # max 30 pts por spread estrecho
             else:
                 spread_score = 0  # Sin spread data, no score
@@ -372,13 +372,13 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
             
             # Premium/Underlying Ratio
             mid_price = item.get('Mid_Price')
-            if precio_subyacente and mid_price is not None and mid_price > 0:
+            if precio_subyacente and mid_price is not None and not np.isnan(mid_price) and mid_price > 0:
                 item['Premium_Ratio'] = (mid_price / precio_subyacente) * 100
             else:
-                item['Premium_Ratio'] = None
+                item['Premium_Ratio'] = np.nan
             
             # Time Value (si no tenemos valor intrínseco exacto, aproximamos)
-            if precio_subyacente and strike > 0 and mid_price is not None and mid_price > 0:
+            if precio_subyacente and strike > 0 and mid_price is not None and not np.isnan(mid_price) and mid_price > 0:
                 tipo = item.get('Tipo_Opcion', item.get('Tipo', ''))
                 if tipo == 'CALL':
                     intrinsic = max(precio_subyacente - strike, 0)
@@ -387,8 +387,8 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
                 item['Time_Value'] = max(mid_price - intrinsic, 0)
                 item['Time_Value_Pct'] = (item['Time_Value'] / mid_price * 100) if mid_price > 0 else 0
             else:
-                item['Time_Value'] = None
-                item['Time_Value_Pct'] = None
+                item['Time_Value'] = np.nan
+                item['Time_Value_Pct'] = np.nan
                 
         except (ValueError, TypeError, KeyError) as e:
             # Si hay error en algún cálculo, continuar con valores por defecto
