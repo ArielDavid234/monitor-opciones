@@ -718,8 +718,8 @@ if pagina == "🔍 Live Scanning":
                 logger.error("Error crítico en escaneo: %s", e)
 
             if error:
-                st.error(f"❌ Error: {error}")
                 st.session_state.scan_error = error
+                st.session_state.scanning_active = False
             else:
                 st.session_state.alertas_actuales = alertas
                 st.session_state.datos_completos = datos
@@ -759,11 +759,20 @@ if pagina == "🔍 Live Scanning":
                 # Detectar clusters DESPUÉS de inyectar OI_Chg
                 clusters = detectar_compras_continuas(alertas, umbral_prima)
                 st.session_state.clusters_detectados = clusters
+                st.session_state.scan_error = None
 
-        st.session_state.scanning_active = False
-        st.rerun()
+        if not st.session_state.scan_error:
+            st.session_state.scanning_active = False
+            st.rerun()
 
     st.session_state.auto_scan = auto_scan
+
+    # Mostrar error persistente del último escaneo (sobrevive al rerun)
+    if st.session_state.get("scan_error"):
+        st.error(f"❌ Error en el escaneo: {st.session_state.scan_error}")
+        if st.button("✖ Descartar error", key="dismiss_scan_error"):
+            st.session_state.scan_error = None
+            st.rerun()
 
     # --- Métricas rápidas ---
     if st.session_state.datos_completos:

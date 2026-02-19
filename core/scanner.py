@@ -15,6 +15,9 @@ import yfinance as yf
 from datetime import datetime
 from functools import wraps
 from random import uniform, choice
+
+logger = logging.getLogger(__name__)
+
 try:
     from scipy.stats import norm as _norm
     _HAS_SCIPY = True
@@ -30,8 +33,6 @@ except ImportError:
 
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-logger = logging.getLogger(__name__)
 
 
 # ============================================================================
