@@ -228,7 +228,7 @@ def render_empresa_card(r, info_emp, watchlist_dict, es_emergente=False):
                 <div class="empresa-nombre">{r['nombre']} · ${r['precio']:,.2f}</div>
             </div>
             <div>
-                <span class="empresa-score {score_class}">{score_emoji} {r['score']}/100</span>
+                <span class="empresa-score {score_class}">{score_emoji} {r.get('score_combinado', r['score'])}/100</span>
             </div>
         </div>
         <div class="empresa-desc">{desc}</div>
@@ -285,7 +285,7 @@ def render_tabla_comparativa(resultados, es_emergente=False):
             "Ticker": r["symbol"],
             "Nombre": r["nombre"],
             "Precio": f"${r['precio']:,.2f}",
-            "Score": f"{r['score']}/100",
+            "Score": f"{r.get('score_combinado', r['score'])}/100",
             "Proyección": r["clasificacion"],
             "Crec. Ingresos": f"{r['revenue_growth']*100:.1f}%",
             "Margen Op.": f"{r['operating_margins']*100:.1f}%",
