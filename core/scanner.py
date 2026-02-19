@@ -7,6 +7,7 @@ Incluye sistema de caché TTL para evitar rate-limiting de Yahoo Finance.
 import os
 import csv
 import glob
+import math
 import time
 import logging
 import pandas as pd
@@ -15,6 +16,11 @@ from datetime import datetime
 from functools import wraps
 from random import uniform, choice
 try:
+    from scipy.stats import norm as _norm
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+try:
     from curl_cffi.requests import Session as CurlSession
     _HAS_CURL_CFFI = True
 except ImportError:
@@ -22,7 +28,7 @@ except ImportError:
     import requests as _fallback_requests
     logger.warning("curl_cffi no disponible — usando requests estándar (sin TLS fingerprint)")
 
-from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES
+from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
@@ -143,6 +149,20 @@ def obtener_precio_actual(ticker_sym):
 def _safe_num(value, default=0):
     """Retorna el valor si no es NaN/None, o el default."""
     return value if pd.notna(value) else default
+
+
+def _calcular_delta_bs(S, K, T, r_rate, sigma, tipo="call"):
+    """Calcula el delta Black-Scholes de una opción.
+    Calls: δ = N(d1)  |  Puts: δ = N(d1) - 1
+    """
+    if not _HAS_SCIPY or T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+        return None
+    try:
+        d1 = (math.log(S / K) + (r_rate + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+        delta = _norm.cdf(d1) if tipo == "call" else _norm.cdf(d1) - 1
+        return round(delta, 4)
+    except Exception:
+        return None
 
 
 def _clasificar_lado(last_price, bid, ask):
@@ -285,6 +305,10 @@ def ejecutar_escaneo(
     datos = []
     perfil = "cached"
 
+    # Obtener precio subyacente una vez para cálculo de delta
+    _precio_sub, _ = obtener_precio_actual(ticker_sym)
+    _today = datetime.now()
+
     # Obtener fechas de expiración (cacheado 5 min)
     try:
         options_dates = _cached_options_dates(ticker_sym)
@@ -398,6 +422,21 @@ def ejecutar_escaneo(
 
                     lado = _clasificar_lado(last_val, bid_val, ask_val)
 
+                    # Calcular delta Black-Scholes
+                    try:
+                        exp_dt_d = datetime.strptime(exp_date, "%Y-%m-%d")
+                        dte_years = max((exp_dt_d - _today).total_seconds() / (365 * 86400), 1e-6)
+                    except Exception:
+                        dte_years = 1e-6
+                    delta_val = _calcular_delta_bs(
+                        _precio_sub or row["strike"],
+                        row["strike"],
+                        dte_years,
+                        RISK_FREE_RATE,
+                        iv if iv > 0 else 0,
+                        tipo="call" if opt_type == "CALL" else "put",
+                    ) if _precio_sub else None
+
                     datos.append(
                         {
                             "Vencimiento": exp_date,
@@ -411,6 +450,7 @@ def ejecutar_escaneo(
                             "IV": round(iv * 100, 2) if iv else 0,
                             "Prima_Volumen": round(volume_premium, 0),
                             "Lado": lado,
+                            "Delta": delta_val,
                         }
                     )
 
@@ -443,6 +483,7 @@ def ejecutar_escaneo(
                             "IV": round(iv * 100, 2) if iv else 0,
                             "Contrato": contract_sym,
                             "Lado": lado,
+                            "Delta": delta_val,
                         }
                         alertas.append(alerta)
 

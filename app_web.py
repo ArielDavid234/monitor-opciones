@@ -104,6 +104,16 @@ def _fmt_oi_chg(x):
         return "0"
 
 
+def _fmt_delta(x):
+    """Formatea delta de opción. Calls: 0.00–1.00 | Puts: -1.00–0.00"""
+    try:
+        if x is None:
+            return "N/D"
+        return f"{float(x):+.4f}"
+    except (ValueError, TypeError):
+        return "N/D"
+
+
 def _fmt_lado(lado):
     """Formatea el lado de ejecución con emoji indicador."""
     if lado == "Ask":
@@ -929,6 +939,7 @@ if pagina == "🔍 Live Scanning":
                         st.markdown(f"- **Bid:** ${alerta['Bid']}")
                         st.markdown(f"- **Último:** ${alerta['Ultimo']}")
                         st.markdown(f"- **Lado:** {_fmt_lado(alerta.get('Lado', 'N/A'))}")
+                        st.markdown(f"- **Delta:** {_fmt_delta(alerta.get('Delta'))}")
                         st.markdown(f"- **Prima Total:** ${prima_mayor:,.0f}")
 
                         # Botón de favorito
@@ -1021,6 +1032,8 @@ if pagina == "🔍 Live Scanning":
             alertas_df["OI"] = alertas_df["OI"].apply(_fmt_oi)
         if "OI_Chg" in alertas_df.columns:
             alertas_df["OI_Chg"] = alertas_df["OI_Chg"].apply(_fmt_oi_chg)
+        if "Delta" in alertas_df.columns:
+            alertas_df["Delta"] = alertas_df["Delta"].apply(_fmt_delta)
         alertas_df = alertas_df.rename(columns={"Prima_Volumen": "Prima Total"})
         alertas_df["Prima Total"] = alertas_df["Prima Total"].apply(_fmt_dolar)
 
@@ -1158,6 +1171,8 @@ if pagina == "🔍 Live Scanning":
                     display_df = display_df.rename(columns={"Prima_Vol": "Prima Total"})
                     display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
                 display_df["IV"] = display_df["IV"].apply(_fmt_iv)
+                if "Delta" in display_df.columns:
+                    display_df["Delta"] = display_df["Delta"].apply(_fmt_delta)
 
                 cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
                 st.dataframe(
@@ -1211,6 +1226,8 @@ if pagina == "🔍 Live Scanning":
             display_df = display_df.rename(columns={"Prima_Vol": "Prima Total"})
             display_df["Prima Total"] = display_df["Prima Total"].apply(_fmt_dolar)
         display_df["IV"] = display_df["IV"].apply(_fmt_iv)
+        if "Delta" in display_df.columns:
+            display_df["Delta"] = display_df["Delta"].apply(_fmt_delta)
 
         cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
         st.dataframe(
@@ -1267,6 +1284,8 @@ if pagina == "🔍 Live Scanning":
                 display_scan["OI_F"] = display_scan["OI"].apply(_fmt_oi)
             if 'OI_Chg' in display_scan.columns:
                 display_scan["OI_Chg_F"] = display_scan["OI_Chg"].apply(_fmt_oi_chg)
+            if 'Delta' in display_scan.columns:
+                display_scan["Delta"] = display_scan["Delta"].apply(_fmt_delta)
 
             if 'Tipo' in display_scan.columns and 'Lado' in display_scan.columns:
                 display_scan["Sentimiento"] = display_scan.apply(
@@ -1274,7 +1293,7 @@ if pagina == "🔍 Live Scanning":
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Ask_F', 'Bid_F', 'Spread_%',
+            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 
