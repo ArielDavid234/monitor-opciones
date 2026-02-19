@@ -88,9 +88,20 @@ def _fmt_monto(v):
     return f"${v:,.0f}"
 
 
+def _fmt_oi(x):
+    """Formatea Open Interest con comas."""
+    try:
+        return f"{int(x):,}" if x and x > 0 else "0"
+    except (ValueError, TypeError):
+        return "0"
+
+
 def _fmt_oi_chg(x):
     """Formatea OI Change con signo: +1,234 o -567."""
-    return f"+{int(x):,}" if x > 0 else f"{int(x):,}" if x < 0 else "0"
+    try:
+        return f"+{int(x):,}" if x > 0 else f"{int(x):,}" if x < 0 else "0"
+    except (ValueError, TypeError):
+        return "0"
 
 
 def _fmt_lado(lado):
@@ -997,10 +1008,12 @@ if pagina == "🔍 Live Scanning":
             alertas_df["Tipo_Opcion"] = alertas_df["Tipo_Opcion"].apply(_type_badge)
         if "Lado" in alertas_df.columns:
             alertas_df["Lado"] = alertas_df["Lado"].apply(_fmt_lado)
+        if "OI" in alertas_df.columns:
+            alertas_df["OI"] = alertas_df["OI"].apply(_fmt_oi)
+        if "OI_Chg" in alertas_df.columns:
+            alertas_df["OI_Chg"] = alertas_df["OI_Chg"].apply(_fmt_oi_chg)
         alertas_df = alertas_df.rename(columns={"Prima_Volumen": "Prima Total"})
         alertas_df["Prima Total"] = alertas_df["Prima Total"].apply(_fmt_dolar)
-        cols_ocultar = [c for c in ["OI", "OI_Chg"] if c in alertas_df.columns]
-        _tbl_df = alertas_df.drop(columns=cols_ocultar, errors="ignore")
 
         _col_left, _col_right = st.columns([1, 1], gap="medium")
 
@@ -1008,10 +1021,10 @@ if pagina == "🔍 Live Scanning":
         with _col_left:
             st.markdown(
                 render_pro_table(
-                    _tbl_df,
+                    alertas_df,
                     title="📋 Unusual Activity — Alertas",
-                    badge_count=f"{len(_tbl_df)} alertas",
-                    footer_text=f"Ordenadas por prima · {len(_tbl_df)} resultados",
+                    badge_count=f"{len(alertas_df)} alertas",
+                    footer_text=f"Ordenadas por prima · {len(alertas_df)} resultados",
                     special_format={"Prioridad": _priority_badge},
                 ),
                 unsafe_allow_html=True,
@@ -1237,6 +1250,10 @@ if pagina == "🔍 Live Scanning":
                 display_scan["Liquidez"] = display_scan["Liquidity_Score"].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
             if 'Lado' in display_scan.columns:
                 display_scan["Lado_F"] = display_scan["Lado"].apply(_fmt_lado)
+            if 'OI' in display_scan.columns:
+                display_scan["OI_F"] = display_scan["OI"].apply(_fmt_oi)
+            if 'OI_Chg' in display_scan.columns:
+                display_scan["OI_Chg_F"] = display_scan["OI_Chg"].apply(_fmt_oi_chg)
 
             if 'Tipo' in display_scan.columns and 'Lado' in display_scan.columns:
                 display_scan["Sentimiento"] = display_scan.apply(
@@ -1244,14 +1261,12 @@ if pagina == "🔍 Live Scanning":
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'Ask', 'Bid', 'Spread_%',
+            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Ask', 'Bid', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
-            cols_ocultar_h = [c for c in ["OI", "OI_Chg"] if c in display_scan.columns]
-            display_final = display_scan.drop(columns=cols_ocultar_h, errors="ignore")
 
             st.dataframe(
-                display_final[cols_disponibles] if cols_disponibles else display_final,
+                display_scan[cols_disponibles] if cols_disponibles else display_scan,
                 use_container_width=True, hide_index=True, height=400,
             )
 
@@ -2386,22 +2401,34 @@ elif pagina == "📋 Reports":
             # ================================================================
             _agregar_titulo_report(doc, "🎯 Top 20 Strikes por Volumen", level=2)
             
-            vol_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Ultimo", "Prima_Vol"]
+            vol_cols = ["Vencimiento", "Tipo", "Strike", "Volumen", "OI", "OI_Chg", "IV", "Ultimo", "Prima_Vol"]
             top_vol = df_analisis.nlargest(20, "Volumen")[[c for c in vol_cols if c in df_analisis.columns]].reset_index(drop=True)
 
-            headers_vol = ["#", "Vencimiento", "Tipo", "Strike", "Volumen", "IV", "Último", "Prima Total"]
+            has_oi_chg = "OI_Chg" in top_vol.columns
+            headers_vol = ["#", "Vencimiento", "Tipo", "Strike", "Volumen", "OI"]
+            if has_oi_chg:
+                headers_vol.append("OI Chg")
+            headers_vol.extend(["IV", "Último", "Prima Total"])
+            
             rows_vol = []
             for i, row in top_vol.iterrows():
-                rows_vol.append([
+                row_data = [
                     i + 1,
                     row.get("Vencimiento", "N/A"),
                     row.get("Tipo", "N/A"),
                     f"${row.get('Strike', 0):,.1f}",
                     f"{row.get('Volumen', 0):,}",
+                    f"{row.get('OI', 0):,}",
+                ]
+                if has_oi_chg:
+                    oi_chg = row.get('OI_Chg', 0)
+                    row_data.append(f"+{int(oi_chg):,}" if oi_chg > 0 else f"{int(oi_chg):,}")
+                row_data.extend([
                     f"{row.get('IV', 0):.2f}%" if row.get('IV', 0) > 0 else "N/A",
                     f"${row.get('Ultimo', 0):.2f}",
                     f"${row.get('Prima_Vol', 0):,.0f}",
                 ])
+                rows_vol.append(row_data)
             _tabla_datos_report(doc, headers_vol, rows_vol)
 
             # ================================================================
@@ -2409,23 +2436,34 @@ elif pagina == "📋 Reports":
             # ================================================================
             _agregar_titulo_report(doc, "🏛️ Top 20 Strikes por Open Interest", level=2)
             
-            oi_cols = ["Vencimiento", "Tipo", "Strike", "OI", "Volumen", "IV", "Ultimo", "Prima_Vol"]
+            oi_cols = ["Vencimiento", "Tipo", "Strike", "OI", "OI_Chg", "Volumen", "IV", "Ultimo", "Prima_Vol"]
             top_oi = df_analisis.nlargest(20, "OI")[[c for c in oi_cols if c in df_analisis.columns]].reset_index(drop=True)
 
-            headers_oi = ["#", "Vencimiento", "Tipo", "Strike", "OI", "Volumen", "IV", "Último", "Prima Total"]
+            has_oi_chg_oi = "OI_Chg" in top_oi.columns
+            headers_oi = ["#", "Vencimiento", "Tipo", "Strike", "OI"]
+            if has_oi_chg_oi:
+                headers_oi.append("OI Chg")
+            headers_oi.extend(["Volumen", "IV", "Último", "Prima Total"])
+            
             rows_oi = []
             for i, row in top_oi.iterrows():
-                rows_oi.append([
+                row_data = [
                     i + 1,
                     row.get("Vencimiento", "N/A"),
                     row.get("Tipo", "N/A"),
                     f"${row.get('Strike', 0):,.1f}",
                     f"{row.get('OI', 0):,}",
+                ]
+                if has_oi_chg_oi:
+                    oi_chg = row.get('OI_Chg', 0)
+                    row_data.append(f"+{int(oi_chg):,}" if oi_chg > 0 else f"{int(oi_chg):,}")
+                row_data.extend([
                     f"{row.get('Volumen', 0):,}",
                     f"{row.get('IV', 0):.2f}%" if row.get('IV', 0) > 0 else "N/A",
                     f"${row.get('Ultimo', 0):.2f}",
                     f"${row.get('Prima_Vol', 0):,.0f}",
                 ])
+                rows_oi.append(row_data)
             _tabla_datos_report(doc, headers_oi, rows_oi)
 
         # Pie de pígina
@@ -3148,7 +3186,7 @@ elif pagina == "📈 Data Analysis":
         # Top strikes donde se concentra el dinero
         st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Total Ejecutada")
         df_prima_strike = df_analisis.copy()
-        prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "Prima_Vol", "IV", "Ultimo", "Lado"]
+        prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI_Chg", "Prima_Vol", "IV", "Ultimo", "Lado"]
         top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
             [c for c in prima_cols if c in df_prima_strike.columns]
         ].reset_index(drop=True)
@@ -3163,6 +3201,10 @@ elif pagina == "📈 Data Analysis":
             top_prima_display["Tipo"] = top_prima_display["Tipo"].apply(_type_badge)
         top_prima_display["Prima Total"] = top_prima_display["Prima Total"].apply(_fmt_dolar)
         top_prima_display["Volumen"] = top_prima_display["Volumen"].apply(_fmt_entero)
+        if "OI" in top_prima_display.columns:
+            top_prima_display["OI"] = top_prima_display["OI"].apply(_fmt_oi)
+        if "OI_Chg" in top_prima_display.columns:
+            top_prima_display["OI_Chg"] = top_prima_display["OI_Chg"].apply(_fmt_oi_chg)
         top_prima_display["IV"] = top_prima_display["IV"].apply(_fmt_iv)
         top_prima_display["Ultimo"] = top_prima_display["Ultimo"].apply(_fmt_precio)
         top_prima_display["Strike"] = top_prima_display["Strike"].apply(lambda x: f"${x:,.1f}")
