@@ -690,8 +690,7 @@ if pagina == "🔍 Live Scanning":
         if st.session_state.datos_completos:
             st.session_state.datos_anteriores = st.session_state.datos_completos.copy()
 
-        with st.status(f"🔍 Escaneando opciones de **{ticker_symbol}**...", expanded=True) as status:
-            st.write("📡 Conectando con Yahoo Finance...")
+        with st.spinner("Cargando..."):
             try:
                 alertas, datos, error, perfil, fechas = ejecutar_escaneo(
                     ticker_symbol,
@@ -709,11 +708,9 @@ if pagina == "🔍 Live Scanning":
                 logger.error("Error crítico en escaneo: %s", e)
 
             if error:
-                status.update(label="❌ Error en escaneo", state="error", expanded=True)
                 st.error(f"❌ Error: {error}")
                 st.session_state.scan_error = error
             else:
-                st.write(f"✅ Opciones obtenidas — procesando {len(datos):,} contratos...")
                 st.session_state.alertas_actuales = alertas
                 st.session_state.datos_completos = datos
                 st.session_state.scan_count += 1
@@ -742,7 +739,6 @@ if pagina == "🔍 Live Scanning":
                     a["OI_Chg"] = 0
 
                 # Auto-fetch Barchart OI Changes (fuente real de OI_Chg)
-                st.write("📊 Cargando datos de Barchart...")
                 progress_bar = st.progress(0, text="Cargando datos...")
                 _fetch_barchart_oi(ticker_symbol, progress_bar=progress_bar)
                 progress_bar.empty()
@@ -753,8 +749,6 @@ if pagina == "🔍 Live Scanning":
                 # Detectar clusters DESPUÉS de inyectar OI_Chg
                 clusters = detectar_compras_continuas(alertas, umbral_prima)
                 st.session_state.clusters_detectados = clusters
-
-                status.update(label=f"✅ Escaneo completado — {n_alertas} alertas en {n_opciones:,} opciones", state="complete", expanded=False)
 
         st.session_state.scanning_active = False
         st.rerun()
@@ -3590,19 +3584,7 @@ elif pagina == "📐 Range":
 - IV: **{sel['put_iv']:.1f}%**
 """)
 
-                    # Interpretación
-                    st.markdown(
-                        f"""
-                        <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px 20px;margin-top:12px;">
-                            🧠 <b>Interpretación:</b> El mercado espera que <b>{ticker_symbol}</b>
-                            se mueva <b>±${em['em_dolares']:,.2f}</b> (<b>±{em['porcentaje']:.2f}%</b>)
-                            hasta el <b>{sel['expiration']}</b> ({sel['dte']:.0f} días).
-                            Rango esperado: <b>${em['lower']:,.2f}</b> — <b>${em['upper']:,.2f}</b> con ~68% de probabilidad (1σ).
-                            {"<br>📌 Straddle ATM estima <b>±$" + f"{em_s['em_dolares']:,.2f}</b> (factor 0.85)." if em_s else ""}
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+
 
             else:
                 st.info("No se pudo calcular el Expected Move. Verifica que el ticker tenga opciones disponibles.")
