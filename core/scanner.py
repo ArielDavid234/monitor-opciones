@@ -152,18 +152,25 @@ def _safe_num(value, default=0):
     return value if pd.notna(value) else default
 
 
-def _calcular_delta_bs(S, K, T, r_rate, sigma, tipo="call"):
-    """Calcula el delta Black-Scholes de una opción.
-    Calls: δ = N(d1)  |  Puts: δ = N(d1) - 1
+def _calcular_greeks(S, K, T, r_rate, sigma, tipo="call"):
+    """Calcula Delta, Gamma, Theta y Rho usando OptionGreeks (BSM).
+    Retorna dict {"Delta": .., "Gamma": .., "Theta": .., "Rho": ..} o Nones.
     """
+    _nones = {"Delta": None, "Gamma": None, "Theta": None, "Rho": None}
     if not _HAS_SCIPY or T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
-        return None
+        return _nones
     try:
-        d1 = (math.log(S / K) + (r_rate + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
-        delta = _norm.cdf(d1) if tipo == "call" else _norm.cdf(d1) - 1
-        return round(delta, 4)
+        from core.option_greeks import OptionGreeks
+        opt = OptionGreeks(S=S, K=K, T=T, r=r_rate, sigma=sigma)
+        side = "call" if tipo == "call" else "put"
+        return {
+            "Delta": round(opt.delta()[side], 4),
+            "Gamma": round(opt.gamma(), 6),
+            "Theta": round(opt.theta()[side], 4),
+            "Rho":   round(opt.rho()[side], 4),
+        }
     except Exception:
-        return None
+        return _nones
 
 
 def _clasificar_lado(last_price, bid, ask):
@@ -429,14 +436,14 @@ def ejecutar_escaneo(
                         dte_years = max((exp_dt_d - _today).total_seconds() / (365 * 86400), 1e-6)
                     except Exception:
                         dte_years = 1e-6
-                    delta_val = _calcular_delta_bs(
+                    greeks = _calcular_greeks(
                         _precio_sub or row["strike"],
                         row["strike"],
                         dte_years,
                         RISK_FREE_RATE,
                         iv if iv > 0 else 0,
                         tipo="call" if opt_type == "CALL" else "put",
-                    ) if _precio_sub else None
+                    ) if _precio_sub else {"Delta": None, "Gamma": None, "Theta": None, "Rho": None}
 
                     datos.append(
                         {
@@ -451,7 +458,10 @@ def ejecutar_escaneo(
                             "IV": round(iv * 100, 2) if iv else 0,
                             "Prima_Volumen": round(volume_premium, 0),
                             "Lado": lado,
-                            "Delta": delta_val,
+                            "Delta": greeks["Delta"],
+                            "Gamma": greeks["Gamma"],
+                            "Theta": greeks["Theta"],
+                            "Rho": greeks["Rho"],
                         }
                     )
 
@@ -484,7 +494,10 @@ def ejecutar_escaneo(
                             "IV": round(iv * 100, 2) if iv else 0,
                             "Contrato": contract_sym,
                             "Lado": lado,
-                            "Delta": delta_val,
+                            "Delta": greeks["Delta"],
+                            "Gamma": greeks["Gamma"],
+                            "Theta": greeks["Theta"],
+                            "Rho": greeks["Rho"],
                         }
                         alertas.append(alerta)
 

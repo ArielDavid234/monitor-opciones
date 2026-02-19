@@ -114,6 +114,36 @@ def _fmt_delta(x):
         return "N/D"
 
 
+def _fmt_gamma(x):
+    """Formatea gamma (∂Δ/∂S). Siempre positivo, 6 decimales."""
+    try:
+        if x is None:
+            return "N/D"
+        return f"{float(x):.6f}"
+    except (ValueError, TypeError):
+        return "N/D"
+
+
+def _fmt_theta(x):
+    """Formatea theta (decay diario). Negativo para opciones largas."""
+    try:
+        if x is None:
+            return "N/D"
+        return f"{float(x):+.4f}"
+    except (ValueError, TypeError):
+        return "N/D"
+
+
+def _fmt_rho(x):
+    """Formatea rho (sensibilidad a tasa por 1%)."""
+    try:
+        if x is None:
+            return "N/D"
+        return f"{float(x):+.4f}"
+    except (ValueError, TypeError):
+        return "N/D"
+
+
 def _fmt_lado(lado):
     """Formatea el lado de ejecución con emoji indicador."""
     if lado == "Ask":
@@ -947,6 +977,10 @@ if pagina == "🔍 Live Scanning":
                         Prima Total: <b>{prima_vol_fmt}</b> |
                         Ask: ${alerta['Ask']} | Bid: ${alerta['Bid']} | Último: ${alerta['Ultimo']} |
                         <b>Lado: {_fmt_lado(alerta.get('Lado', 'N/A'))}</b><br>
+                        Δ: <b>{_fmt_delta(alerta.get('Delta'))}</b> | 
+                        Γ: <b>{_fmt_gamma(alerta.get('Gamma'))}</b> | 
+                        Θ: <b>{_fmt_theta(alerta.get('Theta'))}</b> | 
+                        ρ: <b>{_fmt_rho(alerta.get('Rho'))}</b><br>
                         <span class="razon-alerta">📌 {razon_html}</span>
                     </div>
                     """,
@@ -969,6 +1003,9 @@ if pagina == "🔍 Live Scanning":
                         st.markdown(f"- **Último:** ${alerta['Ultimo']}")
                         st.markdown(f"- **Lado:** {_fmt_lado(alerta.get('Lado', 'N/A'))}")
                         st.markdown(f"- **Delta:** {_fmt_delta(alerta.get('Delta'))}")
+                        st.markdown(f"- **Gamma:** {_fmt_gamma(alerta.get('Gamma'))}")
+                        st.markdown(f"- **Theta:** {_fmt_theta(alerta.get('Theta'))}")
+                        st.markdown(f"- **Rho:** {_fmt_rho(alerta.get('Rho'))}")
                         st.markdown(f"- **Prima Total:** ${prima_mayor:,.0f}")
 
                         # Botón de favorito
@@ -1204,6 +1241,12 @@ if pagina == "🔍 Live Scanning":
                     if umbral_delta > 0:
                         display_df = display_df[display_df["Delta"].apply(lambda d: d is not None and abs(d) >= umbral_delta)]
                     display_df["Delta"] = display_df["Delta"].apply(_fmt_delta)
+                if "Gamma" in display_df.columns:
+                    display_df["Gamma"] = display_df["Gamma"].apply(_fmt_gamma)
+                if "Theta" in display_df.columns:
+                    display_df["Theta"] = display_df["Theta"].apply(_fmt_theta)
+                if "Rho" in display_df.columns:
+                    display_df["Rho"] = display_df["Rho"].apply(_fmt_rho)
 
                 cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
                 st.dataframe(
@@ -1261,6 +1304,12 @@ if pagina == "🔍 Live Scanning":
             if umbral_delta > 0:
                 display_df = display_df[display_df["Delta"].apply(lambda d: d is not None and abs(d) >= umbral_delta)]
             display_df["Delta"] = display_df["Delta"].apply(_fmt_delta)
+        if "Gamma" in display_df.columns:
+            display_df["Gamma"] = display_df["Gamma"].apply(_fmt_gamma)
+        if "Theta" in display_df.columns:
+            display_df["Theta"] = display_df["Theta"].apply(_fmt_theta)
+        if "Rho" in display_df.columns:
+            display_df["Rho"] = display_df["Rho"].apply(_fmt_rho)
 
         cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
         st.dataframe(
@@ -1319,6 +1368,12 @@ if pagina == "🔍 Live Scanning":
                 display_scan["OI_Chg_F"] = display_scan["OI_Chg"].apply(_fmt_oi_chg)
             if 'Delta' in display_scan.columns:
                 display_scan["Delta"] = display_scan["Delta"].apply(_fmt_delta)
+            if 'Gamma' in display_scan.columns:
+                display_scan["Gamma"] = display_scan["Gamma"].apply(_fmt_gamma)
+            if 'Theta' in display_scan.columns:
+                display_scan["Theta"] = display_scan["Theta"].apply(_fmt_theta)
+            if 'Rho' in display_scan.columns:
+                display_scan["Rho"] = display_scan["Rho"].apply(_fmt_rho)
 
             if 'Tipo' in display_scan.columns and 'Lado' in display_scan.columns:
                 display_scan["Sentimiento"] = display_scan.apply(
@@ -1326,7 +1381,7 @@ if pagina == "🔍 Live Scanning":
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Ask_F', 'Bid_F', 'Spread_%',
+            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 
