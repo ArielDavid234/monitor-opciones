@@ -193,8 +193,8 @@ def render_empresa_card(r, info_emp, watchlist_dict, es_emergente=False):
         card_class = "empresa-card empresa-card-emergente"
 
     if info_emp:
-        desc = info_emp["descripcion"]
-        sector_label = info_emp["sector"]
+        desc = info_emp.get("descripcion") or f"Sector: {r['sector']} | Industria: {r['industria']}"
+        sector_label = info_emp.get("sector") or r["sector"]
     else:
         desc = f"Sector: {r['sector']} | Industria: {r['industria']}"
         sector_label = r["sector"]
