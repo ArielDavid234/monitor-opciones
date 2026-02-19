@@ -507,7 +507,12 @@ def ejecutar_escaneo(
         except Exception:
             continue
 
-    return alertas, datos, None, perfil, list(options_dates)
+    # Devolver SOLO las fechas que fueron efectivamente procesadas (no todas las disponibles).
+    # Antes devolvía list(options_dates) — el total disponible en yfinance — lo que mostraba
+    # un número mayor al real en el status bar y ocultaba fechas que no llegaron a escanearse
+    # por el límite MAX_EXPIRATION_DATES o por fallos de red en modo paralelo.
+    fechas_procesadas = [d for d in dates_to_scan if d in chains_map]
+    return alertas, datos, None, perfil, fechas_procesadas
 
 
 def guardar_alerta_csv(carpeta, ticker_sym, alerta):
