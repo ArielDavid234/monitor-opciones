@@ -32,6 +32,7 @@ from config.constants import (
     DEFAULT_TARGET_DELTA, AUTO_REFRESH_INTERVAL,
 )
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
+from core.watchlist_builder import construir_watchlist_consolidadas
 
 from core.scanner import (
     BROWSER_PROFILES, crear_sesion_nueva, obtener_historial_contrato,
@@ -42,6 +43,16 @@ from core.projections import analizar_proyeccion_empresa
 from core.expected_move import calcular_expected_move, calcular_em_straddle
 from core.gamma_exposure import calcular_gex_desde_scanner
 from core.clusters import detectar_compras_continuas
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _cargar_watchlist_consolidadas_dinamica():
+    """
+    Construye la watchlist consolidada dinámica con market caps en vivo.
+    Cacheada 24 horas para no cargar yfinance en cada reinicio.
+    Usa WATCHLIST_EMPRESAS estático como fallback si falla yfinance.
+    """
+    return construir_watchlist_consolidadas(n=18, fallback=WATCHLIST_EMPRESAS)
 from core.news import obtener_noticias_financieras, filtrar_noticias
 from core.oi_tracker import calcular_cambios_oi, resumen_oi, filtrar_contratos_oi
 from core.barchart_oi import obtener_top_oi_changes, obtener_oi_simbolo
@@ -3794,6 +3805,22 @@ elif pagina == "🏢 Important Companies":
     st.markdown("## 🏢 Empresas Consolidadas — Top Corporations")
     st.caption("Grandes corporaciones con historial probado y proyección de crecimiento sostenido a 10 años.")
 
+    # Cargar watchlist dinámica (cacheada 24h, fallback estático si falla)
+    with st.spinner("Actualizando ranking por capitalización..."):
+        _wl_consolidadas = _cargar_watchlist_consolidadas_dinamica()
+    # Mostrar indicador de qué empresas están en el top actual
+    _tickers_dinamicos = list(_wl_consolidadas.keys())
+    _tickers_estaticos = list(WATCHLIST_EMPRESAS.keys())
+    _nuevas = [t for t in _tickers_dinamicos if t not in _tickers_estaticos]
+    _salieron = [t for t in _tickers_estaticos if t not in _tickers_dinamicos]
+    if _nuevas or _salieron:
+        _cambios_txt = []
+        if _nuevas:
+            _cambios_txt.append(f"**Entraron:** {', '.join(_nuevas)}")
+        if _salieron:
+            _cambios_txt.append(f"**Salieron:** {', '.join(_salieron)}")
+        st.info(f"🔄 Ranking actualizado por market cap — {' | '.join(_cambios_txt)}")
+
     col_btn_c, col_info_c = st.columns([1, 3])
     with col_btn_c:
         analizar_consol_btn = st.button(
@@ -3808,7 +3835,7 @@ elif pagina == "🏢 Important Companies":
 
     if analizar_consol_btn:
         st.session_state.scanning_active = True
-        analizar_watchlist(WATCHLIST_EMPRESAS, "proyecciones_resultados", "consolidadas")
+        analizar_watchlist(_wl_consolidadas, "proyecciones_resultados", "consolidadas")
         st.session_state.scanning_active = False
 
     if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
@@ -3825,8 +3852,8 @@ elif pagina == "🏢 Important Companies":
         ]), unsafe_allow_html=True)
 
         for r in resultados:
-            info_emp = WATCHLIST_EMPRESAS.get(r["symbol"])
-            st.html(render_empresa_card(r, info_emp, WATCHLIST_EMPRESAS))
+            info_emp = _wl_consolidadas.get(r["symbol"])
+            st.html(render_empresa_card(r, info_emp, _wl_consolidadas))
 
         st.markdown("#### 📋 Tabla Comparativa")
         df_tabla = render_tabla_comparativa(resultados)
@@ -3838,11 +3865,11 @@ elif pagina == "🏢 Important Companies":
 
     else:
         st.markdown("#### 🏛️ Top Empresas Consolidadas")
-        render_watchlist_preview(WATCHLIST_EMPRESAS)
+        render_watchlist_preview(_wl_consolidadas)
 
     if "proyecciones_resultados" in st.session_state and st.session_state.proyecciones_resultados:
         with st.expander("📊 Anílisis de las Empresas Consolidadas", expanded=False):
-            render_analisis_completo(st.session_state.proyecciones_resultados, WATCHLIST_EMPRESAS)
+            render_analisis_completo(st.session_state.proyecciones_resultados, _wl_consolidadas)
 
     # ==============================================================
     #  SECCIÓN 2: EMPRESAS EMERGENTES
