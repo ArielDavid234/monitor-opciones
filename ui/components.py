@@ -339,13 +339,11 @@ def render_watchlist_preview(watchlist_dict, incluir_por_que=False):
 
         nombre = info.get("nombre") or "N/D"
         sector = info.get("sector") or "N/D"
-        descripcion = info.get("descripcion") or info.get("description") or "N/D"
 
         preview_data.append({
             "Ticker": sym,
             "Empresa": nombre,
             "Sector": sector,
-            "Descripción": descripcion,
         })
     st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True, height=670)
 
