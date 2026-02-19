@@ -3422,13 +3422,12 @@ elif pagina == "📐 Range":
             # Obtener IV promedio ATM para cada fecha de expiración
             em_results = []
 
-            with st.status("📊 Calculando Expected Move para todas las fechas...", expanded=True) as status:
+            with st.spinner("Cargando..."):
                 try:
                     session_em, _ = crear_sesion_nueva()
                     ticker_em = yf.Ticker(ticker_symbol, session=session_em)
 
                     for idx, exp_date in enumerate(fechas_exp_disponibles):
-                        st.write(f"Procesando {exp_date} ({idx+1}/{len(fechas_exp_disponibles)})...")
                         try:
                             chain = ticker_em.option_chain(exp_date)
 
@@ -3496,10 +3495,7 @@ elif pagina == "📐 Range":
                             logger.warning("Error procesando %s: %s", exp_date, e)
                             continue
 
-                    status.update(label=f"✅ {len(em_results)} fechas procesadas", state="complete", expanded=False)
-
                 except Exception as e:
-                    status.update(label="❌ Error en cálculo", state="error")
                     st.error(f"Error: {e}")
 
             # ── Tabla principal de Expected Move por fecha ──
