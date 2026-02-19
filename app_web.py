@@ -40,6 +40,7 @@ from core.scanner import (
 )
 from core.projections import analizar_proyeccion_empresa
 from core.expected_move import calcular_expected_move, calcular_em_straddle
+from core.gamma_exposure import calcular_gex_desde_scanner
 from core.clusters import detectar_compras_continuas
 from core.news import obtener_noticias_financieras, filtrar_noticias
 from core.oi_tracker import calcular_cambios_oi, resumen_oi, filtrar_contratos_oi
@@ -835,13 +836,39 @@ if pagina == "🔍 Live Scanning":
         _spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
         _spk_oi = sorted(datos_df["OI"].dropna().tail(12).tolist()) if "OI" in datos_df.columns else None
 
+        # --- Cálculo real de Gamma Exposure ---
+        _precio_sub_gex = st.session_state.get("precio_subyacente") or 0
+        if _precio_sub_gex and _precio_sub_gex > 0:
+            _gex_result = calcular_gex_desde_scanner(
+                st.session_state.datos_completos, spot_price=_precio_sub_gex, mode="standard"
+            )
+            _gex_total = _gex_result["total_gex"]  # en millones
+            _gex_zero = _gex_result["zero_gamma_level"]
+            _gex_cw = _gex_result["call_wall"]
+            _gex_pw = _gex_result["put_wall"]
+        else:
+            _gex_total = 0.0
+            _gex_zero = 0.0
+            _gex_cw = 0.0
+            _gex_pw = 0.0
+        _gex_fmt = f"${_gex_total:+.2f}M" if _gex_total != 0 else "N/D"
+
         st.markdown(render_metric_row([
             render_metric_card("Flow Sentiment", f"{_flow_pct:+.1f}%", delta=_flow_pct, sparkline_data=_spk),
             render_metric_card("Total Volume", f"{_total_vol:,}", delta=_call_pct, delta_suffix="% calls"),
-            render_metric_card("Gamma Exposure", _fmt_monto(_total_prima), sparkline_data=_spk_oi),
+            render_metric_card("Gamma Exposure", _gex_fmt, sparkline_data=_spk_oi, color_override="#00ff88" if _gex_total >= 0 else "#ef4444"),
             render_metric_card("Put/Call Ratio", f"{_pc_ratio:.2f}", delta=-(_pc_ratio - 1) * 100 if _pc_ratio != 0 else 0, color_override="#ef4444" if _pc_ratio > 1 else "#00ff88"),
             render_metric_card("Unusual Alerts", f"{_n_alertas}", delta=float(_n_clusters), delta_suffix=" clusters"),
         ]), unsafe_allow_html=True)
+
+        # --- GEX Levels (segunda fila de métricas) ---
+        if _precio_sub_gex and _gex_total != 0:
+            st.markdown(render_metric_row([
+                render_metric_card("Zero Gamma", f"${_gex_zero:,.2f}"),
+                render_metric_card("Call Wall", f"${_gex_cw:,.2f}", color_override="#00ff88"),
+                render_metric_card("Put Wall", f"${_gex_pw:,.2f}", color_override="#ef4444"),
+                render_metric_card("Spot Price", f"${_precio_sub_gex:,.2f}"),
+            ]), unsafe_allow_html=True)
 
     # --- Mostrar alertas ---
     if st.session_state.alertas_actuales:
