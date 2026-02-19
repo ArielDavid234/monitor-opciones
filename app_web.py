@@ -32,7 +32,7 @@ from config.constants import (
     DEFAULT_TARGET_DELTA, AUTO_REFRESH_INTERVAL,
 )
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
-from core.watchlist_builder import construir_watchlist_consolidadas
+from core.watchlist_builder import construir_watchlist_consolidadas, construir_watchlist_emergentes
 
 from core.scanner import (
     BROWSER_PROFILES, crear_sesion_nueva, obtener_historial_contrato,
@@ -53,6 +53,16 @@ def _cargar_watchlist_consolidadas_dinamica():
     Usa WATCHLIST_EMPRESAS estático como fallback si falla yfinance.
     """
     return construir_watchlist_consolidadas(n=18, fallback=WATCHLIST_EMPRESAS)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _cargar_watchlist_emergentes_dinamica():
+    """
+    Construye la watchlist emergente dinámica ordenada por momentum de 52 semanas.
+    Cacheada 24 horas para no cargar yfinance en cada reinicio.
+    Usa WATCHLIST_EMERGENTES estático como fallback si falla yfinance.
+    """
+    return construir_watchlist_emergentes(n=18, fallback=WATCHLIST_EMERGENTES)
 from core.news import obtener_noticias_financieras, filtrar_noticias
 from core.oi_tracker import calcular_cambios_oi, resumen_oi, filtrar_contratos_oi
 from core.barchart_oi import obtener_top_oi_changes, obtener_oi_simbolo
@@ -3878,6 +3888,18 @@ elif pagina == "🏢 Important Companies":
     st.markdown("## 🚀 Empresas Emergentes — Futuras Transnacionales")
     st.caption("Empresas de menor capitalización con tecnologías disruptivas y potencial de convertirse en gigantes. Mayor riesgo, mayor recompensa.")
 
+    # Watchlist dinámica emergentes (momentum 52w, cache 24h, fallback estático)
+    _wl_emergentes = _cargar_watchlist_emergentes_dinamica()
+    if set(_wl_emergentes.keys()) != set(WATCHLIST_EMERGENTES.keys()):
+        entraron = set(_wl_emergentes.keys()) - set(WATCHLIST_EMERGENTES.keys())
+        salieron = set(WATCHLIST_EMERGENTES.keys()) - set(_wl_emergentes.keys())
+        partes = ["🔄 Ranking actualizado por momentum"]
+        if entraron:
+            partes.append(f"Entraron: {', '.join(sorted(entraron))}")
+        if salieron:
+            partes.append(f"Salieron: {', '.join(sorted(salieron))}")
+        st.info(" | ".join(partes))
+
     col_btn_e, col_info_e = st.columns([1, 3])
     with col_btn_e:
         analizar_emerg_btn = st.button(
@@ -3892,7 +3914,7 @@ elif pagina == "🏢 Important Companies":
 
     if analizar_emerg_btn:
         st.session_state.scanning_active = True
-        analizar_watchlist(WATCHLIST_EMERGENTES, "emergentes_resultados", "emergentes")
+        analizar_watchlist(_wl_emergentes, "emergentes_resultados", "emergentes")
         st.session_state.scanning_active = False
 
     if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
@@ -3909,8 +3931,8 @@ elif pagina == "🏢 Important Companies":
         ]), unsafe_allow_html=True)
 
         for r in resultados_em:
-            info_emp = WATCHLIST_EMERGENTES.get(r["symbol"])
-            st.html(render_empresa_card(r, info_emp, WATCHLIST_EMERGENTES, es_emergente=True))
+            info_emp = _wl_emergentes.get(r["symbol"])
+            st.html(render_empresa_card(r, info_emp, _wl_emergentes, es_emergente=True))
 
         st.markdown("#### 📋 Tabla Comparativa Emergentes")
         df_emerg = render_tabla_comparativa(resultados_em, es_emergente=True)
@@ -3922,11 +3944,11 @@ elif pagina == "🏢 Important Companies":
 
     else:
         st.markdown("#### 🚀 Top Empresas Emergentes")
-        render_watchlist_preview(WATCHLIST_EMERGENTES)
+        render_watchlist_preview(_wl_emergentes)
 
     if "emergentes_resultados" in st.session_state and st.session_state.emergentes_resultados:
         with st.expander("📊 Anílisis de las Empresas Emergentes", expanded=False):
-            render_analisis_completo(st.session_state.emergentes_resultados, WATCHLIST_EMERGENTES, es_emergente=True)
+            render_analisis_completo(st.session_state.emergentes_resultados, _wl_emergentes, es_emergente=True)
 
 
 # ============================================================================

@@ -207,3 +207,176 @@ def _obtener_metadata_yfinance(sym: str) -> dict:
             "descripcion": "",
             "sector": "N/D",
         }
+
+
+# ============================================================================
+# ============================================================================
+#   SECCIÓN EMERGENTES — Lista dinámica de empresas disruptivas
+# ============================================================================
+# ============================================================================
+
+# Universo candidato emergentes — ~45 disruptores y empresas de hipercrecimiento
+# Se excluyen mega-caps (>$250B market cap) que ya compiten en consolidadas.
+_CANDIDATOS_EMERGENTES = [
+    # Actuales 18
+    "IONQ", "RKLB", "AFRM", "SOFI", "UPST", "MNDY", "S", "PATH",
+    "CELH", "DKNG", "AXON", "DUOL", "ASTS", "HIMS", "HOOD", "GRAB",
+    "JOBY", "SMCI",
+    # Candidatos adicionales (~27 más)
+    "QBTS",   # D-Wave Quantum
+    "RGTI",   # Rigetti Computing
+    "LUNR",   # Intuitive Machines (lunar spacecraft)
+    "ACHR",   # Archer Aviation (eVTOL)
+    "RIVN",   # Rivian (EV trucks)
+    "NU",     # Nubank (neobank Latam)
+    "BILL",   # Bill.com (SMB payments)
+    "TOST",   # Toast (restaurantes tech)
+    "GTLB",   # GitLab (DevOps)
+    "DDOG",   # Datadog (cloud monitoring)
+    "DOCS",   # Doximity (telemedicina doctors)
+    "RXRX",   # Recursion Pharma (AI drug discovery)
+    "SOUN",   # SoundHound (voice AI)
+    "AI",     # C3.ai (enterprise AI)
+    "SE",     # Sea Limited (super-app SEA)
+    "MQ",     # Marqeta (card issuing)
+    "FOUR",   # Shift4 Payments
+    "CHPT",   # ChargePoint (EV charging)
+    "RBLX",   # Roblox (metaverso)
+    "U",      # Unity Technologies (game engine)
+    "APP",    # AppLovin (mobile advertising AI)
+    "ALAB",   # Astera Labs (connectivity semiconductors AI)
+    "ARM",    # ARM Holdings (chip architecture)
+    "MSTR",   # MicroStrategy (Bitcoin treasury)
+    "IREN",   # Iris Energy (Bitcoin mining / AI)
+    "CAVA",   # Cava Group (fast-casual restaurants)
+    "BIRK",   # Birkenstock (consumer brand)
+]
+
+# Metadatos curados para los candidatos adicionales emergentes.
+# Los actuales 18 ya tienen metadatos en WATCHLIST_EMERGENTES (fallback).
+_METADATA_EMERGENTES: dict[str, dict] = {
+    # 18 actuales — se copian de WATCHLIST_EMERGENTES para tener todo en un lugar
+    "IONQ": {"nombre": "IonQ Inc.", "descripcion": "Pionera en computación cuántica con tecnología de iones atrapados. Construye computadoras cuánticas accesibles via cloud.", "sector": "Computación Cuántica", "por_que_grande": "La computación cuántica resolverá problemas que las computadoras clásicas no pueden (fármacos, materiales, criptografía). IonQ tiene la tecnología más precisa del mercado y ya tiene contratos con gobiernos y Fortune 500. Si la cuántica escala, será la NVIDIA de esta nueva era."},
+    "RKLB": {"nombre": "Rocket Lab USA", "descripcion": "Fabricante de cohetes Electron y Neutron para lanzamiento de satélites pequeños y medianos. También fabrica componentes espaciales.", "sector": "Aeroespacial / Lanzamientos", "por_que_grande": "La economía espacial crecerá a $1T+ en 2035. Rocket Lab es el segundo lanzador más frecuente del mundo después de SpaceX. Su cohete Neutron competirá directamente con Falcon 9. Vertical integrada: cohetes + satélites + componentes."},
+    "AFRM": {"nombre": "Affirm Holdings", "descripcion": "Plataforma de 'compra ahora, paga después' (BNPL). Integrada en Amazon, Shopify y miles de comercios para pagos a plazos sin tarjeta.", "sector": "Fintech / BNPL", "por_que_grande": "La Generación Z rechaza las tarjetas de crédito tradicionales y prefiere pagos transparentes a plazos. Affirm crece con el e-commerce y ya procesa miles de millones."},
+    "SOFI": {"nombre": "SoFi Technologies", "descripcion": "Plataforma financiera todo-en-uno: préstamos, inversiones, banking, crypto. Tiene licencia bancaria completa.", "sector": "Fintech / Banca Digital", "por_que_grande": "El banco digital del futuro. Licencia bancaria le permite captar depósitos baratos y prestar. Millennials y Gen Z prefieren apps a sucursales."},
+    "UPST": {"nombre": "Upstart Holdings", "descripcion": "Plataforma de préstamos impulsada por IA que evalúa riesgo crediticio mejor que los métodos tradicionales (FICO).", "sector": "IA / Fintech / Préstamos", "por_que_grande": "Su IA aprueba más préstamos con menos riesgo que el score FICO tradicional. Si los bancos adoptan masivamente su plataforma, Upstart puede intermediar billones en créditos."},
+    "MNDY": {"nombre": "monday.com Ltd.", "descripcion": "Plataforma de gestión de trabajo (Work OS) que permite a equipos construir flujos de trabajo personalizados sin código.", "sector": "SaaS / Productividad", "por_que_grande": "El trabajo remoto/híbrido es permanente. monday.com reemplaza herramientas fragmentadas con una plataforma unificada. Crece 30%+ anual, alta retención de clientes."},
+    "S":    {"nombre": "SentinelOne Inc.", "descripcion": "Plataforma de ciberseguridad autónoma impulsada por IA. Protege endpoints, cloud e identidades con respuesta automatizada en tiempo real.", "sector": "Ciberseguridad / IA", "por_que_grande": "Los ciberataques crecen exponencialmente con la IA. SentinelOne ofrece protección completamente automatizada. Es el producto de ciberdefensa más moderno del mercado."},
+    "PATH": {"nombre": "UiPath Inc.", "descripcion": "Líder mundial en automatización robótica de procesos (RPA). Robots de software que automatizan tareas repetitivas en empresas.", "sector": "Automatización / RPA / IA", "por_que_grande": "Cada empresa quiere reducir costos automatizando tareas manuales. UiPath combina RPA con IA. El mercado de automatización empresarial alcanzará $30B+ y UiPath es el líder claro."},
+    "CELH": {"nombre": "Celsius Holdings", "descripcion": "Marca de bebidas energéticas saludables en rápido crecimiento. Compite con Monster y Red Bull con productos fitness-oriented.", "sector": "Bebidas / Consumo", "por_que_grande": "La tendencia de salud y fitness es irreversible. Celsius crece +40% anual quitando cuota de mercado a Monster/Red Bull. Distribución con PepsiCo le da acceso global."},
+    "DKNG": {"nombre": "DraftKings Inc.", "descripcion": "Plataforma de apuestas deportivas online y fantasía deportiva. Líder en estados donde se legaliza el betting.", "sector": "Apuestas Deportivas / Gaming", "por_que_grande": "Las apuestas deportivas se legalizan estado por estado en EE.UU. (mercado potencial $40B+). DraftKings tiene la marca más reconocida y la mejor tecnología del sector."},
+    "AXON": {"nombre": "Axon Enterprise", "descripcion": "Fabricante de Tasers y cámaras corporales para policía. Plataforma de evidencia digital en la nube (Axon Cloud).", "sector": "Seguridad Pública / SaaS", "por_que_grande": "La transparencia policial es una mega-tendencia global. Axon domina cámaras corporales y tiene un monopolio virtual en Tasers. Su software cloud genera ingresos recurrentes."},
+    "DUOL": {"nombre": "Duolingo Inc.", "descripcion": "App #1 mundial para aprender idiomas con gamificación e IA. Expandiéndose a matemáticas y música.", "sector": "EdTech / IA", "por_que_grande": "Domina el aprendizaje de idiomas globalmente con 100M+ usuarios activos mensuales. Se expande a nuevas materias creando una super-app de educación. El mercado EdTech alcanzará $400B+."},
+    "ASTS": {"nombre": "AST SpaceMobile", "descripcion": "Construye la primera red celular espacial: satélites que conectan directamente con celulares normales sin modificación.", "sector": "Telecomunicaciones Espaciales", "por_que_grande": "5 mil millones de personas no tienen cobertura móvil confiable. Si logra enviar señal 4G/5G desde satélites a celulares normales, conectará al mundo entero. Acuerdos con AT&T, Vodafone y más."},
+    "HIMS": {"nombre": "Hims & Hers Health", "descripcion": "Plataforma de telemedicina y salud personalizada. Vende tratamientos para caída de cabello, salud sexual, piel y salud mental online.", "sector": "Telemedicina / Salud Digital", "por_que_grande": "La salud se digitaliza. Millennials y Gen Z prefieren consultas online. Hims crece +40% anual, tiene millones de suscriptores y se expande a GLP-1 (pérdida de peso)."},
+    "HOOD": {"nombre": "Robinhood Markets", "descripcion": "Plataforma de trading sin comisiones para acciones, opciones, crypto. Democratizó la inversión para jóvenes.", "sector": "Fintech / Trading", "por_que_grande": "La mayor transferencia de riqueza de la historia ($84T de boomers a millennials/Gen Z) se acerca. Robinhood añade retirement accounts, crypto, tarjetas. Puede ser el Charles Schwab de la nueva generación."},
+    "GRAB": {"nombre": "Grab Holdings", "descripcion": "Super-app del sudeste asiático: transporte, entregas de comida, pagos digitales y servicios financieros en una sola app.", "sector": "Super-App / Fintech Asia", "por_que_grande": "700 millones de personas en el sudeste asiático, clase media en explosión. Grab es la app dominante para moverse, comer y pagar. Si se convierte en el WeChat del sudeste asiático, será gigante."},
+    "JOBY": {"nombre": "Joby Aviation", "descripcion": "Desarrolla taxis aéreos eléctricos (eVTOL) para transporte urbano. Aviones eléctricos de despegue y aterrizaje vertical.", "sector": "Movilidad Aérea / eVTOL", "por_que_grande": "El tráfico urbano empeora globalmente. Joby tiene la certificación FAA más avanzada, respaldo de Toyota y acuerdo con Delta Airlines. Mercado potencial de $1T+ si la regulación permite operaciones comerciales."},
+    "SMCI": {"nombre": "Super Micro Computer", "descripcion": "Fabricante de servidores e infraestructura de cómputo para data centers de IA. Socio clave de NVIDIA para desplegar GPUs.", "sector": "Infraestructura IA / Servidores", "por_que_grande": "Cada GPU de NVIDIA necesita un servidor. SMCI fabrica los servidores optimizados de IA más rápido que nadie. Mientras la demanda de IA crezca, SMCI crece con ella."},
+    # Candidatos adicionales
+    "QBTS": {"nombre": "D-Wave Quantum", "descripcion": "Pionera en computación cuántica de recocido (annealing). Ofrece acceso cloud a sus sistemas cuánticos comerciales.", "sector": "Computación Cuántica", "por_que_grande": "Única empresa cuántica con sistemas comerciales en producción desde hace más de una década. Su enfoque de annealing resuelve problemas de optimización reales hoy, sin esperar la cuántica universal."},
+    "RGTI": {"nombre": "Rigetti Computing", "descripcion": "Fabrica chips cuánticos superconductores y ofrece acceso a computadores cuánticos via cloud (QCS).", "sector": "Computación Cuántica", "por_que_grande": "Uno de los pocos fabricantes integrados verticalmente en cuántica: diseña el chip, lo fabrica y opera el sistema. La carrera cuántica tiene múltiples ganadores potenciales y Rigetti es jugador clave."},
+    "LUNR": {"nombre": "Intuitive Machines", "descripcion": "Empresa aeroespacial que opera misiones lunares comerciales para la NASA bajo el programa CLPS.", "sector": "Aeroespacial / Lunar", "por_que_grande": "Primera empresa privada en aterrizar con éxito en la Luna (2024). La economía lunar está en sus inicios: minería de helio-3, bases lunares, turismo. Intuitive Machines es el proveedor de referencia de la NASA para la Luna."},
+    "ACHR": {"nombre": "Archer Aviation", "descripcion": "Desarrolla aeronaves eléctrico de despegue vertical (eVTOL) para taxis aéreos urbanos. Modelo Midnight con 60 millas de autonomía.", "sector": "Movilidad Aérea / eVTOL", "por_que_grande": "United Airlines y Stellantis son inversores estratégicos. Certificación FAA en progreso para 2025. Los taxis aéreos en ciudades como Nueva York o LA pueden revolucionar la movilidad urbana."},
+    "RIVN": {"nombre": "Rivian Automotive", "descripcion": "Fabricante de camionetas y SUVs eléctricos. Proveedor exclusivo de furgonetas de entrega para Amazon.", "sector": "Vehículos Eléctricos", "por_que_grande": "El segmento de pickups y SUVs eléctricos es el más lucrativo de EE.UU. Amazon garantiza demanda con 100,000 furgonetas contratadas. Con escala, Rivian puede ser el Ford/GM eléctrico del futuro."},
+    "NU":   {"nombre": "Nu Holdings (Nubank)", "descripcion": "Neobank líder en América Latina con +100M clientes en Brasil, México y Colombia. Tarjetas, préstamos, inversiones y seguros 100% digitales.", "sector": "Fintech / Banca Digital LATAM", "por_que_grande": "América Latina tiene 650M personas con acceso bancario limitado. Nubank ya es rentable, crece a +25% anual y tiene la mayor base de clientes fintech del mundo. Es el banco del futuro de toda una región."},
+    "BILL": {"nombre": "Bill.com Holdings", "descripcion": "Plataforma de automatización financiera para PYMEs: cuentas por pagar/cobrar, gestión de facturas y pagos B2B.", "sector": "Fintech / SaaS / PYMEs", "por_que_grande": "30 millones de PYMEs en EE.UU. siguen gestionando sus finanzas con Excel o QuickBooks. Bill.com automatiza ese proceso ahorrando horas semanales. El mercado de pagos B2B en EE.UU. mueve $25T anuales."},
+    "TOST": {"nombre": "Toast Inc.", "descripcion": "Plataforma tecnológica todo-en-uno para restaurantes: POS, pagos, delivery, gestión de empleados y analytics.", "sector": "Fintech / Restaurant Tech", "por_que_grande": "Los restaurantes son uno de los sectores más inefficientes en tecnología. Toast tiene ya 120,000+ restaurantes y crece 30%+. Si captura la mitad de los restaurantes de EE.UU. y expande internacionalmente, es una empresa enorme."},
+    "GTLB": {"nombre": "GitLab Inc.", "descripcion": "Plataforma DevSecOps completa: código, CI/CD, seguridad y operaciones en un solo lugar. Alternativa a GitHub.", "sector": "DevOps / SaaS", "por_que_grande": "Cada empresa de software necesita DevOps. GitLab integra todo el ciclo de desarrollo en una plataforma unificada con seguridad incorporada. Con el auge del software, demanda de DevOps no para de crecer."},
+    "DDOG": {"nombre": "Datadog Inc.", "descripcion": "Plataforma de observabilidad y monitoreo para infraestructura cloud, aplicaciones y seguridad en tiempo real.", "sector": "Cloud / Observabilidad / SaaS", "por_que_grande": "Toda empresa cloud necesita monitorear su infraestructura. Datadog consolida docenas de herramientas en una plataforma. Crece 25%+ anual con clientes Fortune 500. El mercado de observabilidad superará $50B+."},
+    "DOCS": {"nombre": "Doximity Inc.", "descripcion": "Red social y plataforma de telemedicina exclusiva para médicos. 80%+ de los médicos de EE.UU. usan Doximity.", "sector": "Telemedicina / SaaS Médico", "por_que_grande": "Tiene el mayor red de profesionales médicos de EE.UU. Monetiza con farmacéuticas (marketing) y telemedicina. Márgenes altísimos (40%+ EBITDA). A medida que la medicina se digitaliza, Doximity es la infraestructura indispensable."},
+    "RXRX": {"nombre": "Recursion Pharmaceuticals", "descripcion": "Usa IA y biología computacional para descubrir fármacos. Mapea el efecto de millones de compuestos en células.", "sector": "IA / Drug Discovery / Biotech", "por_que_grande": "El descubrimiento de fármacos tarda 12 años y cuesta $2.6B. La IA puede reducir ese tiempo y costo drásticamente. Recursion tiene el dataset biológico más grande del mundo y alianzas con Roche y Sanofi."},
+    "SOUN": {"nombre": "SoundHound AI", "descripcion": "Plataforma de IA de voz para automóviles, restaurantes y dispositivos. Reconocimiento de voz en tiempo real sin nube.", "sector": "IA de Voz / Edge AI", "por_que_grande": "La voz es la interfaz del futuro para coches, electrodomésticos y comercio. SoundHound está integrado en marcas como Hyundai, Kia, Mercedes y cientos de restaurantes. El mercado de IA conversacional superará $100B."},
+    "AI":   {"nombre": "C3.ai Inc.", "descripcion": "Proveedor de aplicaciones de IA empresarial preconfiguradas para sectores como energía, manufactura y finanzas.", "sector": "EA (Enterprise AI) / SaaS", "por_que_grande": "Las empresas necesitan IA pero no tienen equipos para construirla desde cero. C3.ai ofrece aplicaciones listas para usar que se integran con datos existentes. El mercado de IA empresarial superará $500B en 2030."},
+    "SE":   {"nombre": "Sea Limited", "descripcion": "Conglomerado digital del sudeste asiático: Garena (gaming), Shopee (e-commerce) y SeaMoney (fintech).", "sector": "Super-App / E-Commerce / Gaming SEA", "por_que_grande": "700 millones de personas en una región con clase media explosiva. Garena genera caja, Shopee es el Amazon del SEA y SeaMoney bancariza a millones sin cuenta. Es la plataforma digital dominante de la región de más rápido crecimiento del mundo."},
+    "MQ":   {"nombre": "Marqeta Inc.", "descripcion": "Plataforma de emisión de tarjetas de crédito/débito virtual. Permite a empresas crear sus propias tarjetas programables.", "sector": "Fintech / Card Issuing", "por_que_grande": "Cada empresa quiere tener su propia tarjeta (Block, Uber, DoorDash usan Marqeta). La infraestructura de tarjetas es invisible pero esencial. A medida que más empresas lancen productos financieros embedded, Marqeta procesa todos esos pagos."},
+    "FOUR": {"nombre": "Shift4 Payments", "descripcion": "Procesador de pagos integrado para restaurantes, hoteles, estadios y entretenimiento. Adquiriendo mercados internacionales.", "sector": "Fintech / Pagos", "por_que_grande": "Procesa pagos para los sectores de mayor volumen (hospitalidad, entretenimiento). Expansión agresiva en Europa y LATAM. A diferencia de competidores, está verticalmente integrado con software + hardware + pagos."},
+    "CHPT": {"nombre": "ChargePoint Holdings", "descripcion": "Red de carga de vehículos eléctricos más grande de Norteamérica y Europa. Software de gestión de flota EV.", "sector": "Infraestructura EV / Energía", "por_que_grande": "Para cada EV en carretera, se necesitan 3 puntos de carga. ChargePoint tiene 300,000+ puertos de carga. A medida que la adopción de EVs crece, ChargePoint crece con ellos. Es la gasolinera del futuro."},
+    "RBLX": {"nombre": "Roblox Corporation", "descripcion": "Plataforma de juegos y creación de experiencias en 3D con 80M+ usuarios activos diarios, principalmente menores de 17.", "sector": "Metaverso / Gaming / UGC", "por_que_grande": "Roblox es el metaverso real que ya existe: millones crean y monetizan experiencias. La Generación Alpha crece jugando Roblox. Cuando esa generación tenga poder adquisitivo, Roblox puede convertirse en la plataforma de entretenimiento dominante."},
+    "U":    {"nombre": "Unity Technologies", "descripcion": "Motor de creación de juegos y experiencias 3D en tiempo real. Usado en el 70% de los juegos móviles del mundo.", "sector": "Game Engine / Metaverso / IA", "por_que_grande": "Unity es la herramienta para construir el metaverso y la realidad aumentada. El 70% de los juegos móviles usan Unity. Con la expansión de AR/VR y IA generativa para 3D, Unity es la infraestructura creativa del mundo virtual."},
+    "APP":  {"nombre": "AppLovin Corporation", "descripcion": "Plataforma de marketing y monetización de apps móviles impulsada por IA. El algoritmo AXON optimiza anuncios con alta precisión.", "sector": "AdTech / IA / Mobile", "por_que_grande": "La publicidad móvil es el mayor canal de marketing digital. El algoritmo de IA de AppLovin (AXON) bate a Meta y Google en ROAS para apps. Creciendo a 30%+ anual y entrando en e-commerce. Puede ser la plataforma de ads del mundo móvil."},
+    "ALAB": {"nombre": "Astera Labs", "descripcion": "Semiconductores de conectividad para centros de datos de IA. Chips PCIe, CXL y Ethernet que conectan GPUs y CPUs.", "sector": "Semiconductores / IA Infrastructure", "por_que_grande": "Construir un data center de IA no es solo poner GPUs: necesitas conectividad ultra-rápida. Astera Labs proporciona los chips de interconexión que hacen funcionar los clústeres de IA de hiperescaladores como Amazon, Google y Microsoft."},
+    "ARM":  {"nombre": "ARM Holdings", "descripcion": "Diseñadora de arquitecturas de chips (ISA) usada en el 99% de los smartphones del mundo y creciendo en servidores e IA.", "sector": "Semiconductores / Arquitectura de Chips", "por_que_grande": "La arquitectura ARM está en 250 mil millones de chips vendidos. Con la transición a IA edge (chips eficientes), Apple Silicon (M-series), AWS Graviton y coches autónomos, ARM es la base de toda la computación moderna y futura."},
+    "MSTR": {"nombre": "MicroStrategy / Strategy", "descripcion": "Empresa de software convertida en el mayor tenedor corporativo de Bitcoin (~470,000 BTC). Modelo de 'Bitcoin treasury company'.", "sector": "Bitcoin / Criptomonedas / Software", "por_que_grande": "Con la adopción institucional de Bitcoin como 'digital gold', MSTR es el mayor vehículo de exposición a BTC en mercados tradicionales. Si Bitcoin alcanza $500K-$1M, el valor de su tesorería se multiplica. Es una apuesta apalancada en Bitcoin."},
+    "IREN": {"nombre": "Iris Energy", "descripcion": "Empresa de minería de Bitcoin con energía 100% renovable y expansión hacia infraestructura de IA (GPU cloud).", "sector": "Bitcoin Mining / IA Cloud", "por_que_grande": "Minería de Bitcoin sostenible con expansión estratégica hacia GPU-as-a-Service para IA. Cuando los precios del Bitcoin suben o la demanda de GPUs para IA se dispara, IREN se beneficia de ambos. Dos catalizadores de crecimiento en uno."},
+    "CAVA": {"nombre": "Cava Group", "descripcion": "Cadena de restaurantes fast-casual mediterráneos de rápido crecimiento en EE.UU. Conocida como 'el Chipotle mediterráneo'.", "sector": "Restaurantes / Consumo", "por_que_grande": "Chipotle tardó 20 años en llegar a 3,000 restaurantes y multiplicó su acción por 100x. Cava tiene solo 350+ locales y crece 17%+ en nuevas aperturas anuales. La comida mediterránea es la tendencia saludable que reemplaza la comida mexicana."},
+    "BIRK": {"nombre": "Birkenstock Holding", "descripcion": "Fabricante de sandalias premium de más de 250 años de historia. Marca de lujo accesible con fuerte presencia global.", "sector": "Consumo Aspiracional / Moda", "por_que_grande": "De sandalias de hippies a icono de moda global. La colaboración con Hermès, el efecto Barbie (2023) y la expansión en Asia convierten a Birkenstock en una marca aspiracional. Modelo de negocio de alto margen y fidelización extrema de clientes."},
+}
+
+
+def construir_watchlist_emergentes(
+    n: int = 18,
+    fallback: Optional[dict] = None,
+) -> dict:
+    """
+    Construye dinámicamente la watchlist de empresas emergentes/disruptivas.
+
+    Metodología:
+      1. Universo candidato: ~45 disruptores y empresas de hipercrecimiento
+      2. Obtener market cap y momentum de 52 semanas via yfinance (fast_info)
+      3. Filtrar: excluir mega-caps (>$250B) que ya deberían estar en consolidadas
+                 y micro-caps (<$150M) con poco liquidity
+      4. Calcular score de disrupción = momentum_52w * 0.6 + (market_cap relativo) * 0.4
+      5. Ordenar por score → tomar top N
+      6. Si yfinance falla → usar fallback estático (WATCHLIST_EMERGENTES)
+
+    Args:
+        n: Número de empresas a devolver (default 18).
+        fallback: Watchlist estática a devolver si yfinance falla completamente.
+
+    Returns:
+        dict {ticker: {nombre, descripcion, sector, por_que_grande, ...}}
+    """
+    scores: dict[str, float] = {}
+    market_caps: dict[str, float] = {}
+
+    for sym in _CANDIDATOS_EMERGENTES:
+        try:
+            fi = yf.Ticker(sym).fast_info
+            mc = getattr(fi, "market_cap", None) or 0.0
+            yc = getattr(fi, "year_change", None)  # fracción, ej: 0.45 = +45%
+
+            # Filtrar mega-caps (ya pertenecen a consolidadas) y micro-caps
+            if mc > 250e9 or mc < 150e6:
+                continue
+            # Si no hay momentum disponible, usar 0 como neutro
+            momentum = float(yc) if yc is not None else 0.0
+
+            market_caps[sym] = mc
+            scores[sym] = momentum  # ranking principal: momentum 52w
+        except Exception as exc:
+            logger.debug("No se pudo obtener datos de %s: %s", sym, exc)
+
+    if not scores:
+        logger.warning("No se obtuvieron scores emergentes — usando watchlist estática.")
+        return fallback or {}
+
+    # Ordenar por momentum descendente → tomar top N
+    top_n = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:n]
+
+    logger.info(
+        "Top %d emergentes por momentum 52w: %s",
+        n,
+        ", ".join(
+            f"{sym}({pct:+.0%})" for sym, pct in top_n
+        ),
+    )
+
+    watchlist: dict = {}
+    for sym, momentum in top_n:
+        if sym in _METADATA_EMERGENTES:
+            entry = dict(_METADATA_EMERGENTES[sym])
+        else:
+            entry = _obtener_metadata_yfinance(sym)
+
+        entry["market_cap_live"] = market_caps.get(sym, 0)
+        entry["momentum_52w"] = momentum
+        watchlist[sym] = entry
+
+    # Asegurar que todos tienen nombre
+    for sym in watchlist:
+        if "nombre" not in watchlist[sym]:
+            watchlist[sym]["nombre"] = sym
+
+    return watchlist
