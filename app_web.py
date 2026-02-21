@@ -1512,18 +1512,6 @@ elif pagina == "📊 Open Interest":
     st.markdown("#### 🔥 Top Cambios en OI — Barchart")
     st.caption("Se actualiza automáticamente con cada escaneo • Fuente: Barchart.com")
 
-    # Filtro tipo + OI Chg mínimo
-    col_f1, col_f2 = st.columns([1, 1])
-    with col_f1:
-        bc_tipo_filtro = st.radio(
-            "Filtrar por tipo", ["Todos", "📞 CALL", "📋 PUT"],
-            horizontal=True, key="bc_tipo_filtro", index=0,
-        )
-    with col_f2:
-        bc_min_chg = st.number_input(
-            "OI Chg mínimo", value=0, step=5, min_value=0, key="bc_min_chg",
-        )
-
     # Botón para recarga manual (sin necesidad de re-escanear)
     col_btn1, col_btn2 = st.columns([1, 3])
     with col_btn1:
@@ -1543,16 +1531,6 @@ elif pagina == "📊 Open Interest":
     # Mostrar datos
     if st.session_state.barchart_data is not None and not st.session_state.barchart_data.empty:
         df_bc_all = st.session_state.barchart_data.copy()
-
-        # Aplicar filtro tipo
-        if bc_tipo_filtro == "📞 CALL":
-            df_bc_all = df_bc_all[df_bc_all["Tipo"] == "CALL"]
-        elif bc_tipo_filtro == "📋 PUT":
-            df_bc_all = df_bc_all[df_bc_all["Tipo"] == "PUT"]
-
-        # Aplicar filtro OI Chg mínimo (valor absoluto)
-        if bc_min_chg > 0:
-            df_bc_all = df_bc_all[df_bc_all["OI_Chg"].abs() >= bc_min_chg]
 
         n_total = len(df_bc_all)
 
@@ -1603,6 +1581,33 @@ elif pagina == "📊 Open Interest":
                 render_metric_card("CALLs Cerrados", f"{calls_cerrados:,}"),
                 render_metric_card("PUTs Cerrados", f"{puts_cerrados:,}"),
             ]), unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # Filtro tipo + OI Chg mínimo — encima de las tablas
+            col_f1, col_f2 = st.columns([1, 1])
+            with col_f1:
+                bc_tipo_filtro = st.radio(
+                    "Filtrar por tipo", ["Todos", "📞 CALL", "📋 PUT"],
+                    horizontal=True, key="bc_tipo_filtro", index=0,
+                )
+            with col_f2:
+                bc_min_chg = st.number_input(
+                    "OI Chg mínimo", value=0, step=5, min_value=0, key="bc_min_chg",
+                )
+
+            # Re-aplicar filtros tras cambio de controles
+            if bc_tipo_filtro == "📞 CALL":
+                df_positivos = df_positivos[df_positivos["Tipo"] == "CALL"].reset_index(drop=True)
+                df_negativos = df_negativos[df_negativos["Tipo"] == "CALL"].reset_index(drop=True)
+            elif bc_tipo_filtro == "📋 PUT":
+                df_positivos = df_positivos[df_positivos["Tipo"] == "PUT"].reset_index(drop=True)
+                df_negativos = df_negativos[df_negativos["Tipo"] == "PUT"].reset_index(drop=True)
+            if bc_min_chg > 0:
+                df_positivos = df_positivos[df_positivos["OI_Chg"] >= bc_min_chg].reset_index(drop=True)
+                df_negativos = df_negativos[df_negativos["OI_Chg"].abs() >= bc_min_chg].reset_index(drop=True)
+            n_pos = len(df_positivos)
+            n_neg = len(df_negativos)
 
             st.markdown("---")
 
@@ -1664,7 +1669,6 @@ elif pagina == "📊 Open Interest":
             # TABLA 1: OI Chg POSITIVO (Abriendo posiciones)
             # ========================================
             st.markdown("#### 🟢 OI Chg Positivo — Abriendo Posiciones")
-            st.caption("Contratos donde el Open Interest aumentó → nuevas posiciones abiertas")
 
             if n_pos > 0:
                 df_pos_fmt = _formatear_tabla_oi(df_positivos)
@@ -1681,7 +1685,6 @@ elif pagina == "📊 Open Interest":
             # TABLA 2: OI Chg NEGATIVO (Cerrando posiciones)
             # ========================================
             st.markdown("#### 🔴 OI Chg Negativo — Cerrando Posiciones")
-            st.caption("Contratos donde el Open Interest disminuyó → posiciones cerradas o ejercidas")
 
             if n_neg > 0:
                 df_neg_fmt = _formatear_tabla_oi(df_negativos)
