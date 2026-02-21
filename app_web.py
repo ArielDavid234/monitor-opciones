@@ -1596,9 +1596,9 @@ elif pagina == "📊 Open Interest":
                     "OI Chg mínimo (absoluto)", value=0, step=5, min_value=0, key="bc_min_chg",
                 )
             with col_f3:
-                _top_opts = ["Todos", "Top 10", "Top 25", "Top 50", "Top 100", "Top 200"]
-                bc_top_n = st.selectbox(
-                    "Mostrar por mayor OI_Chg", _top_opts, index=0, key="bc_top_n",
+                bc_orden = st.radio(
+                    "Ordenar OI_Chg", ["Mayor → Menor", "Menor → Mayor"],
+                    horizontal=True, key="bc_orden", index=0,
                 )
 
             # Re-aplicar filtros tras cambio de controles
@@ -1611,12 +1611,10 @@ elif pagina == "📊 Open Interest":
             if bc_min_chg > 0:
                 df_positivos = df_positivos[df_positivos["OI_Chg"] >= bc_min_chg].reset_index(drop=True)
                 df_negativos = df_negativos[df_negativos["OI_Chg"].abs() >= bc_min_chg].reset_index(drop=True)
-            if bc_top_n != "Todos":
-                _top_n_val = int(bc_top_n.replace("Top ", ""))
-                # Positivos: los de mayor OI_Chg (ya ordenados desc)
-                df_positivos = df_positivos.head(_top_n_val).reset_index(drop=True)
-                # Negativos: los de mayor caída absoluta (ya ordenados asc = más negativos primero)
-                df_negativos = df_negativos.head(_top_n_val).reset_index(drop=True)
+            # Ordenar según selección del usuario
+            _asc = (bc_orden == "Menor → Mayor")
+            df_positivos = df_positivos.sort_values("OI_Chg", ascending=_asc).reset_index(drop=True)
+            df_negativos = df_negativos.sort_values("OI_Chg", ascending=not _asc).reset_index(drop=True)
             n_pos = len(df_positivos)
             n_neg = len(df_negativos)
 
