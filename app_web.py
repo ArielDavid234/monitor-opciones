@@ -558,6 +558,8 @@ _DEFAULTS = {
     "favoritos": [],
     "eventos_economicos": [],
     "eventos_last_refresh": None,
+    "_wl_consolidadas_shown_hash": None,
+    "_wl_emergentes_shown_hash": None,
 }
 for _key, _val in _DEFAULTS.items():
     if _key not in st.session_state:
@@ -3840,12 +3842,15 @@ elif pagina == "🏢 Important Companies":
     _nuevas = [t for t in _tickers_dinamicos if t not in _tickers_estaticos]
     _salieron = [t for t in _tickers_estaticos if t not in _tickers_dinamicos]
     if _nuevas or _salieron:
-        _cambios_txt = []
-        if _nuevas:
-            _cambios_txt.append(f"**Entraron:** {', '.join(_nuevas)}")
-        if _salieron:
-            _cambios_txt.append(f"**Salieron:** {', '.join(_salieron)}")
-        st.info(f"🔄 Ranking actualizado por market cap — {' | '.join(_cambios_txt)}")
+        _hash_c = frozenset(_nuevas + _salieron)
+        if st.session_state._wl_consolidadas_shown_hash != _hash_c:
+            st.session_state._wl_consolidadas_shown_hash = _hash_c
+            _cambios_txt = []
+            if _nuevas:
+                _cambios_txt.append(f"**Entraron:** {', '.join(_nuevas)}")
+            if _salieron:
+                _cambios_txt.append(f"**Salieron:** {', '.join(_salieron)}")
+            st.info(f"🔄 Ranking actualizado por market cap — {' | '.join(_cambios_txt)}")
 
     col_btn_c, col_info_c = st.columns([1, 3])
     with col_btn_c:
@@ -3909,12 +3914,15 @@ elif pagina == "🏢 Important Companies":
     if set(_wl_emergentes.keys()) != set(WATCHLIST_EMERGENTES.keys()):
         entraron = set(_wl_emergentes.keys()) - set(WATCHLIST_EMERGENTES.keys())
         salieron = set(WATCHLIST_EMERGENTES.keys()) - set(_wl_emergentes.keys())
-        partes = ["🔄 Ranking actualizado por momentum"]
-        if entraron:
-            partes.append(f"Entraron: {', '.join(sorted(entraron))}")
-        if salieron:
-            partes.append(f"Salieron: {', '.join(sorted(salieron))}")
-        st.info(" | ".join(partes))
+        _hash_e = frozenset(entraron | salieron)
+        if st.session_state._wl_emergentes_shown_hash != _hash_e:
+            st.session_state._wl_emergentes_shown_hash = _hash_e
+            partes = ["🔄 Ranking actualizado por momentum"]
+            if entraron:
+                partes.append(f"Entraron: {', '.join(sorted(entraron))}")
+            if salieron:
+                partes.append(f"Salieron: {', '.join(sorted(salieron))}")
+            st.info(" | ".join(partes))
 
     col_btn_e, col_info_e = st.columns([1, 3])
     with col_btn_e:
