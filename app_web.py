@@ -298,6 +298,10 @@ def _fetch_barchart_oi(simbolo, progress_bar=None):
 
         if frames:
             combined = pd.concat(frames, ignore_index=True)
+            # Deduplicar por símbolo OCC por si quedaron duplicados entre calls y puts
+            # (e.g. Barchart devuelve el mismo contrato en ambas respuestas)
+            if "Contrato" in combined.columns:
+                combined = combined.drop_duplicates(subset=["Contrato"], keep="first")
             combined = combined.sort_values("OI_Chg", ascending=False).reset_index(drop=True)
             st.session_state.barchart_data = combined
             st.session_state.barchart_error = None
@@ -1611,14 +1615,14 @@ elif pagina == "📊 Open Interest":
                 cols = [c for c in display_cols if c in df_raw.columns]
                 df_fmt = df_raw[cols].copy()
                 df_fmt["OI_Chg"] = df_fmt["OI_Chg"].apply(
-                    lambda x: f"+{int(x):,}" if x > 0 else f"{int(x):,}" if x < 0 else "0"
+                    lambda x: f"+{int(x):,}" if pd.notna(x) and x > 0 else f"{int(x):,}" if pd.notna(x) and x < 0 else "0"
                 )
-                df_fmt["Volumen"] = df_fmt["Volumen"].apply(lambda x: f"{int(x):,}")
-                df_fmt["OI"] = df_fmt["OI"].apply(lambda x: f"{int(x):,}")
-                df_fmt["IV"] = df_fmt["IV"].apply(lambda x: f"{x:.1f}%" if x > 0 else "-")
-                df_fmt["Delta"] = df_fmt["Delta"].apply(lambda x: f"{x:.3f}" if x != 0 else "-")
-                df_fmt["Último"] = df_fmt["Último"].apply(lambda x: f"${x:.2f}" if x > 0 else "-")
-                df_fmt["Strike"] = df_fmt["Strike"].apply(lambda x: f"${x:,.1f}")
+                df_fmt["Volumen"] = df_fmt["Volumen"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "-")
+                df_fmt["OI"] = df_fmt["OI"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "-")
+                df_fmt["IV"] = df_fmt["IV"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) and x > 0 else "-")
+                df_fmt["Delta"] = df_fmt["Delta"].apply(lambda x: f"{x:.3f}" if pd.notna(x) and x != 0 else "-")
+                df_fmt["Último"] = df_fmt["Último"].apply(lambda x: f"${x:.2f}" if pd.notna(x) and x > 0 else "-")
+                df_fmt["Strike"] = df_fmt["Strike"].apply(lambda x: f"${x:,.1f}" if pd.notna(x) else "-")
                 return df_fmt
 
             def _mostrar_tabla_paginada(df_raw, df_fmt, key_prefix, emoji_func):

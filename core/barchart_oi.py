@@ -20,6 +20,23 @@ except ImportError:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def _safe_int(val, default=0):
+    """
+    Convierte val a int de forma segura.
+    Maneja None, NaN, strings con comas ("1,500"), floats, etc.
+    """
+    try:
+        if val is None:
+            return default
+        if isinstance(val, str):
+            val = val.replace(",", "").strip()
+            if not val or val.lower() in ("n/a", "nan", "-", ""):
+                return default
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+
 def _crear_sesion():
     """
     Crea una sesión autenticada con cookies de Barchart.
@@ -115,11 +132,11 @@ def _parsear_respuesta(data, incluir_tipo=False):
             "Ticker": base_sym,
             "Strike": raw.get("strikePrice", 0),
             "Vencimiento": raw.get("expirationDate", ""),
-            "DTE": raw.get("daysToExpiration", 0),
+            "DTE": _safe_int(raw.get("daysToExpiration", 0)),
             "Último": raw.get("lastPrice", 0),
-            "Volumen": int(raw.get("volume", 0) or 0),
-            "OI": int(raw.get("openInterest", 0) or 0),
-            "OI_Chg": int(raw.get("openInterestChange", 0) or 0),
+            "Volumen": _safe_int(raw.get("volume", 0)),
+            "OI": _safe_int(raw.get("openInterest", 0)),
+            "OI_Chg": _safe_int(raw.get("openInterestChange", 0)),
             "IV": round(float(raw.get("volatility", 0) or 0), 2),
             "Delta": round(float(raw.get("delta", 0) or 0), 4),
         }
@@ -333,11 +350,24 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                 return None, f"Error HTTP {resp.status_code}"
 
             resp_json = resp.json()
-            incluir_tipo = (tipo == "ambos")
-            df_page = _parsear_respuesta(resp_json, incluir_tipo=incluir_tipo)
+            # Siempre extraer Tipo del símbolo OCC para detectar clasificaciones
+            # erróneas que Barchart puede devolver en la respuesta (quirk del API)
+            df_page = _parsear_respuesta(resp_json, incluir_tipo=True)
 
             if df_page.empty:
                 break
+
+            # Filtrar para quedarnos solo con el tipo solicitado.
+            # Esto elimina contratos del tipo opuesto que Barchart devuelva
+            # en la respuesta equivocada, evitando duplicados call/put mismo strike.
+            if tipo != "ambos" and "Tipo" in df_page.columns:
+                df_page = df_page[df_page["Tipo"] == tipo.upper()]
+
+            if df_page.empty:
+                pages_this_session += 1
+                total_fetched += 1  # avanzar para no quedar en loop infinito
+                page += 1
+                continue
 
             all_frames.append(df_page)
             total_fetched += len(df_page)
@@ -357,6 +387,10 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
             return None, f"Sin datos de Barchart para {simbolo.upper()}"
 
         df = pd.concat(all_frames, ignore_index=True)
+        # Deduplicar por símbolo OCC: el mismo contrato puede aparecer en dos
+        # páginas si el dataset de Barchart se actualiza entre fetches.
+        if "Contrato" in df.columns:
+            df = df.drop_duplicates(subset=["Contrato"], keep="first")
         df = df.sort_values("OI_Chg", ascending=False).reset_index(drop=True)
         return df, None
 
