@@ -260,23 +260,30 @@ def obtener_top_oi_changes(tipo="call", limite=9999, min_oi_chg=-9999):
 def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
     """
     Obtiene cambios en OI para un símbolo específico.
-    Equivale a: https://www.barchart.com/stocks/quotes/SPY/options?view=stacked
 
-    Usa paginación automática para obtener TODOS los contratos disponibles
-    (el API de Barchart limita a 500 por página).
-    Renueva la sesión cada 10 páginas para evitar rate-limiting.
+    Estrategia dual-direction para garantizar que los contratos con OI_Chg
+    NEGATIVO (cerrando posiciones) siempre se obtengan:
+
+      1. Fetch orderDir=DESC → primeros contratos con mayor OI_Chg positivo
+      2. Fetch orderDir=ASC  → primeros contratos con mayor OI_Chg negativo
+
+    Esto evita el problema de SPY: con 12,500+ contratos ordenados desc, los
+    negativos están en la página 12-13. Barchart rate-limita antes de llegar.
+    Con la estrategia dual, los negativos están en la página 1 del fetch ASC.
 
     Args:
         simbolo: ticker del underlying (ej: "SPY", "AAPL")
         tipo: "call", "put" o "ambos"
-        limite: número máximo total de resultados
+        limite: número máximo total de resultados por dirección
 
     Returns:
         (DataFrame, None) en éxito, o (None, str_error) en fallo
     """
-    try:
+
+    def _fetch_direction(order_dir, max_rows=99999):
+        """Fetch paginado en una dirección hasta agotar los no-cero o max_rows."""
         PAGE_SIZE = 1000
-        PAGES_PER_SESSION = 10  # Renovar sesión cada N páginas
+        PAGES_PER_SESSION = 8  # Renovar sesión cada N páginas (conservador)
         all_frames = []
         page = 1
         total_fetched = 0
@@ -284,11 +291,11 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
         token = None
         pages_this_session = 0
 
-        while total_fetched < limite:
+        while total_fetched < max_rows:
             # Crear/renovar sesión cada PAGES_PER_SESSION páginas
             if session is None or pages_this_session >= PAGES_PER_SESSION:
                 if session is not None:
-                    time.sleep(1.5)  # Pausa antes de nueva sesión
+                    time.sleep(1.5)
                 session = _crear_sesion()
                 token = _obtener_xsrf(session)
                 pages_this_session = 0
@@ -301,7 +308,7 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                     "vega,tradeTime"
                 ),
                 "orderBy": "openInterestChange",
-                "orderDir": "desc",
+                "orderDir": order_dir,
                 "baseSymbol": simbolo.upper(),
                 "hasOptions": "true",
                 "raw": "1",
@@ -309,12 +316,10 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                 "limit": str(PAGE_SIZE),
                 "meta": "field.shortName,field.type,field.description",
             }
-
             if tipo != "ambos":
                 params["optionType"] = tipo
 
             sim = simbolo.upper()
-            # Retry con backoff para rate-limiting (429)
             resp = None
             for retry in range(4):
                 resp = session.get(
@@ -327,9 +332,8 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                     timeout=30,
                 )
                 if resp.status_code == 429:
-                    time.sleep(2 ** retry)  # 1s, 2s, 4s backoff
+                    time.sleep(2 ** retry)
                 elif resp.status_code == 403 and pages_this_session > 0:
-                    # Sesión expirada, renovar y reintentar
                     time.sleep(1.5)
                     session = _crear_sesion()
                     token = _obtener_xsrf(session)
@@ -338,42 +342,38 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                     break
 
             if resp.status_code == 403:
-                if all_frames:
-                    break
-                return None, (
-                    "Barchart bloqueó la solicitud (403). "
-                    "Esperá 1-2 minutos e intentá de nuevo."
-                )
+                break
             if resp.status_code != 200:
-                if all_frames:
-                    break
-                return None, f"Error HTTP {resp.status_code}"
+                break
 
             resp_json = resp.json()
-            # Siempre extraer Tipo del símbolo OCC para detectar clasificaciones
-            # erróneas que Barchart puede devolver en la respuesta (quirk del API)
             df_page = _parsear_respuesta(resp_json, incluir_tipo=True)
 
             if df_page.empty:
                 break
 
-            # Filtrar para quedarnos solo con el tipo solicitado.
-            # Esto elimina contratos del tipo opuesto que Barchart devuelva
-            # en la respuesta equivocada, evitando duplicados call/put mismo strike.
+            # Filtrar al tipo solicitado (defensa contra quirks del API)
             if tipo != "ambos" and "Tipo" in df_page.columns:
                 df_page = df_page[df_page["Tipo"] == tipo.upper()]
 
             if df_page.empty:
                 pages_this_session += 1
-                total_fetched += 1  # avanzar para no quedar en loop infinito
                 page += 1
                 continue
+
+            # Para la dirección DESC: parar cuando todos los valores son ≤ 0
+            # Para la dirección ASC:  parar cuando todos los valores son ≥ 0
+            if order_dir == "desc":
+                if df_page["OI_Chg"].max() <= 0:
+                    break  # Ya solo hay ceros o negativos → cubiertos por ASC
+            else:  # asc
+                if df_page["OI_Chg"].min() >= 0:
+                    break  # Ya solo hay ceros o positivos → cubiertos por DESC
 
             all_frames.append(df_page)
             total_fetched += len(df_page)
             pages_this_session += 1
 
-            # Si recibimos menos de PAGE_SIZE, ya no hay más páginas
             total_available = resp_json.get("total", None)
             if len(df_page) < PAGE_SIZE:
                 break
@@ -381,16 +381,31 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                 break
 
             page += 1
-            time.sleep(0.3)  # Anti rate-limit
+            time.sleep(0.3)
 
+        return all_frames
+
+    try:
+        # 1. Fetch descendente → positivos primero
+        frames_desc = _fetch_direction("desc")
+        time.sleep(1.0)  # pausa entre las dos direcciones
+        # 2. Fetch ascendente → negativos primero
+        frames_asc = _fetch_direction("asc")
+
+        all_frames = frames_desc + frames_asc
         if not all_frames:
             return None, f"Sin datos de Barchart para {simbolo.upper()}"
 
         df = pd.concat(all_frames, ignore_index=True)
-        # Deduplicar por símbolo OCC: el mismo contrato puede aparecer en dos
-        # páginas si el dataset de Barchart se actualiza entre fetches.
+
+        # Deduplicar: el símbolo OCC es único por contrato, así que si un
+        # contrato con OI_Chg=0 quedó capturado en ambas direcciones, se elimina.
         if "Contrato" in df.columns:
             df = df.drop_duplicates(subset=["Contrato"], keep="first")
+
+        # Excluir ceros — no aportan señal y son ~7000 contratos en SPY
+        df = df[df["OI_Chg"] != 0].reset_index(drop=True)
+
         df = df.sort_values("OI_Chg", ascending=False).reset_index(drop=True)
         return df, None
 
