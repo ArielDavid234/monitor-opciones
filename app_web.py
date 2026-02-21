@@ -4006,6 +4006,7 @@ elif pagina == "📰 News":
             if noticias:
                 st.session_state.noticias_data = noticias
                 st.session_state.noticias_last_refresh = datetime.now()
+                st.session_state.noticias_filtro = "Todas"
                 st.rerun()
 
     # --- CONTENIDO ---
@@ -4025,18 +4026,32 @@ elif pagina == "📰 News":
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
 
         top_cats = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)[:6]
+
+        # Botones de filtro por categoría
         if top_cats:
-            stat_cols = st.columns(len(top_cats))
-            for i, (cat_name, cat_count) in enumerate(top_cats):
-                with stat_cols[i]:
-                    st.metric(cat_name, cat_count)
+            filtro_actual = st.session_state.get("noticias_filtro", "Todas")
+            btn_labels = [("Todas", len(st.session_state.noticias_data))] + top_cats
+            filter_cols = st.columns(len(btn_labels))
+            for i, (cat_name, cat_count) in enumerate(btn_labels):
+                with filter_cols[i]:
+                    is_active = filtro_actual == cat_name
+                    label_text = f"{'✅ ' if is_active else ''}{cat_name} ({cat_count})"
+                    if st.button(label_text, key=f"filtro_cat_{i}", use_container_width=True,
+                                 type="primary" if is_active else "secondary"):
+                        st.session_state.noticias_filtro = cat_name
+                        st.rerun()
 
         st.divider()
 
-        # Mostrar todas las noticias ordenadas por más recientes
-        noticias_mostrar = st.session_state.noticias_data
+        # Aplicar filtro activo
+        filtro_activo = st.session_state.get("noticias_filtro", "Todas")
+        if filtro_activo == "Todas":
+            noticias_mostrar = st.session_state.noticias_data
+        else:
+            noticias_mostrar = [n for n in st.session_state.noticias_data if n["categoria"] == filtro_activo]
 
-        st.markdown(f"#### 📋 {len(noticias_mostrar)} noticias")
+        titulo_filtro = f" — {filtro_activo}" if filtro_activo != "Todas" else ""
+        st.markdown(f"#### 📋 {len(noticias_mostrar)} noticias{titulo_filtro}")
 
         cat_emoji_map = {
             "Earnings": "💰",
