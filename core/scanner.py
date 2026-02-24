@@ -33,6 +33,13 @@ except ImportError:
 
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from core.cache import get_cached_chain, cache_chain
+from rq import Queue
+from redis import Redis
+
+# === Redis + RQ para escalabilidad ===
+redis_conn = Redis.from_url(os.getenv("REDIS_URL"), decode_responses=False)
+q = Queue(connection=redis_conn)  # cola de escaneos
 
 
 # ============================================================================
@@ -298,6 +305,21 @@ def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
                 return exp_date, None, str(e)
 
 
+def fetch_with_cache(ticker_sym: str, exp_date: str):
+    """Versión con caché Redis + fallback al fetch original."""
+    cached = get_cached_chain(ticker_sym, exp_date)
+    if cached is not None:
+        return exp_date, cached, None
+
+    # Cache miss → fetch normal (función original)
+    result = _fetch_single_chain(ticker_sym, exp_date)
+    exp_date, chain_data, error = result
+    if chain_data is not None:
+        cache_chain(ticker_sym, exp_date, chain_data)
+        time.sleep(2.5)  # sleep más seguro entre peticiones nuevas
+    return result
+
+
 def ejecutar_escaneo(
     ticker_sym, u_vol, u_oi, u_prima, u_filtro, carpeta_csv, guardar, paralelo=True
 ):
@@ -351,7 +373,7 @@ def ejecutar_escaneo(
         logger.info("Escaneo paralelo activado para %d fechas", len(dates_to_scan))
         with ThreadPoolExecutor(max_workers=min(2, len(dates_to_scan))) as executor:
             future_to_date = {
-                executor.submit(_fetch_single_chain, ticker_sym, exp_date): exp_date
+                executor.submit(fetch_with_cache, ticker_sym, exp_date): exp_date
                 for exp_date in dates_to_scan
             }
             

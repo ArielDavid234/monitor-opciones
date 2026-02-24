@@ -23,3 +23,8 @@ python-docx>=1.1,<2
 plotly>=6.0,<7
 kaleido>=0.2
 matplotlib>=3.9,<4
+
+# Scaling / Cache / Queue
+redis>=5.0.0,<6.0.0
+rq>=1.16.0,<2.0.0
+python-dotenv>=1.0.0,<2.0.0
