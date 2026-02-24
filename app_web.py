@@ -18,6 +18,7 @@ from pages import (
     data_analysis_page,
     range_page,
     favorites_page,
+    watchlist_page,
     important_companies_page,
     news_page,
     reports_page,
@@ -55,6 +56,7 @@ with st.sidebar:
             "📈 Data Analysis",
             "📐 Range",
             "⭐ Favorites",
+            "📌 Watchlist",
             "🏢 Important Companies",
             "📰 News",
             "📅 Calendar",
@@ -134,6 +136,8 @@ elif pagina == "📐 Range":
     range_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "⭐ Favorites":
     favorites_page.render(ticker_symbol, **_page_kwargs)
+elif pagina == "📌 Watchlist":
+    watchlist_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "🏢 Important Companies":
     important_companies_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "📰 News":
