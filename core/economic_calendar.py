@@ -13,11 +13,8 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from urllib.parse import urljoin
 
-import pandas as pd
 import requests
-import yfinance as yf
 from bs4 import BeautifulSoup
 from curl_cffi import requests as curl_requests
 

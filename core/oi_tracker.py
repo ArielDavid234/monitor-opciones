@@ -4,7 +4,6 @@ Compara el OI entre escaneos consecutivos para detectar
 acumulación o reducción de interés en contratos de opciones.
 """
 import pandas as pd
-from datetime import datetime
 
 
 def calcular_cambios_oi(datos_actuales, datos_anteriores):
@@ -104,96 +103,3 @@ def _clasificar_señal(row):
             return "🟠 Reducción leve"
         else:
             return "⚪ Ligera reducción"
-
-
-def resumen_oi(cambios_df):
-    """
-    Genera un resumen estadístico de los cambios en OI.
-
-    Returns:
-        dict con métricas clave del cambio en OI
-    """
-    if cambios_df.empty:
-        return {
-            "total_contratos": 0,
-            "con_aumento": 0,
-            "con_reduccion": 0,
-            "sin_cambio": 0,
-            "mayor_aumento": None,
-            "mayor_reduccion": None,
-            "oi_neto": 0,
-            "calls_neto": 0,
-            "puts_neto": 0,
-        }
-
-    con_aumento = cambios_df[cambios_df["Cambio_OI"] > 0]
-    con_reduccion = cambios_df[cambios_df["Cambio_OI"] < 0]
-    sin_cambio = cambios_df[cambios_df["Cambio_OI"] == 0]
-
-    mayor_aum = None
-    if not con_aumento.empty:
-        row = con_aumento.loc[con_aumento["Cambio_OI"].idxmax()]
-        mayor_aum = {
-            "strike": row["Strike"],
-            "tipo": row["Tipo"],
-            "venc": row["Vencimiento"],
-            "cambio": int(row["Cambio_OI"]),
-            "oi_actual": int(row["OI_Actual"]),
-        }
-
-    mayor_red = None
-    if not con_reduccion.empty:
-        row = con_reduccion.loc[con_reduccion["Cambio_OI"].idxmin()]
-        mayor_red = {
-            "strike": row["Strike"],
-            "tipo": row["Tipo"],
-            "venc": row["Vencimiento"],
-            "cambio": int(row["Cambio_OI"]),
-            "oi_actual": int(row["OI_Actual"]),
-        }
-
-    calls_df = cambios_df[cambios_df["Tipo"] == "CALL"]
-    puts_df = cambios_df[cambios_df["Tipo"] == "PUT"]
-
-    return {
-        "total_contratos": len(cambios_df),
-        "con_aumento": len(con_aumento),
-        "con_reduccion": len(con_reduccion),
-        "sin_cambio": len(sin_cambio),
-        "mayor_aumento": mayor_aum,
-        "mayor_reduccion": mayor_red,
-        "oi_neto": int(cambios_df["Cambio_OI"].sum()),
-        "calls_neto": int(calls_df["Cambio_OI"].sum()) if not calls_df.empty else 0,
-        "puts_neto": int(puts_df["Cambio_OI"].sum()) if not puts_df.empty else 0,
-    }
-
-
-def filtrar_contratos_oi(cambios_df, tipo=None, solo_cambios=True, min_oi=0, señal=None):
-    """
-    Filtra el DataFrame de cambios OI según criterios.
-
-    Args:
-        cambios_df: DataFrame de calcular_cambios_oi()
-        tipo: "CALL", "PUT" o None para ambos
-        solo_cambios: True = mostrar solo contratos con cambio != 0
-        min_oi: OI mínimo actual para mostrar
-        señal: filtrar por tipo de señal (substring match)
-    """
-    if cambios_df.empty:
-        return cambios_df
-
-    df = cambios_df.copy()
-
-    if tipo:
-        df = df[df["Tipo"] == tipo]
-
-    if solo_cambios:
-        df = df[df["Cambio_OI"] != 0]
-
-    if min_oi > 0:
-        df = df[df["OI_Actual"] >= min_oi]
-
-    if señal:
-        df = df[df["Señal"].str.contains(señal, case=False, na=False)]
-
-    return df.reset_index(drop=True)

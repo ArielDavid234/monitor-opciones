@@ -114,46 +114,6 @@ def render_metric_card(title, value, delta=None, delta_suffix="%",
     )
 
 
-def render_plotly_sparkline(data, color="#00ff88", height=60):
-    """Render a tiny Plotly area sparkline chart for embedding in metric sections.
-
-    Call this via st.plotly_chart() separately after rendering the card HTML.
-    Returns a Plotly figure object.
-    """
-    if not data or len(data) < 2:
-        return None
-    # Convert hex color to rgba with 0.15 opacity for fill
-    if color.startswith("#") and len(color) == 7:
-        r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-        fill_color = f"rgba({r},{g},{b},0.15)"
-    elif color.startswith("rgb("):
-        fill_color = color.replace("rgb(", "rgba(").replace(")", ",0.15)")
-    else:
-        fill_color = "rgba(0,255,136,0.15)"
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        y=list(data),
-        mode="lines",
-        fill="tozeroy",
-        line=dict(color=color, width=2, shape="spline"),
-        fillcolor=fill_color,
-        hovertemplate="%{y:,.0f}<extra></extra>",
-    ))
-    fig.update_layout(
-        height=height,
-        margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        showlegend=False,
-        hovermode="x unified",
-    )
-    fig.update_xaxes(showgrid=False, zeroline=False)
-    fig.update_yaxes(showgrid=False, zeroline=False)
-    return fig
-
-
 def render_metric_row(cards_html):
     """Wrap a list of card HTML strings in a CSS-grid row."""
     n = len(cards_html)
@@ -346,25 +306,6 @@ def render_watchlist_preview(watchlist_dict, incluir_por_que=False):
             "Sector": sector,
         })
     st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True, height=670)
-
-
-def render_empresa_descriptions(watchlist_dict, color_principal, color_borde, es_emergente=False):
-    """Renderiza las descripciones detalladas de cada empresa del watchlist con expanders colapsables individuales."""
-    for sym, info in watchlist_dict.items():
-        # Crear un expander colapsado para cada empresa
-        with st.expander(f"**{sym}** — {info['nombre']} · {info['sector']}", expanded=False):
-            st.caption(f"**Sector:** {info['sector']}")
-            st.markdown(f"📝 {info['descripcion']}")
-            
-            if es_emergente and "por_que_grande" in info:
-                st.info(f"🌟 **¿Por qué puede ser gigante?**\n\n{info['por_que_grande']}")
-
-
-def _rsi_color(rsi):
-    """Color para RSI."""
-    if rsi >= 70: return "#ef4444"   # rojo — sobrecompra
-    if rsi <= 30: return "#22c55e"   # verde — sobreventa
-    return "#f59e0b"                 # amarillo — neutral
 
 
 def _rsi_label(rsi):

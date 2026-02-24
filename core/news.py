@@ -264,27 +264,3 @@ def calcular_relevancia(noticia):
             break  # solo 1 bonus por keywords
 
     return min(score, 100)
-
-
-def filtrar_noticias(noticias, filtro="Todas"):
-    """Filtra noticias por categoría o criterio especial."""
-    if filtro == "Todas":
-        return noticias
-    elif filtro == "🔥 Más relevantes":
-        scored = [(n, calcular_relevancia(n)) for n in noticias]
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return [n for n, s in scored[:30]]
-    elif filtro == "🌍 Más vistas a nivel mundial":
-        # Top Stories + fuentes internacionales premium + alto impacto
-        global_cats = {"Top Stories", "Economía", "Geopolítica", "Fed / Tasas"}
-        global_news = [n for n in noticias if n["categoria"] in global_cats]
-        scored = [(n, calcular_relevancia(n)) for n in global_news]
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return [n for n, s in scored[:25]]
-    elif filtro == "Más relevantes para trading":
-        cats_trading = {"Trading", "Earnings", "Fed / Tasas", "Economía"}
-        return [n for n in noticias if n["categoria"] in cats_trading]
-    elif filtro == "Top Stories":
-        return [n for n in noticias if n["categoria"] == "Top Stories"]
-    else:
-        return [n for n in noticias if n["categoria"] == filtro]

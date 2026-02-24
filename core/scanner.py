@@ -7,7 +7,6 @@ Incluye sistema de caché TTL para evitar rate-limiting de Yahoo Finance.
 import os
 import csv
 import glob
-import math
 import time
 import logging
 import pandas as pd
@@ -19,7 +18,7 @@ from random import uniform, choice
 logger = logging.getLogger(__name__)
 
 try:
-    from scipy.stats import norm as _norm
+    import scipy.stats  # noqa: F401 – presence check for greeks guard
     _HAS_SCIPY = True
 except ImportError:
     _HAS_SCIPY = False
@@ -556,34 +555,3 @@ def guardar_alerta_csv(carpeta, ticker_sym, alerta):
             writer.writerow(alerta_csv)
     except Exception as e:
         logger.error("Error guardando alerta CSV: %s", e)
-
-
-def cargar_historial_csv(carpeta):
-    """Carga todos los archivos CSV de alertas históricas."""
-    if not os.path.exists(carpeta):
-        return pd.DataFrame()
-
-    archivos = glob.glob(os.path.join(carpeta, "alertas_*.csv"))
-    if not archivos:
-        return pd.DataFrame()
-
-    dfs = []
-    for archivo in archivos:
-        try:
-            df = pd.read_csv(archivo, encoding="utf-8")
-            if not df.empty:
-                dfs.append(df)
-        except Exception as e:
-            logger.warning("Error leyendo CSV %s: %s", archivo, e)
-            continue
-
-    if not dfs:
-        return pd.DataFrame()
-    
-    result_df = pd.concat(dfs, ignore_index=True)
-    
-    # Compatibilidad: renombrar Prima_Volumen a Prima_Total si existe (CSVs antiguos)
-    if "Prima_Volumen" in result_df.columns:
-        result_df = result_df.rename(columns={"Prima_Volumen": "Prima_Total"})
-    
-    return result_df

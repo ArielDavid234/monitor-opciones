@@ -12,13 +12,11 @@ DAYS_PER_YEAR = 365.0              # Días por año para calcular T
 DEFAULT_MIN_VOLUME = 30_000
 DEFAULT_MIN_OI = 10_000
 DEFAULT_MIN_PRIMA = 5_000_000
-DEFAULT_QUICK_FILTER = 1_000
 
 # --- Detección de clusters ---
 CLUSTER_TOLERANCE_PCT = 0.50       # ±50% del umbral de prima
 CLUSTER_TOLERANCE_MULTIPLIER = 3   # Multiplicador rango superior
 CLUSTER_MAX_STRIKE_DIFF = 10       # Diferencia máxima entre strikes
-CLUSTER_MIN_CONTRACTS = 2          # Mínimo de contratos para formar cluster
 CLUSTER_MIN_ALERTS = 2             # Mínimo de alertas para intentar detección
 
 # --- Noticias RSS ---
@@ -33,11 +31,7 @@ AUTO_REFRESH_INTERVAL = 600        # Intervalo auto-refresco en segundos (10 min
 
 # --- Límites de escaneo ---
 MAX_EXPIRATION_DATES = 12          # Máximo de fechas de vencimiento a escanear (cubre la mayoría de tickers)
-QUICK_SCAN_DATES = 4               # Fechas para modo escaneo rápido
 
 # --- Score de proyección ---
 SCORE_THRESHOLD_ALTA = 65
 SCORE_THRESHOLD_MEDIA = 40
-
-# --- UI ---
-SIDEBAR_WIDTH_PX = 310
