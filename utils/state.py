@@ -51,8 +51,6 @@ _DEFAULTS = {
     "umbral_delta": 0.0,
     # Navegación y estado de precio
     "current_page": "\U0001f50d Live Scanning",
-    "nav_radio": "\U0001f50d Live Scanning",
-    "ticker_input": "SPY",
     "rango_delta": DEFAULT_TARGET_DELTA,
     "precio_subyacente": None,
     "last_full_scan": None,
