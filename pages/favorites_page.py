@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 from utils.formatters import (
-    _fmt_monto, _fmt_lado, _fmt_oi_chg,
+    _fmt_monto, _fmt_lado, _fmt_oi_chg, _fmt_delta,
 )
 from utils.favorites import _eliminar_favorito, _guardar_favoritos
 from ui.components import (
@@ -37,7 +37,7 @@ def render(ticker_symbol, **kwargs):
         # Tabla resumen
         fav_df = pd.DataFrame(favoritos)
         cols_tabla_fav = ["Contrato", "Ticker", "Tipo_Opcion", "Strike", "Vencimiento",
-                          "Volumen", "OI", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
+                          "Volumen", "OI", "Delta", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
         cols_disp_fav = [c for c in cols_tabla_fav if c in fav_df.columns]
         display_fav_df = fav_df[cols_disp_fav].copy()
         if "Tipo_Opcion" in display_fav_df.columns and "Lado" in display_fav_df.columns:
@@ -46,6 +46,8 @@ def render(ticker_symbol, **kwargs):
             ))
         if "Tipo_Opcion" in display_fav_df.columns:
             display_fav_df["Tipo_Opcion"] = display_fav_df["Tipo_Opcion"].apply(_type_badge)
+        if "Delta" in display_fav_df.columns:
+            display_fav_df["Delta"] = display_fav_df["Delta"].apply(_fmt_delta)
         if "Lado" in display_fav_df.columns:
             display_fav_df["Lado"] = display_fav_df["Lado"].apply(_fmt_lado)
         if "Prima_Volumen" in display_fav_df.columns:
@@ -159,7 +161,7 @@ def render(ticker_symbol, **kwargs):
         # Tabla resumen
         fav_df = pd.DataFrame(favoritos)
         cols_tabla_fav = ["Contrato", "Ticker", "Tipo_Opcion", "Strike", "Vencimiento",
-                          "Volumen", "OI", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
+                          "Volumen", "OI", "Delta", "Ask", "Bid", "Ultimo", "Lado", "Prima_Volumen"]
         cols_disp_fav = [c for c in cols_tabla_fav if c in fav_df.columns]
         display_fav_df = fav_df[cols_disp_fav].copy()
         if "Tipo_Opcion" in display_fav_df.columns and "Lado" in display_fav_df.columns:
@@ -168,6 +170,8 @@ def render(ticker_symbol, **kwargs):
             ))
         if "Tipo_Opcion" in display_fav_df.columns:
             display_fav_df["Tipo_Opcion"] = display_fav_df["Tipo_Opcion"].apply(_type_badge)
+        if "Delta" in display_fav_df.columns:
+            display_fav_df["Delta"] = display_fav_df["Delta"].apply(_fmt_delta)
         if "Lado" in display_fav_df.columns:
             display_fav_df["Lado"] = display_fav_df["Lado"].apply(_fmt_lado)
         if "Prima_Volumen" in display_fav_df.columns:

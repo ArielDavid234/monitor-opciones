@@ -6,7 +6,7 @@ import streamlit as st
 
 from utils.formatters import (
     _fmt_dolar, _fmt_monto, _fmt_entero, _fmt_iv, _fmt_precio,
-    _fmt_oi, _fmt_oi_chg, _fmt_lado,
+    _fmt_oi, _fmt_oi_chg, _fmt_lado, _fmt_delta,
 )
 from ui.components import (
     render_pro_table, _sentiment_badge, _type_badge,
@@ -472,7 +472,7 @@ def render(ticker_symbol, **kwargs):
     # Top strikes donde se concentra el dinero
     st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Total Ejecutada")
     df_prima_strike = df_analisis.copy()
-    prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI_Chg", "Prima_Vol", "IV", "Ultimo", "Lado", "Flow_Type"]
+    prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI_Chg", "Prima_Vol", "IV", "Delta", "Ultimo", "Lado", "Flow_Type"]
     top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
         [c for c in prima_cols if c in df_prima_strike.columns]
     ].reset_index(drop=True)
@@ -492,6 +492,8 @@ def render(ticker_symbol, **kwargs):
     if "OI_Chg" in top_prima_display.columns:
         top_prima_display["OI_Chg"] = top_prima_display["OI_Chg"].apply(_fmt_oi_chg)
     top_prima_display["IV"] = top_prima_display["IV"].apply(_fmt_iv)
+    if "Delta" in top_prima_display.columns:
+        top_prima_display["Delta"] = top_prima_display["Delta"].apply(_fmt_delta)
     top_prima_display["Ultimo"] = top_prima_display["Ultimo"].apply(_fmt_precio)
     top_prima_display["Strike"] = top_prima_display["Strike"].apply(lambda x: f"${x:,.1f}")
     if "Lado" in top_prima_display.columns:
