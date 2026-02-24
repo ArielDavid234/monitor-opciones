@@ -70,3 +70,65 @@ def _es_favorito(contrato_id):
     """Verifica si un contrato ya está en favoritos."""
     favoritos = st.session_state.get("favoritos", [])
     return any(f.get("Contrato") == contrato_id for f in favoritos)
+
+
+# ============================================================================
+#                    WATCHLIST DE COMPAÑÍAS
+# ============================================================================
+_WATCHLIST_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "watchlist.json"
+)
+
+
+def _cargar_watchlist():
+    """Carga la watchlist de compañías desde archivo JSON."""
+    try:
+        if os.path.exists(_WATCHLIST_PATH):
+            with open(_WATCHLIST_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning("Error cargando watchlist: %s", e)
+    return []
+
+
+def _guardar_watchlist(watchlist):
+    """Guarda la watchlist de compañías en archivo JSON."""
+    try:
+        os.makedirs(os.path.dirname(_WATCHLIST_PATH), exist_ok=True)
+        with open(_WATCHLIST_PATH, "w", encoding="utf-8") as f:
+            json.dump(watchlist, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error("Error guardando watchlist: %s", e)
+
+
+def _agregar_a_watchlist(ticker, nombre=""):
+    """Agrega una compañía a la watchlist. Devuelve (ok: bool, mensaje: str)."""
+    watchlist = st.session_state.get("watchlist", [])
+    ticker = ticker.strip().upper()
+    if not ticker:
+        return False, "El ticker no puede estar vacío"
+    if any(w["ticker"] == ticker for w in watchlist):
+        return False, f"{ticker} ya está en la Watchlist"
+    watchlist.append({
+        "ticker": ticker,
+        "nombre": nombre.strip(),
+        "agregado": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    st.session_state.watchlist = watchlist
+    _guardar_watchlist(watchlist)
+    return True, f"{ticker} agregado a la Watchlist"
+
+
+def _eliminar_de_watchlist(ticker):
+    """Elimina una compañía de la watchlist por su ticker."""
+    watchlist = st.session_state.get("watchlist", [])
+    watchlist = [w for w in watchlist if w["ticker"] != ticker.upper()]
+    st.session_state.watchlist = watchlist
+    _guardar_watchlist(watchlist)
+
+
+def _en_watchlist(ticker):
+    """Verifica si un ticker ya está en la watchlist."""
+    watchlist = st.session_state.get("watchlist", [])
+    return any(w["ticker"] == ticker.upper() for w in watchlist)

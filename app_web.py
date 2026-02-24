@@ -62,6 +62,7 @@ with st.sidebar:
         ],
         index=0,
         label_visibility="collapsed",
+        key="nav_radio",
     )
 
     st.markdown("---")
@@ -79,6 +80,7 @@ ticker_symbol = st.text_input(
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
     placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
     label_visibility="collapsed",
+    key="ticker_input",
 ).strip().upper()
 
 # Detectar cambio de ticker → auto-escanear

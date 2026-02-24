@@ -9,7 +9,7 @@ from config.constants import (
     DEFAULT_MIN_VOLUME, DEFAULT_MIN_OI, DEFAULT_MIN_PRIMA,
     DEFAULT_TARGET_DELTA,
 )
-from utils.favorites import _cargar_favoritos
+from utils.favorites import _cargar_favoritos, _cargar_watchlist
 
 # ============================================================================
 #                    VALORES POR DEFECTO DEL SESSION STATE
@@ -39,6 +39,7 @@ _DEFAULTS = {
     "noticias_auto_refresh": False,
     "noticias_filtro": "Todas",
     "favoritos": [],
+    "watchlist": [],
     "eventos_economicos": [],
     "eventos_last_refresh": None,
     "_wl_consolidadas_shown_hash": None,
@@ -50,6 +51,8 @@ _DEFAULTS = {
     "umbral_delta": 0.0,
     # Navegación y estado de precio
     "current_page": "\U0001f50d Live Scanning",
+    "nav_radio": "\U0001f50d Live Scanning",
+    "ticker_input": "SPY",
     "rango_delta": DEFAULT_TARGET_DELTA,
     "precio_subyacente": None,
     "last_full_scan": None,
@@ -67,3 +70,6 @@ def initialize_session_state():
     # Cargar favoritos desde disco al inicio
     if not st.session_state.favoritos:
         st.session_state.favoritos = _cargar_favoritos()
+    # Cargar watchlist desde disco al inicio
+    if not st.session_state.watchlist:
+        st.session_state.watchlist = _cargar_watchlist()
