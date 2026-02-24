@@ -9,6 +9,7 @@ import csv
 import glob
 import time
 import logging
+import numpy as np
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
@@ -173,6 +174,74 @@ def _calcular_greeks(S, K, T, r_rate, sigma, tipo="call"):
         return _nones
 
 
+# ── Batch vectorizado de Greeks (evita instanciar OptionGreeks por fila) ──
+
+def _calcular_greeks_batch(S, strikes, T_arr, r_rate, iv_arr, tipos):
+    """Calcula Greeks para un DataFrame entero en una sola pasada vectorizada.
+
+    Parámetros
+    ----------
+    S        : float — precio spot del subyacente
+    strikes  : np.ndarray — strikes
+    T_arr    : np.ndarray — tiempo a vencimiento (años) por fila
+    r_rate   : float — tasa libre de riesgo
+    iv_arr   : np.ndarray — IV (decimales, no %) por fila
+    tipos    : np.ndarray de str — "call" o "put" por fila
+
+    Retorna
+    -------
+    dict con arrays: Delta, Gamma, Theta, Rho (floats, NaN donde inválido)
+    """
+    from scipy.stats import norm as _norm_dist
+
+    n = len(strikes)
+    delta_out = np.full(n, np.nan)
+    gamma_out = np.full(n, np.nan)
+    theta_out = np.full(n, np.nan)
+    rho_out = np.full(n, np.nan)
+
+    # Máscara de valores válidos
+    valid = (T_arr > 0) & (iv_arr > 0) & (strikes > 0) & (S > 0)
+    if not valid.any():
+        return {"Delta": delta_out, "Gamma": gamma_out, "Theta": theta_out, "Rho": rho_out}
+
+    K = strikes[valid]
+    T = T_arr[valid]
+    sig = iv_arr[valid]
+    tp = tipos[valid]
+
+    vol_sqrt_T = sig * np.sqrt(T)
+    d1 = (np.log(S / K) + (r_rate + 0.5 * sig**2) * T) / vol_sqrt_T
+    d2 = d1 - vol_sqrt_T
+
+    disc_r = np.exp(-r_rate * T)
+
+    # — Delta —
+    is_call = (tp == "call")
+    delta_v = np.where(is_call, _norm_dist.cdf(d1), _norm_dist.cdf(d1) - 1)
+
+    # — Gamma (igual para calls y puts) —
+    gamma_v = _norm_dist.pdf(d1) / (S * vol_sqrt_T)
+
+    # — Theta (por día calendario) —
+    decay = -S * _norm_dist.pdf(d1) * sig / (2.0 * np.sqrt(T))
+    theta_call = (decay - r_rate * K * disc_r * _norm_dist.cdf(d2)) / 365.0
+    theta_put = (decay + r_rate * K * disc_r * _norm_dist.cdf(-d2)) / 365.0
+    theta_v = np.where(is_call, theta_call, theta_put)
+
+    # — Rho (por 1%) —
+    rho_call = K * T * disc_r * _norm_dist.cdf(d2) / 100.0
+    rho_put = -K * T * disc_r * _norm_dist.cdf(-d2) / 100.0
+    rho_v = np.where(is_call, rho_call, rho_put)
+
+    delta_out[valid] = np.round(delta_v, 4)
+    gamma_out[valid] = np.round(gamma_v, 6)
+    theta_out[valid] = np.round(theta_v, 4)
+    rho_out[valid] = np.round(rho_v, 4)
+
+    return {"Delta": delta_out, "Gamma": gamma_out, "Theta": theta_out, "Rho": rho_out}
+
+
 def _clasificar_lado(last_price, bid, ask):
     """Clasifica si la transacción se ejecutó al Bid, Ask o Mid.
     
@@ -207,6 +276,11 @@ BROWSER_PROFILES = [
 ]
 
 
+# ── Session pool: reutiliza sesiones TLS para evitar handshakes repetidos ──
+_SESSION_POOL: list = []     # [(session, perfil), ...]
+_SESSION_POOL_SIZE = 4       # Máximo de sesiones pre-creadas
+
+
 def crear_sesion_nueva():
     """Crea sesión HTTP con perfil TLS anti-ban.
     
@@ -228,6 +302,24 @@ def crear_sesion_nueva():
         return session, "requests-fallback"
 
 
+def _get_pooled_session():
+    """Obtiene una sesión del pool o crea una nueva.
+
+    Reutilizar sesiones evita el costo del TLS handshake (~200-500ms)
+    en cada llamada a yfinance. El pool rota perfiles para anti-ban.
+    """
+    if _SESSION_POOL:
+        return _SESSION_POOL.pop()
+    return crear_sesion_nueva()
+
+
+def _return_session(session, perfil):
+    """Devuelve una sesión al pool si no está lleno."""
+    if len(_SESSION_POOL) < _SESSION_POOL_SIZE:
+        _SESSION_POOL.append((session, perfil))
+    # Si el pool está lleno, la sesión se descarta (GC)
+
+
 def construir_simbolo_contrato(ticker_sym, exp_date, opt_type, strike):
     """Construye el símbolo del contrato de opción en formato Yahoo Finance.
     Ej: SPY260220C00600000 = SPY, 2026-02-20, CALL, strike 600"""
@@ -243,11 +335,12 @@ def obtener_historial_contrato(contract_symbol):
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            session, _ = crear_sesion_nueva()
+            session, perfil = _get_pooled_session()
             contract = yf.Ticker(contract_symbol, session=session)
             hist = contract.history(period="1mo")
             if hist.empty:
                 hist = contract.history(period="5d")
+            _return_session(session, perfil)
             return hist, None
         except Exception as e:
             error_msg = str(e).lower()
@@ -281,10 +374,11 @@ def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
     # Cache miss — fetch con retries
     for attempt in range(max_retries):
         try:
-            session, _ = crear_sesion_nueva()
+            session, perfil = _get_pooled_session()
             ticker = yf.Ticker(ticker_sym, session=session)
             raw_chain = ticker.option_chain(exp_date)
             chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
+            _return_session(session, perfil)
             return exp_date, chain_data, None
         except Exception as e:
             error_msg = str(e).lower()
@@ -363,7 +457,7 @@ def ejecutar_escaneo(
     if paralelo and len(dates_to_scan) > 2:
         # Modo paralelo: fetch múltiples fechas simultáneamente
         logger.info("Escaneo paralelo activado para %d fechas", len(dates_to_scan))
-        with ThreadPoolExecutor(max_workers=min(2, len(dates_to_scan))) as executor:
+        with ThreadPoolExecutor(max_workers=min(4, len(dates_to_scan))) as executor:
             future_to_date = {
                 executor.submit(fetch_with_cache, ticker_sym, exp_date): exp_date
                 for exp_date in dates_to_scan
@@ -417,106 +511,150 @@ def ejecutar_escaneo(
             if chain_data:
                 chains_map[exp_date] = chain_data
     
-    # Procesar todas las cadenas obtenidas
+    # Procesar todas las cadenas obtenidas — VECTORIZADO
+
+    _now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     for exp_date in dates_to_scan:
         chain_data = chains_map.get(exp_date)
         if chain_data is None:
             continue
 
         try:
+            # Calcular DTE una sola vez por fecha
+            try:
+                exp_dt_d = datetime.strptime(exp_date, "%Y-%m-%d")
+                dte_years = max((exp_dt_d - _today).total_seconds() / (365 * 86400), 1e-6)
+            except Exception:
+                dte_years = 1e-6
+
             for opt_type, df in [("CALL", chain_data["calls"]), ("PUT", chain_data["puts"])]:
-                # Filtrado rápido: eliminar filas con volumen=0 antes de iterar
-                df_filtered = df[df["volume"].notna() & (df["volume"] > 0)].copy()
-                
-                for _, row in df_filtered.iterrows():
-                    vol = int(_safe_num(row["volume"]))
-                    oi = int(_safe_num(row["openInterest"]))
+                # Filtrado rápido vectorizado: eliminar filas con volumen=0
+                df_f = df[df["volume"].notna() & (df["volume"] > 0)].copy()
+                if df_f.empty:
+                    continue
 
-                    iv = _safe_num(row.get("impliedVolatility", 0))
-                    ask_val = _safe_num(row.get("ask", 0))
-                    bid_val = _safe_num(row.get("bid", 0))
-                    last_val = _safe_num(row.get("lastPrice", 0))
-                    price_volume = (
-                        ask_val if ask_val > 0 else (last_val if last_val > 0 else 0)
-                    )
+                # Extraer arrays (0 donde NaN)
+                vol_arr = df_f["volume"].fillna(0).astype(int).values
+                oi_arr = df_f["openInterest"].fillna(0).astype(int).values
+                iv_arr = df_f["impliedVolatility"].fillna(0).values
+                ask_arr = df_f["ask"].fillna(0).values
+                bid_arr = df_f["bid"].fillna(0).values
+                last_arr = df_f["lastPrice"].fillna(0).values
+                strike_arr = df_f["strike"].values
 
-                    volume_premium = vol * price_volume * 100
+                # Precio para calcular prima: ask si > 0, sino last, sino 0
+                price_vol = np.where(ask_arr > 0, ask_arr, np.where(last_arr > 0, last_arr, 0.0))
+                prima_arr = vol_arr * price_vol * 100
 
-                    lado = _clasificar_lado(last_val, bid_val, ask_val)
-
-                    # Calcular delta Black-Scholes
-                    try:
-                        exp_dt_d = datetime.strptime(exp_date, "%Y-%m-%d")
-                        dte_years = max((exp_dt_d - _today).total_seconds() / (365 * 86400), 1e-6)
-                    except Exception:
-                        dte_years = 1e-6
-                    greeks = _calcular_greeks(
-                        _precio_sub or row["strike"],
-                        row["strike"],
-                        dte_years,
-                        RISK_FREE_RATE,
-                        iv if iv > 0 else 0,
-                        tipo="call" if opt_type == "CALL" else "put",
-                    ) if _precio_sub else {"Delta": None, "Gamma": None, "Theta": None, "Rho": None}
-
-                    datos.append(
-                        {
-                            "Vencimiento": exp_date,
-                            "Tipo": opt_type,
-                            "Strike": row["strike"],
-                            "Volumen": vol,
-                            "OI": oi,
-                            "Ask": round(ask_val, 2),
-                            "Bid": round(bid_val, 2),
-                            "Ultimo": round(last_val, 2),
-                            "IV": round(iv * 100, 2) if iv else 0,
-                            "Prima_Volumen": round(volume_premium, 0),
-                            "Lado": lado,
-                            "Delta": greeks["Delta"],
-                            "Gamma": greeks["Gamma"],
-                            "Theta": greeks["Theta"],
-                            "Rho": greeks["Rho"],
-                        }
-                    )
-
-                    # Filtrar por los tres umbrales: volumen, OI y prima
-                    if vol < u_vol or oi < u_oi or volume_premium < u_prima:
-                        continue
-
-                    # Si llega aquí, pasó todos los umbrales → es alerta PRINCIPAL
-                    tipo_alerta = "PRINCIPAL"
-
-                    if tipo_alerta:
-                        contract_sym = construir_simbolo_contrato(
-                            ticker_sym, exp_date, opt_type, row["strike"]
+                # Clasificar lado vectorizado
+                lado_arr = np.full(len(df_f), "N/A", dtype=object)
+                has_data = (ask_arr > 0) | (bid_arr > 0)
+                has_last = last_arr > 0
+                lado_arr = np.where(
+                    ~has_data | ~has_last, "N/A",
+                    np.where(
+                        (ask_arr > 0) & (last_arr >= ask_arr), "Ask",
+                        np.where(
+                            (bid_arr > 0) & (last_arr <= bid_arr), "Bid",
+                            np.where(
+                                (bid_arr > 0) & (ask_arr > 0) & (bid_arr < last_arr) & (last_arr < ask_arr),
+                                "Mid", "N/A"
+                            )
                         )
-                        alerta = {
-                            "Fecha_Hora": datetime.now().strftime(
-                                "%Y-%m-%d %H:%M:%S"
-                            ),
-                            "Ticker": ticker_sym,
-                            "Tipo_Alerta": tipo_alerta,
-                            "Tipo_Opcion": opt_type,
-                            "Vencimiento": exp_date,
-                            "Strike": row["strike"],
-                            "Volumen": vol,
-                            "OI": oi,
-                            "Prima_Volumen": round(volume_premium, 0),
-                            "Ask": round(ask_val, 2),
-                            "Bid": round(bid_val, 2),
-                            "Ultimo": round(last_val, 2),
-                            "IV": round(iv * 100, 2) if iv else 0,
-                            "Contrato": contract_sym,
-                            "Lado": lado,
-                            "Delta": greeks["Delta"],
-                            "Gamma": greeks["Gamma"],
-                            "Theta": greeks["Theta"],
-                            "Rho": greeks["Rho"],
-                        }
-                        alertas.append(alerta)
+                    )
+                )
 
-                        if guardar:
-                            guardar_alerta_csv(carpeta_csv, ticker_sym, alerta)
+                # Greeks vectorizados en batch
+                tipo_lower = "call" if opt_type == "CALL" else "put"
+                tipos_arr = np.full(len(df_f), tipo_lower)
+                T_arr = np.full(len(df_f), dte_years)
+
+                if _precio_sub and _HAS_SCIPY:
+                    greeks = _calcular_greeks_batch(
+                        _precio_sub, strike_arr, T_arr, RISK_FREE_RATE, iv_arr, tipos_arr
+                    )
+                else:
+                    greeks = {
+                        "Delta": np.full(len(df_f), np.nan),
+                        "Gamma": np.full(len(df_f), np.nan),
+                        "Theta": np.full(len(df_f), np.nan),
+                        "Rho": np.full(len(df_f), np.nan),
+                    }
+
+                # Construir resultados sin iterrows — list comprehension sobre arrays
+                iv_pct = np.round(iv_arr * 100, 2)
+                ask_r = np.round(ask_arr, 2)
+                bid_r = np.round(bid_arr, 2)
+                last_r = np.round(last_arr, 2)
+                prima_r = np.round(prima_arr, 0)
+
+                for i in range(len(df_f)):
+                    d_val = greeks["Delta"][i]
+                    g_val = greeks["Gamma"][i]
+                    t_val = greeks["Theta"][i]
+                    r_val = greeks["Rho"][i]
+                    delta = round(float(d_val), 4) if not np.isnan(d_val) else None
+                    gamma = round(float(g_val), 6) if not np.isnan(g_val) else None
+                    theta = round(float(t_val), 4) if not np.isnan(t_val) else None
+                    rho = round(float(r_val), 4) if not np.isnan(r_val) else None
+
+                    datos.append({
+                        "Vencimiento": exp_date,
+                        "Tipo": opt_type,
+                        "Strike": strike_arr[i],
+                        "Volumen": int(vol_arr[i]),
+                        "OI": int(oi_arr[i]),
+                        "Ask": float(ask_r[i]),
+                        "Bid": float(bid_r[i]),
+                        "Ultimo": float(last_r[i]),
+                        "IV": float(iv_pct[i]) if iv_arr[i] else 0,
+                        "Prima_Volumen": float(prima_r[i]),
+                        "Lado": lado_arr[i],
+                        "Delta": delta,
+                        "Gamma": gamma,
+                        "Theta": theta,
+                        "Rho": rho,
+                    })
+
+                # Alertas: filtro vectorizado por umbrales
+                mask_alerta = (vol_arr >= u_vol) & (oi_arr >= u_oi) & (prima_arr >= u_prima)
+                alerta_indices = np.where(mask_alerta)[0]
+
+                for idx in alerta_indices:
+                    contract_sym = construir_simbolo_contrato(
+                        ticker_sym, exp_date, opt_type, strike_arr[idx]
+                    )
+                    d_a = greeks["Delta"][idx]
+                    g_a = greeks["Gamma"][idx]
+                    t_a = greeks["Theta"][idx]
+                    r_a = greeks["Rho"][idx]
+
+                    alerta = {
+                        "Fecha_Hora": _now_str,
+                        "Ticker": ticker_sym,
+                        "Tipo_Alerta": "PRINCIPAL",
+                        "Tipo_Opcion": opt_type,
+                        "Vencimiento": exp_date,
+                        "Strike": strike_arr[idx],
+                        "Volumen": int(vol_arr[idx]),
+                        "OI": int(oi_arr[idx]),
+                        "Prima_Volumen": float(prima_r[idx]),
+                        "Ask": float(ask_r[idx]),
+                        "Bid": float(bid_r[idx]),
+                        "Ultimo": float(last_r[idx]),
+                        "IV": float(iv_pct[idx]) if iv_arr[idx] else 0,
+                        "Contrato": contract_sym,
+                        "Lado": lado_arr[idx],
+                        "Delta": round(float(d_a), 4) if not np.isnan(d_a) else None,
+                        "Gamma": round(float(g_a), 6) if not np.isnan(g_a) else None,
+                        "Theta": round(float(t_a), 4) if not np.isnan(t_a) else None,
+                        "Rho": round(float(r_a), 4) if not np.isnan(r_a) else None,
+                    }
+                    alertas.append(alerta)
+
+                    if guardar:
+                        guardar_alerta_csv(carpeta_csv, ticker_sym, alerta)
 
         except Exception:
             continue

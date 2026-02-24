@@ -18,6 +18,27 @@ except ImportError:
     _HAS_CURL_CFFI = False
 
 
+# ── Caché TTL para evitar refetches redundantes ─────────────────────────────
+_OI_CACHE: dict[tuple[str, str], tuple[float, pd.DataFrame | None, str | None]] = {}
+_OI_CACHE_TTL = 300  # 5 minutos
+
+
+def _oi_cache_get(key: tuple[str, str]):
+    """Devuelve (df, error) si existe y no expiró, sino None."""
+    entry = _OI_CACHE.get(key)
+    if entry is None:
+        return None
+    ts, df, err = entry
+    if time.time() - ts > _OI_CACHE_TTL:
+        _OI_CACHE.pop(key, None)
+        return None
+    return (df, err)
+
+
+def _oi_cache_set(key: tuple[str, str], df, err):
+    _OI_CACHE[key] = (time.time(), df, err)
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _safe_int(val, default=0):
@@ -163,6 +184,8 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
     negativos están en la página 12-13. Barchart rate-limita antes de llegar.
     Con la estrategia dual, los negativos están en la página 1 del fetch ASC.
 
+    Incluye caché TTL de 5 min para evitar refetches redundantes.
+
     Args:
         simbolo: ticker del underlying (ej: "SPY", "AAPL")
         tipo: "call", "put" o "ambos"
@@ -171,6 +194,11 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
     Returns:
         (DataFrame, None) en éxito, o (None, str_error) en fallo
     """
+    # Verificar caché TTL
+    cache_key = (simbolo.upper(), tipo.lower())
+    cached = _oi_cache_get(cache_key)
+    if cached is not None:
+        return cached
 
     def _fetch_direction(order_dir, max_rows=99999):
         """Fetch paginado en una dirección hasta agotar los no-cero o max_rows."""
@@ -286,7 +314,9 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
 
         all_frames = frames_desc + frames_asc
         if not all_frames:
-            return None, f"Sin datos de Barchart para {simbolo.upper()}"
+            result = (None, f"Sin datos de Barchart para {simbolo.upper()}")
+            _oi_cache_set(cache_key, *result)
+            return result
 
         df = pd.concat(all_frames, ignore_index=True)
 
@@ -299,9 +329,14 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
         df = df[df["OI_Chg"] != 0].reset_index(drop=True)
 
         df = df.sort_values("OI_Chg", ascending=False).reset_index(drop=True)
+        _oi_cache_set(cache_key, df, None)
         return df, None
 
     except ConnectionError as e:
-        return None, str(e)
+        result = (None, str(e))
+        _oi_cache_set(cache_key, *result)
+        return result
     except Exception as e:
-        return None, f"Error al consultar Barchart para {simbolo}: {e}"
+        result = (None, f"Error al consultar Barchart para {simbolo}: {e}")
+        _oi_cache_set(cache_key, *result)
+        return result

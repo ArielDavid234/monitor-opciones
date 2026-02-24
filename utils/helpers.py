@@ -97,16 +97,25 @@ def _inyectar_oi_chg_barchart():
     if bc is None or bc.empty:
         return
 
-    # Crear mapa (Vencimiento, Tipo, Strike) → OI_Chg de Barchart
-    bc_map = {}
-    for _, row in bc.iterrows():
-        tipo = row.get("Tipo", "")
-        strike = row.get("Strike", 0)
-        venc = row.get("Vencimiento", "")
-        oi_chg = int(row.get("OI_Chg", 0) or 0)
-        key = (str(venc), tipo, float(strike))
-        if key not in bc_map or abs(oi_chg) > abs(bc_map[key]):
-            bc_map[key] = oi_chg
+    # Crear mapa (Vencimiento, Tipo, Strike) → OI_Chg de Barchart — vectorizado
+    try:
+        bc_clean = bc[["Vencimiento", "Tipo", "Strike", "OI_Chg"]].copy()
+        bc_clean["Vencimiento"] = bc_clean["Vencimiento"].astype(str)
+        bc_clean["Strike"] = bc_clean["Strike"].astype(float)
+        bc_clean["OI_Chg"] = bc_clean["OI_Chg"].fillna(0).astype(int)
+        bc_clean["abs_chg"] = bc_clean["OI_Chg"].abs()
+        # Quedarse con el mayor |OI_Chg| por clave
+        bc_dedup = bc_clean.sort_values("abs_chg", ascending=False).drop_duplicates(
+            subset=["Vencimiento", "Tipo", "Strike"], keep="first"
+        )
+        bc_map = dict(
+            zip(
+                zip(bc_dedup["Vencimiento"], bc_dedup["Tipo"], bc_dedup["Strike"]),
+                bc_dedup["OI_Chg"],
+            )
+        )
+    except (KeyError, ValueError):
+        return
 
     if not bc_map:
         return
@@ -139,96 +148,88 @@ def _inyectar_oi_chg_barchart():
 #                    ENRIQUECIMIENTO DE DATOS
 # ============================================================================
 def _enriquecer_datos_opcion(datos, precio_subyacente=None):
-    """Enriquece datos de opciones con métricas derivadas calculadas."""
+    """Enriquece datos de opciones con métricas derivadas calculadas — vectorizado."""
     if not isinstance(datos, (list, pd.DataFrame)):
         return datos
-    
-    # Si es DataFrame, convertir a lista de dicts
-    if isinstance(datos, pd.DataFrame):
-        datos_lista = datos.to_dict('records')
+
+    was_list = not isinstance(datos, pd.DataFrame)
+    df = pd.DataFrame(datos) if was_list else datos.copy()
+
+    if df.empty:
+        return datos
+
+    # Extraer columnas como arrays numéricos
+    ask = pd.to_numeric(df.get("Ask", 0), errors="coerce").fillna(0)
+    bid = pd.to_numeric(df.get("Bid", 0), errors="coerce").fillna(0)
+    strike = pd.to_numeric(df.get("Strike", 0), errors="coerce").fillna(0)
+    volumen = pd.to_numeric(df.get("Volumen", 0), errors="coerce").fillna(0).astype(int)
+    oi = pd.to_numeric(df.get("OI", 0), errors="coerce").fillna(0).astype(int)
+    last_price = pd.to_numeric(df.get("Ultimo", 0), errors="coerce").fillna(0)
+
+    # Bid/Ask Spread
+    has_ask_bid = (ask > 0) & (bid > 0)
+    spread = np.where(has_ask_bid, ask - bid, np.nan)
+    spread_pct = np.where(has_ask_bid & (ask > 0), (spread / ask) * 100, np.nan)
+    mid_price = np.where(has_ask_bid, (ask + bid) / 2,
+                         np.where(last_price > 0, last_price, np.nan))
+
+    df["Spread"] = spread
+    df["Spread_Pct"] = spread_pct
+    df["Mid_Price"] = mid_price
+
+    # Volume/OI Ratio
+    df["Vol_OI_Ratio"] = np.where(oi > 0, volumen / oi, 0)
+
+    # Liquidity Score (0-100)
+    vol_score = np.minimum(volumen / 100, 1) * 40
+    oi_score = np.minimum(oi / 500, 1) * 30
+    sp_arr = np.array(spread_pct, dtype=float)
+    valid_sp = ~np.isnan(sp_arr) & (sp_arr > 0)
+    spread_score = np.where(valid_sp, np.maximum(0, 1 - sp_arr / 10) * 30, 0)
+    df["Liquidity_Score"] = vol_score + oi_score + spread_score
+
+    # Moneyness y Distance_Pct
+    if precio_subyacente and precio_subyacente > 0:
+        tipo_col = df.get("Tipo_Opcion", df.get("Tipo", pd.Series([""] * len(df))))
+        is_call = tipo_col.str.upper() == "CALL"
+        moneyness_ratio = np.where(is_call, strike / precio_subyacente, precio_subyacente / strike)
+        moneyness_label = np.where(
+            strike <= 0, "N/A",
+            np.where(moneyness_ratio < 0.95, "ITM",
+                     np.where(moneyness_ratio > 1.05, "OTM", "ATM"))
+        )
+        df["Moneyness"] = moneyness_label
+        df["Distance_Pct"] = np.where(
+            strike > 0, np.abs(strike - precio_subyacente) / precio_subyacente * 100, 0
+        )
     else:
-        datos_lista = datos.copy()
-    
-    for item in datos_lista:
-        try:
-            # Básicos
-            ask = float(item.get('Ask', 0) or 0)
-            bid = float(item.get('Bid', 0) or 0) 
-            strike = float(item.get('Strike', 0) or 0)
-            volumen = int(item.get('Volumen', 0) or 0)
-            oi = int(item.get('OI', 0) or 0)
-            # iv is extracted by enrichment logic in scanner, not used here directly
-            
-            # Bid/Ask Spread
-            if ask > 0 and bid > 0:
-                spread = ask - bid
-                spread_pct = (spread / ask) * 100 if ask > 0 else 0
-                item['Spread'] = spread
-                item['Spread_Pct'] = spread_pct
-                item['Mid_Price'] = (ask + bid) / 2
-            else:
-                last_price = float(item.get('Ultimo', 0) or 0)
-                item['Spread'] = np.nan
-                item['Spread_Pct'] = np.nan
-                item['Mid_Price'] = last_price if last_price > 0 else np.nan
-            
-            # Volume/OI Ratio
-            item['Vol_OI_Ratio'] = volumen / oi if oi > 0 else 0
-            
-            # Liquidity Score (0-100)
-            vol_score = min(volumen / 100, 1) * 40
-            oi_score = min(oi / 500, 1) * 30
-            spread_pct_val = item.get('Spread_Pct')
-            if pd.notna(spread_pct_val) and spread_pct_val > 0:
-                spread_score = max(0, 1 - spread_pct_val/10) * 30
-            else:
-                spread_score = 0
-            item['Liquidity_Score'] = vol_score + oi_score + spread_score
-            
-            # Moneyness
-            if precio_subyacente and strike > 0:
-                if item.get('Tipo_Opcion', '') == 'CALL' or item.get('Tipo', '') == 'CALL':
-                    moneyness = strike / precio_subyacente
-                    if moneyness < 0.95:
-                        item['Moneyness'] = 'ITM'
-                    elif moneyness > 1.05:
-                        item['Moneyness'] = 'OTM'
-                    else:
-                        item['Moneyness'] = 'ATM'
-                else:
-                    moneyness = precio_subyacente / strike
-                    if moneyness < 0.95:
-                        item['Moneyness'] = 'ITM' 
-                    elif moneyness > 1.05:
-                        item['Moneyness'] = 'OTM'
-                    else:
-                        item['Moneyness'] = 'ATM'
-                item['Distance_Pct'] = abs(strike - precio_subyacente) / precio_subyacente * 100
-            else:
-                item['Moneyness'] = 'N/A'
-                item['Distance_Pct'] = 0
-            
-            # Premium/Underlying Ratio
-            mid_price = item.get('Mid_Price')
-            if precio_subyacente and mid_price is not None and not np.isnan(mid_price) and mid_price > 0:
-                item['Premium_Ratio'] = (mid_price / precio_subyacente) * 100
-            else:
-                item['Premium_Ratio'] = np.nan
-            
-            # Time Value
-            if precio_subyacente and strike > 0 and mid_price is not None and not np.isnan(mid_price) and mid_price > 0:
-                tipo = item.get('Tipo_Opcion', item.get('Tipo', ''))
-                if tipo == 'CALL':
-                    intrinsic = max(precio_subyacente - strike, 0)
-                else:
-                    intrinsic = max(strike - precio_subyacente, 0)
-                item['Time_Value'] = max(mid_price - intrinsic, 0)
-                item['Time_Value_Pct'] = (item['Time_Value'] / mid_price * 100) if mid_price > 0 else 0
-            else:
-                item['Time_Value'] = np.nan
-                item['Time_Value_Pct'] = np.nan
-                
-        except (ValueError, TypeError, KeyError):
-            continue
-    
-    return datos_lista if not isinstance(datos, pd.DataFrame) else pd.DataFrame(datos_lista)
+        df["Moneyness"] = "N/A"
+        df["Distance_Pct"] = 0
+
+    # Premium/Underlying Ratio
+    mid_arr = np.array(mid_price, dtype=float)
+    if precio_subyacente and precio_subyacente > 0:
+        valid_mid = ~np.isnan(mid_arr) & (mid_arr > 0)
+        df["Premium_Ratio"] = np.where(valid_mid, (mid_arr / precio_subyacente) * 100, np.nan)
+    else:
+        df["Premium_Ratio"] = np.nan
+
+    # Time Value
+    if precio_subyacente and precio_subyacente > 0:
+        tipo_col2 = df.get("Tipo_Opcion", df.get("Tipo", pd.Series([""] * len(df))))
+        is_call2 = tipo_col2.str.upper() == "CALL"
+        intrinsic = np.where(
+            is_call2,
+            np.maximum(precio_subyacente - strike, 0),
+            np.maximum(strike - precio_subyacente, 0),
+        )
+        valid_tv = ~np.isnan(mid_arr) & (mid_arr > 0) & (strike > 0)
+        tv = np.where(valid_tv, np.maximum(mid_arr - intrinsic, 0), np.nan)
+        tv_pct = np.where(valid_tv & (mid_arr > 0), tv / mid_arr * 100, np.nan)
+        df["Time_Value"] = tv
+        df["Time_Value_Pct"] = tv_pct
+    else:
+        df["Time_Value"] = np.nan
+        df["Time_Value_Pct"] = np.nan
+
+    return df.to_dict("records") if was_list else df
