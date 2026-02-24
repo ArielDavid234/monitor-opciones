@@ -310,7 +310,6 @@ def fetch_with_cache(ticker_sym: str, exp_date: str):
     exp_date, chain_data, error = result
     if chain_data is not None:
         cache_chain(ticker_sym, exp_date, chain_data)
-        time.sleep(2.5)  # sleep más seguro entre peticiones nuevas
     return result
 
 
