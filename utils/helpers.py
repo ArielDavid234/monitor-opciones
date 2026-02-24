@@ -12,6 +12,7 @@ import streamlit as st
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
 from core.watchlist_builder import construir_watchlist_consolidadas, construir_watchlist_emergentes
 from core.barchart_oi import obtener_oi_simbolo
+from core.flow_classifier import classify_flow_bulk
 
 logger = logging.getLogger(__name__)
 
@@ -231,5 +232,8 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
     else:
         df["Time_Value"] = np.nan
         df["Time_Value_Pct"] = np.nan
+
+    # Flow Type — clasificación institucional del flujo
+    df["Flow_Type"] = classify_flow_bulk(df)
 
     return df.to_dict("records") if was_list else df

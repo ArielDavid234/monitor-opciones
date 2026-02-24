@@ -712,6 +712,23 @@ CSS_STYLES = """
         background: rgba(245,158,11,0.12); color: #fbbf24;
         border: 1px solid rgba(245,158,11,0.25);
     }
+    /* Flow Type badges */
+    .ok-badge-hedge {
+        background: rgba(245,158,11,0.13); color: #f59e0b;
+        border: 1px solid rgba(245,158,11,0.25);
+    }
+    .ok-badge-sellprem {
+        background: rgba(59,130,246,0.13); color: #60a5fa;
+        border: 1px solid rgba(59,130,246,0.25);
+    }
+    .ok-badge-spread {
+        background: rgba(148,163,184,0.12); color: #94a3b8;
+        border: 1px solid rgba(148,163,184,0.18);
+    }
+    .ok-badge-unclass {
+        background: rgba(100,116,139,0.10); color: #64748b;
+        border: 1px solid rgba(100,116,139,0.15);
+    }
     /* Up/Down delta arrows in cells */
     .ok-up { color: #00ff88; }
     .ok-down { color: #ef4444; }

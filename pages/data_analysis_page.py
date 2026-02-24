@@ -11,6 +11,7 @@ from utils.formatters import (
 from ui.components import (
     render_pro_table, _sentiment_badge, _type_badge,
 )
+from core.flow_classifier import classify_flow_type, flow_badge
 
 
 def render(ticker_symbol, **kwargs):
@@ -471,7 +472,7 @@ def render(ticker_symbol, **kwargs):
     # Top strikes donde se concentra el dinero
     st.markdown("#### 🎯 Top 15 Strikes con Mayor Prima Total Ejecutada")
     df_prima_strike = df_analisis.copy()
-    prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI_Chg", "Prima_Vol", "IV", "Ultimo", "Lado"]
+    prima_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "OI_Chg", "Prima_Vol", "IV", "Ultimo", "Lado", "Flow_Type"]
     top_prima = df_prima_strike.nlargest(15, "Prima_Vol")[
         [c for c in prima_cols if c in df_prima_strike.columns]
     ].reset_index(drop=True)
@@ -495,6 +496,10 @@ def render(ticker_symbol, **kwargs):
     top_prima_display["Strike"] = top_prima_display["Strike"].apply(lambda x: f"${x:,.1f}")
     if "Lado" in top_prima_display.columns:
         top_prima_display["Lado"] = top_prima_display["Lado"].apply(_fmt_lado)
+    # Flow Type
+    if "Flow_Type" not in top_prima_display.columns:
+        top_prima_display["Flow_Type"] = top_prima.apply(classify_flow_type, axis=1)
+    top_prima_display["Flow_Type"] = top_prima_display["Flow_Type"].apply(flow_badge)
 
     st.markdown(
         render_pro_table(top_prima_display, title="🎯 Top 15 Mayor Prima Ejecutada", badge_count="15"),

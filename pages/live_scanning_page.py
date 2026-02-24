@@ -17,6 +17,7 @@ from utils.formatters import (
 )
 from utils.favorites import _es_favorito, _agregar_favorito
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart, _enriquecer_datos_opcion
+from core.flow_classifier import classify_flow_type, flow_badge
 from ui.components import (
     render_metric_card, render_metric_row,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge,
@@ -472,6 +473,10 @@ def render(ticker_symbol, **kwargs):
 
         alertas_df.insert(0, "Prioridad", alertas_df.apply(asignar_prioridad, axis=1))
         alertas_df.insert(1, "Sentimiento", alertas_df.apply(_sent_badge_row, axis=1))
+        # Flow Type — clasificación institucional del flujo
+        if "Flow_Type" not in alertas_df.columns:
+            alertas_df["Flow_Type"] = alertas_df.apply(classify_flow_type, axis=1)
+        alertas_df["Flow_Type"] = alertas_df["Flow_Type"].apply(flow_badge)
         if "Tipo_Opcion" in alertas_df.columns:
             alertas_df["Tipo_Opcion"] = alertas_df["Tipo_Opcion"].apply(_type_badge)
         if "Lado" in alertas_df.columns:
@@ -628,10 +633,15 @@ def render(ticker_symbol, **kwargs):
                     display_df["Theta"] = display_df["Theta"].apply(_fmt_theta)
                 if "Rho" in display_df.columns:
                     display_df["Rho"] = display_df["Rho"].apply(_fmt_rho)
+                # Flow Type badge
+                if "Flow_Type" not in display_df.columns:
+                    display_df["Flow_Type"] = display_df.apply(classify_flow_type, axis=1)
 
                 cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
+                cols_order = ["Flow_Type"] + [c for c in display_df.columns if c != "Flow_Type" and c not in cols_ocultar_df]
+                cols_order = [c for c in cols_order if c in display_df.columns]
                 st.dataframe(
-                    display_df.drop(columns=cols_ocultar_df, errors="ignore").sort_values("Volumen", ascending=False),
+                    display_df[cols_order].sort_values("Volumen", ascending=False),
                     use_container_width=True,
                     hide_index=True,
                     height=600,
@@ -692,10 +702,15 @@ def render(ticker_symbol, **kwargs):
             display_df["Theta"] = display_df["Theta"].apply(_fmt_theta)
         if "Rho" in display_df.columns:
             display_df["Rho"] = display_df["Rho"].apply(_fmt_rho)
+        # Flow Type badge
+        if "Flow_Type" not in display_df.columns:
+            display_df["Flow_Type"] = display_df.apply(classify_flow_type, axis=1)
 
         cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
+        cols_order = ["Flow_Type"] + [c for c in display_df.columns if c != "Flow_Type" and c not in cols_ocultar_df]
+        cols_order = [c for c in cols_order if c in display_df.columns]
         st.dataframe(
-            display_df.drop(columns=cols_ocultar_df, errors="ignore").sort_values("Volumen", ascending=False),
+            display_df[cols_order].sort_values("Volumen", ascending=False),
             use_container_width=True,
             hide_index=True,
             height=500,
@@ -763,7 +778,7 @@ def render(ticker_symbol, **kwargs):
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
+            cols_mostrar = ['Sentimiento', 'Flow_Type', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 

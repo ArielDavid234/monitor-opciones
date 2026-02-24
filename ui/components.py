@@ -739,6 +739,7 @@ _SPECIAL_COLS = {
     "Tipo": "type",
     "Tipo_Opcion": "type",
     "Prioridad": "priority",
+    "Flow_Type": "flow",
 }
 
 _NUMERIC_COLS = {
@@ -809,6 +810,9 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
                     val = _type_badge(str(val))
                 elif fmt_kind == "priority":
                     val = _priority_badge(str(val))
+                elif fmt_kind == "flow":
+                    from core.flow_classifier import flow_badge as _flow_badge
+                    val = _flow_badge(str(val))
             elif col == "OI_Chg" or col == "OI Chg":
                 val = _delta_cell(val)
 
