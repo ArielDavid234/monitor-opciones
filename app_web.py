@@ -38,7 +38,6 @@ from core.scanner import (
     BROWSER_PROFILES, crear_sesion_nueva, obtener_historial_contrato,
     ejecutar_escaneo, cargar_historial_csv,
     obtener_precio_actual, limpiar_cache_ticker,
-    q,
 )
 from core.projections import analizar_proyeccion_empresa
 from core.expected_move import calcular_expected_move, calcular_em_straddle
@@ -766,7 +765,7 @@ if pagina == "🔍 Live Scanning":
     # === COOLDOWN ANTI-RATE-LIMIT ===
     cooldown_segundos = 75  # 75 seg = 1 min 15 seg (ajustable)
 
-    # Iniciar escaneo (síncrono con st.status — compatible con Streamlit Cloud)
+    # Iniciar escaneo (síncrono — compatible con Streamlit Cloud)
     if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
         ahora = datetime.now()
 
@@ -779,32 +778,73 @@ if pagina == "🔍 Live Scanning":
 
         st.session_state.last_full_scan = ahora
         st.session_state.scanning_active = True
-        st.session_state.scan_error = None
 
-        try:
-            # Encolar el escaneo pesado (no bloquea la UI)
-            job = q.enqueue(
-                ejecutar_escaneo,
-                ticker_symbol,
-                umbral_vol,
-                umbral_oi,
-                umbral_prima,
-                0,
-                csv_carpeta,
-                guardar_csv,
-                paralelo=True,
-                job_timeout=180,      # 3 minutos máximo
-                result_ttl=300        # resultado vive 5 min
-            )
+        # Guardar datos anteriores para comparar OI
+        if st.session_state.datos_completos:
+            st.session_state.datos_anteriores = st.session_state.datos_completos.copy()
 
-            st.session_state.scan_job_id = job.id
-            st.info("🚀 Escaneo encolado... te aviso cuando termine ✅ (puedes seguir navegando)")
+        with st.spinner("Cargando..."):
+            try:
+                alertas, datos, error, perfil, fechas = ejecutar_escaneo(
+                    ticker_symbol,
+                    umbral_vol,
+                    umbral_oi,
+                    umbral_prima,
+                    0,
+                    csv_carpeta,
+                    guardar_csv,
+                    paralelo=True,
+                )
+            except Exception as e:
+                error = str(e)
+                alertas, datos, perfil, fechas = [], [], None, []
+                logger.error("Error crítico en escaneo: %s", e)
+
+            if error:
+                st.session_state.scan_error = error
+                st.session_state.scanning_active = False
+            else:
+                st.session_state.alertas_actuales = alertas
+                st.session_state.datos_completos = datos
+                st.session_state.scan_count += 1
+                st.session_state.last_scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # Capturar precio subyacente usando caché TTL (evita rate-limiting)
+                precio, _err_precio = obtener_precio_actual(ticker_symbol)
+                if precio is not None:
+                    st.session_state.precio_subyacente = precio
+                st.session_state.last_perfil = perfil
+                st.session_state.scan_error = None
+                st.session_state.fechas_escaneadas = fechas
+
+                # Calcular cambios en OI entre escaneos (para oi_tracker)
+                if st.session_state.datos_anteriores:
+                    st.session_state.oi_cambios = calcular_cambios_oi(
+                        datos, st.session_state.datos_anteriores
+                    )
+
+                # Inicializar OI_Chg en 0 (será sobrescrito por Barchart)
+                for d in st.session_state.datos_completos:
+                    d["OI_Chg"] = 0
+                for a in st.session_state.alertas_actuales:
+                    a["OI_Chg"] = 0
+
+                # Auto-fetch Barchart OI Changes (fuente real de OI_Chg)
+                progress_bar = st.progress(0, text="Cargando datos...")
+                _fetch_barchart_oi(ticker_symbol, progress_bar=progress_bar)
+                progress_bar.empty()
+
+                # Inyectar OI_Chg real de Barchart en datos_completos y alertas
+                _inyectar_oi_chg_barchart()
+
+                # Detectar clusters DESPUÉS de inyectar OI_Chg
+                clusters = detectar_compras_continuas(alertas, umbral_prima)
+                st.session_state.clusters_detectados = clusters
+                st.session_state.scan_error = None
+
+        if not st.session_state.scan_error:
             st.session_state.scanning_active = False
             st.rerun()
-
-        except Exception as e:
-            st.error(f"Error al encolar escaneo: {e}")
-            st.session_state.scanning_active = False
 
     st.session_state.auto_scan = auto_scan
 

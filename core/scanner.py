@@ -34,12 +34,6 @@ except ImportError:
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.cache import get_cached_chain, cache_chain
-from rq import Queue
-from redis import Redis
-
-# === Redis + RQ para escalabilidad ===
-redis_conn = Redis.from_url(os.getenv("REDIS_URL"), decode_responses=False)
-q = Queue(connection=redis_conn)  # cola de escaneos
 
 
 # ============================================================================
