@@ -74,7 +74,6 @@ def render(ticker_symbol, **kwargs):
             # Segunda fila: Contratos abiertos vs cerrados
             st.markdown("---")
             st.markdown("##### 📈 Flujo de Contratos")
-            _net_flow = contratos_abiertos_total + contratos_cerrados_total
             _open_spk = [max(0, v) for v in df_positivos["OI_Chg"].head(10).tolist()] if n_pos > 1 else None
             _close_spk = [abs(v) for v in df_negativos["OI_Chg"].head(10).tolist()] if n_neg > 1 else None
             st.markdown(render_metric_row([

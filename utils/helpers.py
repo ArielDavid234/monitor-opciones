@@ -157,7 +157,7 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
             strike = float(item.get('Strike', 0) or 0)
             volumen = int(item.get('Volumen', 0) or 0)
             oi = int(item.get('OI', 0) or 0)
-            iv = float(item.get('IV', 0) or 0)
+            # iv is extracted by enrichment logic in scanner, not used here directly
             
             # Bid/Ask Spread
             if ask > 0 and bid > 0:
@@ -228,7 +228,7 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
                 item['Time_Value'] = np.nan
                 item['Time_Value_Pct'] = np.nan
                 
-        except (ValueError, TypeError, KeyError) as e:
+        except (ValueError, TypeError, KeyError):
             continue
     
     return datos_lista if not isinstance(datos, pd.DataFrame) else pd.DataFrame(datos_lista)

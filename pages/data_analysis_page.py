@@ -6,11 +6,9 @@ import streamlit as st
 
 from utils.formatters import (
     _fmt_dolar, _fmt_monto, _fmt_entero, _fmt_iv, _fmt_precio,
-    _fmt_oi, _fmt_oi_chg, _fmt_delta, _fmt_gamma, _fmt_theta, _fmt_rho,
-    _fmt_lado, determinar_sentimiento,
+    _fmt_oi, _fmt_oi_chg, _fmt_lado,
 )
 from ui.components import (
-    render_metric_card, render_metric_row,
     render_pro_table, _sentiment_badge, _type_badge,
 )
 
@@ -86,7 +84,6 @@ def render(ticker_symbol, **kwargs):
                 f'<div class="sp {cc}">{pct_str}</div></div>'
             )
 
-        net_color = "#10b981" if net_pct >= 0 else "#ef4444"
         net_label = "ALCISTA" if net_pct >= 0 else "BAJISTA"
         net_emoji = "🟢" if net_pct >= 0 else "🔴"
         net_pct_str = f"+{net_pct:.1f}%" if net_pct >= 0 else f"{net_pct:.1f}%"
@@ -286,8 +283,6 @@ def render(ticker_symbol, **kwargs):
             todos_niveles = sorted(niveles_r + niveles_s, key=lambda x: x[0])
 
             if todos_niveles:
-                strikes_plot = [n[0] for n in todos_niveles]
-                tipos_plot = [n[1] for n in todos_niveles]
                 vols_plot = [n[2] for n in todos_niveles]
                 max_vol = max(vols_plot) if vols_plot else 1
 

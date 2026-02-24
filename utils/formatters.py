@@ -3,8 +3,6 @@
 Funciones de formateo reutilizables para toda la UI.
 Extraídas de app_web.py — cero cambios de lógica.
 """
-import numpy as np
-import pandas as pd
 
 
 # ============================================================================

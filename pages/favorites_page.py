@@ -7,7 +7,7 @@ from datetime import datetime
 from utils.formatters import (
     _fmt_monto, _fmt_lado, _fmt_oi_chg,
 )
-from utils.favorites import _es_favorito, _eliminar_favorito, _guardar_favoritos
+from utils.favorites import _eliminar_favorito, _guardar_favoritos
 from ui.components import (
     render_metric_card, render_metric_row, render_pro_table,
     _sentiment_badge, _type_badge,
@@ -104,7 +104,7 @@ def render(ticker_symbol, **kwargs):
                     st.markdown(f"- **Guardado:** {fav.get('Guardado_En', 'N/A')}")
 
                     # Botón eliminar
-                    if st.button(f"🗑️ Eliminar de Favoritos", key=f"del_fav_{idx_fav}_{fav_sym}", use_container_width=True):
+                    if st.button("🗑️ Eliminar de Favoritos", key=f"del_fav_{idx_fav}_{fav_sym}", use_container_width=True):
                         _eliminar_favorito(fav_sym)
                         st.success(f"🗑️ {fav_sym} eliminado de Favoritos")
                         st.rerun()

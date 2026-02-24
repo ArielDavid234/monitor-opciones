@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Página: 🏢 Important Companies — Proyecciones de crecimiento a 10 años."""
 import streamlit as st
-import pandas as pd
+
 
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
 from utils.helpers import (

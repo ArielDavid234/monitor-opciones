@@ -6,12 +6,12 @@ import streamlit as st
 from datetime import datetime
 
 from config.constants import AUTO_REFRESH_INTERVAL
-from core.scanner import ejecutar_escaneo, obtener_historial_contrato, obtener_precio_actual, limpiar_cache_ticker
+from core.scanner import ejecutar_escaneo, obtener_historial_contrato, obtener_precio_actual
 from core.clusters import detectar_compras_continuas
 from core.gamma_exposure import calcular_gex_desde_scanner
 from core.oi_tracker import calcular_cambios_oi
 from utils.formatters import (
-    _fmt_dolar, _fmt_monto, _fmt_entero, _fmt_iv, _fmt_precio,
+    _fmt_dolar, _fmt_monto, _fmt_entero, _fmt_iv,
     _fmt_oi, _fmt_oi_chg, _fmt_delta, _fmt_gamma, _fmt_theta, _fmt_rho,
     _fmt_lado, determinar_sentimiento,
 )
@@ -193,8 +193,6 @@ def render(ticker_symbol, **kwargs):
         _put_pct = (_n_puts / _total * 100) if _total else 0
         _pc_ratio = _n_puts / _n_calls if _n_calls > 0 else 0
         _total_vol = int(datos_df["Volumen"].sum()) if "Volumen" in datos_df.columns else 0
-        _total_oi = int(datos_df["OI"].sum()) if "OI" in datos_df.columns else 0
-        _total_prima = datos_df["Prima_Volumen"].sum() if "Prima_Volumen" in datos_df.columns else 0
         _flow_pct = _call_pct - _put_pct
         _spk = sorted(datos_df["Volumen"].dropna().tail(12).tolist()) if "Volumen" in datos_df.columns else None
         _spk_oi = sorted(datos_df["OI"].dropna().tail(12).tolist()) if "OI" in datos_df.columns else None

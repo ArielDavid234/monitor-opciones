@@ -5,6 +5,10 @@ Extraído de app_web.py — cero cambios de lógica.
 """
 import streamlit as st
 
+from config.constants import (
+    DEFAULT_MIN_VOLUME, DEFAULT_MIN_OI, DEFAULT_MIN_PRIMA,
+    DEFAULT_TARGET_DELTA,
+)
 from utils.favorites import _cargar_favoritos
 
 # ============================================================================
@@ -39,6 +43,19 @@ _DEFAULTS = {
     "eventos_last_refresh": None,
     "_wl_consolidadas_shown_hash": None,
     "_wl_emergentes_shown_hash": None,
+    # Umbrales del escáner (configurables en Live Scanning)
+    "umbral_vol": DEFAULT_MIN_VOLUME,
+    "umbral_oi": DEFAULT_MIN_OI,
+    "umbral_prima": DEFAULT_MIN_PRIMA,
+    "umbral_delta": 0.0,
+    # Navegación y estado de precio
+    "current_page": "\U0001f50d Live Scanning",
+    "rango_delta": DEFAULT_TARGET_DELTA,
+    "precio_subyacente": None,
+    "last_full_scan": None,
+    # Resultados de análisis de empresas
+    "proyecciones_resultados": None,
+    "emergentes_resultados": None,
 }
 
 

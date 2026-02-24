@@ -5,10 +5,6 @@ Orquesta la UI importando lógica desde config/, core/, ui/ y pages/.
 """
 import streamlit as st
 
-from config.constants import (
-    DEFAULT_MIN_VOLUME, DEFAULT_MIN_OI, DEFAULT_MIN_PRIMA,
-    DEFAULT_TARGET_DELTA,
-)
 from core.scanner import limpiar_cache_ticker
 
 # --- UI helpers ---
@@ -43,21 +39,7 @@ st.set_page_config(
 #                    CSS + SESSION STATE
 # ============================================================================
 inject_all_css()
-initialize_session_state()
-
-# Umbrales (valores por defecto, se configuran en Live Scanning)
-if "umbral_vol" not in st.session_state:
-    st.session_state.umbral_vol = DEFAULT_MIN_VOLUME
-if "umbral_oi" not in st.session_state:
-    st.session_state.umbral_oi = DEFAULT_MIN_OI
-if "umbral_prima" not in st.session_state:
-    st.session_state.umbral_prima = DEFAULT_MIN_PRIMA
-if "umbral_delta" not in st.session_state:
-    st.session_state.umbral_delta = 0.0
-if "rango_delta" not in st.session_state:
-    st.session_state.rango_delta = DEFAULT_TARGET_DELTA
-if "current_page" not in st.session_state:
-    st.session_state.current_page = "🔍 Live Scanning"
+initialize_session_state()  # Inicializa TODOS los defaults incluyendo umbrales y navegación
 
 # ============================================================================
 #                    SIDEBAR
