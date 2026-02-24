@@ -762,8 +762,21 @@ if pagina == "🔍 Live Scanning":
     if auto_trigger:
         st.session_state.trigger_scan = False
 
+    # === COOLDOWN ANTI-RATE-LIMIT ===
+    cooldown_segundos = 75  # 75 seg = 1 min 15 seg (ajustable)
+
     # Iniciar escaneo (síncrono con st.status — compatible con Streamlit Cloud)
     if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
+        ahora = datetime.now()
+
+        if "last_full_scan" in st.session_state:
+            transcurrido = (ahora - st.session_state.last_full_scan).total_seconds()
+            if transcurrido < cooldown_segundos:
+                segundos_faltan = int(cooldown_segundos - transcurrido)
+                st.warning(f"⏳ Espera {segundos_faltan} segundos entre escaneos completos para evitar el rate-limit de Yahoo.")
+                st.stop()
+
+        st.session_state.last_full_scan = ahora
         st.session_state.scanning_active = True
 
         # Guardar datos anteriores para comparar OI
