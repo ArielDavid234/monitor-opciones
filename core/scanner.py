@@ -256,7 +256,7 @@ def obtener_historial_contrato(contract_symbol):
                 for kw in ["429", "rate limit", "too many requests"]
             )
             if attempt < max_retries - 1:
-                wait = 2 * (2 ** attempt) if is_rate_limit else uniform(0.8, 1.5)
+                wait = 25 + (15 * attempt) if is_rate_limit else uniform(1.8, 3.5)
                 logger.warning(
                     "Error en historial %s (intento %d/%d): %s. Esperando %.1fs...",
                     contract_symbol, attempt + 1, max_retries, e, wait,
@@ -292,7 +292,7 @@ def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
                 kw in error_msg for kw in ["429", "rate limit", "too many requests"]
             )
             if attempt < max_retries - 1:
-                wait = 2 * (2 ** attempt) if is_rate_limit else uniform(0.8, 1.5)
+                wait = 25 + (15 * attempt) if is_rate_limit else uniform(1.8, 3.5)
                 time.sleep(wait)
             else:
                 return exp_date, None, str(e)
@@ -388,7 +388,7 @@ def ejecutar_escaneo(
                             for kw in ["429", "rate limit", "too many requests"]
                         )
                         if attempt < max_retries - 1:
-                            wait = 2 * (2 ** attempt) if is_rate_limit else uniform(0.8, 1.5)
+                            wait = 25 + (15 * attempt) if is_rate_limit else uniform(1.8, 3.5)
                             logger.warning(
                                 "Error en %s (intento %d/%d). Esperando %.0fs...",
                                 exp_date, attempt + 1, max_retries, wait,
