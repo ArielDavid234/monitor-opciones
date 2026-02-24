@@ -349,7 +349,7 @@ def ejecutar_escaneo(
     if paralelo and len(dates_to_scan) > 2:
         # Modo paralelo: fetch múltiples fechas simultáneamente
         logger.info("Escaneo paralelo activado para %d fechas", len(dates_to_scan))
-        with ThreadPoolExecutor(max_workers=min(4, len(dates_to_scan))) as executor:
+        with ThreadPoolExecutor(max_workers=min(2, len(dates_to_scan))) as executor:
             future_to_date = {
                 executor.submit(_fetch_single_chain, ticker_sym, exp_date): exp_date
                 for exp_date in dates_to_scan
