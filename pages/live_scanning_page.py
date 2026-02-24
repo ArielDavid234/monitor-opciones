@@ -103,12 +103,16 @@ def render(ticker_symbol, **kwargs):
     if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
         ahora = datetime.now()
 
-        if "last_full_scan" in st.session_state:
-            transcurrido = (ahora - st.session_state.last_full_scan).total_seconds()
-            if transcurrido < cooldown_segundos:
-                segundos_faltan = int(cooldown_segundos - transcurrido)
-                st.warning(f"⏳ Espera {segundos_faltan} segundos entre escaneos completos para evitar el rate-limit de Yahoo.")
-                st.stop()
+        if st.session_state.get("last_full_scan") is not None:
+            try:
+                transcurrido = (ahora - st.session_state.last_full_scan).total_seconds()
+                if transcurrido < cooldown_segundos:
+                    segundos_faltan = int(cooldown_segundos - transcurrido)
+                    st.warning(f"⏳ Espera {segundos_faltan} segundos entre escaneos completos para evitar el rate-limit de Yahoo.")
+                    st.stop()
+            except TypeError:
+                # last_full_scan tiene tipo inesperado; ignorar cooldown y resetear
+                st.session_state.last_full_scan = None
 
         st.session_state.last_full_scan = ahora
         st.session_state.scanning_active = True
