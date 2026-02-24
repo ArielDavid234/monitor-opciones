@@ -740,6 +740,7 @@ _SPECIAL_COLS = {
     "Tipo_Opcion": "type",
     "Prioridad": "priority",
     "Flow_Type": "flow",
+    "Hedge_Alert": "hedge_alert",
 }
 
 _NUMERIC_COLS = {
@@ -813,6 +814,11 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
                 elif fmt_kind == "flow":
                     from core.flow_classifier import flow_badge as _flow_badge
                     val = _flow_badge(str(val))
+                elif fmt_kind == "hedge_alert":
+                    from core.flow_classifier import hedge_alert_badge as _ha_badge
+                    # Determine level from row context
+                    _ha_level = row.get("Hedge_Level", "warning") if hasattr(row, "get") else "warning"
+                    val = _ha_badge(str(val), str(_ha_level)) if val and str(val).strip() else ""
             elif col == "OI_Chg" or col == "OI Chg":
                 val = _delta_cell(val)
 

@@ -729,6 +729,32 @@ CSS_STYLES = """
         background: rgba(100,116,139,0.10); color: #64748b;
         border: 1px solid rgba(100,116,139,0.15);
     }
+    /* Hedge institutional alert badges */
+    .ok-badge-hedgecrit {
+        background: rgba(220,53,69,0.18); color: #ff4d5e;
+        border: 1px solid rgba(220,53,69,0.35);
+        font-weight: 800; font-size: 0.74rem;
+    }
+    .ok-badge-hedgewarn {
+        background: rgba(255,167,38,0.15); color: #ffa726;
+        border: 1px solid rgba(255,167,38,0.30);
+        font-weight: 800; font-size: 0.74rem;
+    }
+    /* Hedge alert banner */
+    .hedge-banner {
+        padding: 14px 20px; border-radius: 12px;
+        margin: 12px 0 16px 0; font-size: 0.88rem;
+        display: flex; align-items: center; gap: 10px;
+        font-weight: 600;
+    }
+    .hedge-banner-critical {
+        background: rgba(220,53,69,0.12); color: #ff4d5e;
+        border: 1px solid rgba(220,53,69,0.30);
+    }
+    .hedge-banner-warning {
+        background: rgba(255,167,38,0.10); color: #ffa726;
+        border: 1px solid rgba(255,167,38,0.25);
+    }
     /* Up/Down delta arrows in cells */
     .ok-up { color: #00ff88; }
     .ok-down { color: #ef4444; }

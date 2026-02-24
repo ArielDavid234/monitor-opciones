@@ -17,7 +17,7 @@ from utils.formatters import (
 )
 from utils.favorites import _es_favorito, _agregar_favorito
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart, _enriquecer_datos_opcion
-from core.flow_classifier import classify_flow_type, flow_badge
+from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
 from ui.components import (
     render_metric_card, render_metric_row,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge,
@@ -237,7 +237,41 @@ def render(ticker_symbol, **kwargs):
     # ── Alerts section ───────────────────────────────────────────────────
     if st.session_state.alertas_actuales:
         st.markdown("### 🚨 Alertas Detectadas")
+        # ── Smart Money Hedge Alert Banner ───────────────────────────────
+        _hedge_alerts = []
+        for _a in st.session_state.alertas_actuales:
+            _h = detect_institutional_hedge(_a)
+            if _h:
+                _h["_ticker"] = _a.get("Ticker", ticker_symbol)
+                _h["_strike"] = _a.get("Strike", "")
+                _h["_venc"] = _a.get("Vencimiento", "")
+                _h["_prima"] = _a.get("Prima_Volumen", 0)
+                _hedge_alerts.append(_h)
 
+        if _hedge_alerts:
+            _has_critical = any(h["nivel"] == "critical" for h in _hedge_alerts)
+            _banner_css = "hedge-banner-critical" if _has_critical else "hedge-banner-warning"
+            _banner_icon = "🚨" if _has_critical else "⚠️"
+            _banner_title = (
+                "ALERTA ROJA: Protección institucional pesada detectada — instituciones con miedo real al downside"
+                if _has_critical else
+                "Protección institucional detectada — cobertura de riesgo significativa"
+            )
+            _banner_details = []
+            for _h in _hedge_alerts:
+                _banner_details.append(
+                    f"<div style='margin-top:6px;font-size:0.8rem;opacity:0.9;'>"
+                    f"• <b>{_h['_ticker']}</b> PUT ${_h['_strike']} Venc {_h['_venc']} — "
+                    f"Prima ${_h['_prima']:,.0f} — {_h['explicacion']}</div>"
+                )
+            st.markdown(
+                f'<div class="hedge-banner {_banner_css}">'
+                f'<div><span style="font-size:1.3rem;">{_banner_icon}</span></div>'
+                f'<div><b>{_banner_title}</b>'
+                f'{"" .join(_banner_details)}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         st.markdown(
             """
             <div class="leyenda-colores">
@@ -481,6 +515,11 @@ def render(ticker_symbol, **kwargs):
         if "Flow_Type" not in alertas_df.columns:
             alertas_df["Flow_Type"] = alertas_df.apply(classify_flow_type, axis=1)
         alertas_df["Flow_Type"] = alertas_df["Flow_Type"].apply(flow_badge)
+        # Hedge Alert column for alertas table
+        if "Hedge_Alert" not in alertas_df.columns:
+            alertas_df["Hedge_Alert"] = alertas_df.apply(
+                lambda r: detect_institutional_hedge(r).get("alerta", ""), axis=1
+            )
         if "Tipo_Opcion" in alertas_df.columns:
             alertas_df["Tipo_Opcion"] = alertas_df["Tipo_Opcion"].apply(_type_badge)
         if "Lado" in alertas_df.columns:
@@ -782,7 +821,7 @@ def render(ticker_symbol, **kwargs):
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Flow_Type', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
+            cols_mostrar = ['Sentimiento', 'Flow_Type', 'Hedge_Alert', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 

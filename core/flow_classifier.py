@@ -269,3 +269,249 @@ def flow_badge(flow_type: str) -> str:
         f'<span class="ok-badge ok-badge-{info["variant"]}">'
         f'{flow_type}</span>'
     )
+
+
+# ============================================================================
+#         DETECCIÓN DE HEDGE INSTITUCIONAL (Smart Money Hedge Alert)
+# ============================================================================
+# Umbrales conservadores — solo se activa en casos contundentes.
+HEDGE_ALERT_PREMIUM_L1 = 500_000       # Nivel 1 (warning) — prima mínima
+HEDGE_ALERT_PREMIUM_L2 = 1_500_000     # Nivel 2 (critical) — prima muy alta
+HEDGE_ALERT_DELTA_L1 = 0.70            # |delta| mínimo nivel 1
+HEDGE_ALERT_DELTA_L2 = 0.80            # |delta| mínimo nivel 2
+HEDGE_ALERT_OI_CHG_L1 = 30             # OI_Chg mínimo nivel 1
+HEDGE_ALERT_OI_CHG_L2 = 100            # OI_Chg mínimo nivel 2
+HEDGE_ALERT_MIN_DTE = 30               # DTE mínimo (excluir weeklies especulativos)
+
+
+def _parse_dte(vencimiento) -> int | None:
+    """Calcula DTE a partir de un string de fecha 'YYYY-MM-DD'."""
+    from datetime import date
+    if not vencimiento:
+        return None
+    try:
+        exp = date.fromisoformat(str(vencimiento)[:10])
+        return max((exp - date.today()).days, 0)
+    except (ValueError, TypeError):
+        return None
+
+
+def detect_institutional_hedge(row) -> dict:
+    """Detecta hedge institucional pesado en una fila del scanner.
+
+    Evalúa si una operación de PUT representa protección institucional
+    agresiva (compra de PUT ITM profundo con prima enorme), señal de
+    miedo real al downside.
+
+    Parameters
+    ----------
+    row : dict | pd.Series
+        Fila con columnas del scanner: Tipo/Tipo_Opcion, Lado, Delta,
+        OI_Chg, Prima_Volumen, Moneyness, Distance_Pct, Vencimiento.
+
+    Returns
+    -------
+    dict  Con claves {alerta, nivel, explicacion, color} si califica,
+          o dict vacío {} si no.
+    """
+    def _safe(key, default=None):
+        v = row.get(key, default) if isinstance(row, dict) else row.get(key, default)
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return default
+        return v
+
+    # ── Requisito obligatorio: PUT ──────────────────────────────────────
+    tipo = str(_safe("Tipo", _safe("Tipo_Opcion", ""))).upper()
+    if tipo != "PUT":
+        return {}
+
+    # ── Requisito: ejecución agresiva (Ask) ─────────────────────────────
+    lado = str(_safe("Lado", "N/A")).strip()
+    if lado != "Ask":
+        return {}
+
+    # ── Prima (filtro más discriminante) ────────────────────────────────
+    premium = float(_safe("Prima_Volumen", 0) or 0)
+    if premium < HEDGE_ALERT_PREMIUM_L1:
+        return {}
+
+    # ── Delta (profundidad ITM) ─────────────────────────────────────────
+    delta_raw = _safe("Delta")
+    abs_delta: float | None = None
+    if delta_raw is not None:
+        try:
+            abs_delta = abs(float(delta_raw))
+        except (ValueError, TypeError):
+            abs_delta = None
+
+    # Moneyness
+    moneyness = str(_safe("Moneyness", "N/A")).upper()
+    is_itm = moneyness == "ITM"
+
+    # Si no es ITM y no tiene delta profundo → no es hedge
+    if not is_itm and (abs_delta is None or abs_delta < HEDGE_ALERT_DELTA_L1):
+        return {}
+
+    # ── OI Change (posición nueva) ──────────────────────────────────────
+    oi_chg = float(_safe("OI_Chg", 0) or 0)
+    if oi_chg < HEDGE_ALERT_OI_CHG_L1:
+        return {}
+
+    # ── DTE (excluir weeklies) ──────────────────────────────────────────
+    vencimiento = _safe("Vencimiento")
+    dte = _parse_dte(vencimiento)
+    if dte is not None and dte < HEDGE_ALERT_MIN_DTE:
+        return {}
+
+    # ── Clasificar nivel ────────────────────────────────────────────────
+    score = 0
+    reasons = []
+
+    if premium >= HEDGE_ALERT_PREMIUM_L2:
+        score += 2
+        reasons.append(f"Prima ${premium:,.0f} ≥ ${HEDGE_ALERT_PREMIUM_L2:,.0f}")
+    else:
+        reasons.append(f"Prima ${premium:,.0f}")
+
+    if abs_delta is not None and abs_delta >= HEDGE_ALERT_DELTA_L2:
+        score += 1
+        reasons.append(f"|Δ| {abs_delta:.2f} ≥ {HEDGE_ALERT_DELTA_L2}")
+    elif abs_delta is not None:
+        reasons.append(f"|Δ| {abs_delta:.2f}")
+
+    if oi_chg >= HEDGE_ALERT_OI_CHG_L2:
+        score += 1
+        reasons.append(f"OI↑ +{oi_chg:,.0f}")
+    else:
+        reasons.append(f"OI↑ +{oi_chg:,.0f}")
+
+    distance = float(_safe("Distance_Pct", 0) or 0)
+    if distance >= ITM_DEEP_DISTANCE_PCT:
+        score += 1
+        reasons.append(f"ITM profundo ({distance:.1f}%)")
+
+    if dte is not None and dte >= 90:
+        reasons.append(f"DTE {dte}d (LEAP)")
+
+    reason_str = " · ".join(reasons)
+
+    if score >= 2:
+        return {
+            "alerta": "🔴 ALTA ALERTA: Hedge Institucional Pesado",
+            "nivel": "critical",
+            "explicacion": (
+                f"PUT ITM comprado agresivamente en Ask con prima masiva → "
+                f"instituciones cubriendo downside risk (miedo real). {reason_str}"
+            ),
+            "color": "#dc3545",
+        }
+    else:
+        return {
+            "alerta": "🟠 Protección Institucional Detectada",
+            "nivel": "warning",
+            "explicacion": (
+                f"PUT ITM comprado en Ask con prima alta → cobertura "
+                f"institucional contra caída. {reason_str}"
+            ),
+            "color": "#ffa726",
+        }
+
+
+def detect_hedge_bulk(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Versión vectorizada de detect_institutional_hedge.
+
+    Returns
+    -------
+    tuple de 3 pd.Series (mismo índice que df):
+        - Hedge_Alert  : str  (texto de alerta o "")
+        - Hedge_Level  : str  ("critical" | "warning" | "")
+        - Hedge_Detail : str  (explicación o "")
+    """
+    from datetime import date
+
+    n = len(df)
+    empty = pd.Series([""] * n, index=df.index)
+    if df.empty:
+        return empty.copy(), empty.copy(), empty.copy()
+
+    tipo = df.get("Tipo", df.get("Tipo_Opcion", pd.Series([""] * n))).str.upper().values
+    lado = df.get("Lado", pd.Series(["N/A"] * n)).fillna("N/A").str.strip().values
+    premium = pd.to_numeric(df.get("Prima_Volumen", 0), errors="coerce").fillna(0).values
+    moneyness = df.get("Moneyness", pd.Series(["N/A"] * n)).fillna("N/A").str.upper().values
+    distance_pct = pd.to_numeric(df.get("Distance_Pct", 0), errors="coerce").fillna(0).values
+    delta_raw = pd.to_numeric(df.get("Delta", np.nan), errors="coerce").fillna(np.nan).values
+    abs_delta = np.abs(delta_raw)
+    oi_chg = pd.to_numeric(df.get("OI_Chg", 0), errors="coerce").fillna(0).values
+
+    # DTE desde Vencimiento
+    today = date.today()
+    dte = np.full(n, 999, dtype=int)  # default alto (pasa filtro)
+    if "Vencimiento" in df.columns:
+        for i, v in enumerate(df["Vencimiento"].values):
+            parsed = _parse_dte(v)
+            if parsed is not None:
+                dte[i] = parsed
+
+    # ── Máscaras ────────────────────────────────────────────────────────
+    is_put = tipo == "PUT"
+    is_ask = lado == "Ask"
+    prem_l1 = premium >= HEDGE_ALERT_PREMIUM_L1
+    oi_ok = oi_chg >= HEDGE_ALERT_OI_CHG_L1
+    dte_ok = dte >= HEDGE_ALERT_MIN_DTE
+    is_itm = moneyness == "ITM"
+    delta_l1 = ~np.isnan(abs_delta) & (abs_delta >= HEDGE_ALERT_DELTA_L1)
+    itm_or_deep = is_itm | delta_l1
+
+    # Máscara base: todo nivel 1 como mínimo
+    base = is_put & is_ask & prem_l1 & oi_ok & dte_ok & itm_or_deep
+
+    # Score para nivel
+    prem_l2 = premium >= HEDGE_ALERT_PREMIUM_L2
+    delta_l2 = ~np.isnan(abs_delta) & (abs_delta >= HEDGE_ALERT_DELTA_L2)
+    oi_l2 = oi_chg >= HEDGE_ALERT_OI_CHG_L2
+    deep_itm = is_itm & (distance_pct >= ITM_DEEP_DISTANCE_PCT)
+
+    score = (prem_l2.astype(int) * 2) + delta_l2.astype(int) + oi_l2.astype(int) + deep_itm.astype(int)
+    is_critical = base & (score >= 2)
+    is_warning = base & ~is_critical
+
+    # ── Construir resultados ────────────────────────────────────────────
+    alert_text = np.full(n, "", dtype=object)
+    alert_level = np.full(n, "", dtype=object)
+    alert_detail = np.full(n, "", dtype=object)
+
+    alert_text[is_critical] = "🔴 ALTA ALERTA: Hedge Institucional Pesado"
+    alert_text[is_warning] = "🟠 Protección Institucional Detectada"
+
+    alert_level[is_critical] = "critical"
+    alert_level[is_warning] = "warning"
+
+    # Generar explicaciones para filas que califican
+    for i in np.where(base)[0]:
+        parts = [f"Prima ${premium[i]:,.0f}"]
+        if not np.isnan(abs_delta[i]):
+            parts.append(f"|Δ| {abs_delta[i]:.2f}")
+        parts.append(f"OI↑ +{oi_chg[i]:,.0f}")
+        if distance_pct[i] >= ITM_DEEP_DISTANCE_PCT:
+            parts.append(f"ITM profundo ({distance_pct[i]:.1f}%)")
+        if dte[i] >= 90:
+            parts.append(f"DTE {dte[i]}d")
+        detail = " · ".join(parts)
+        if is_critical[i]:
+            alert_detail[i] = f"PUT ITM comprado agresivamente con prima masiva → miedo institucional real. {detail}"
+        else:
+            alert_detail[i] = f"PUT ITM comprado en Ask → cobertura institucional contra caída. {detail}"
+
+    return (
+        pd.Series(alert_text, index=df.index),
+        pd.Series(alert_level, index=df.index),
+        pd.Series(alert_detail, index=df.index),
+    )
+
+
+def hedge_alert_badge(alert_text: str, level: str) -> str:
+    """Return HTML badge for a hedge alert."""
+    if not alert_text:
+        return ""
+    variant = "hedgecrit" if level == "critical" else "hedgewarn"
+    return f'<span class="ok-badge ok-badge-{variant}">{alert_text}</span>'

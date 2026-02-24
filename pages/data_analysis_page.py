@@ -11,7 +11,7 @@ from utils.formatters import (
 from ui.components import (
     render_pro_table, _sentiment_badge, _type_badge,
 )
-from core.flow_classifier import classify_flow_type, flow_badge
+from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
 
 
 def render(ticker_symbol, **kwargs):
@@ -500,6 +500,11 @@ def render(ticker_symbol, **kwargs):
     if "Flow_Type" not in top_prima_display.columns:
         top_prima_display["Flow_Type"] = top_prima.apply(classify_flow_type, axis=1)
     top_prima_display["Flow_Type"] = top_prima_display["Flow_Type"].apply(flow_badge)
+    # Hedge Alert
+    if "Hedge_Alert" not in top_prima_display.columns:
+        top_prima_display["Hedge_Alert"] = top_prima.apply(
+            lambda r: detect_institutional_hedge(r).get("alerta", ""), axis=1
+        )
 
     st.markdown(
         render_pro_table(top_prima_display, title="🎯 Top 15 Mayor Prima Ejecutada", badge_count="15"),

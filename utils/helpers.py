@@ -12,7 +12,7 @@ import streamlit as st
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
 from core.watchlist_builder import construir_watchlist_consolidadas, construir_watchlist_emergentes
 from core.barchart_oi import obtener_oi_simbolo
-from core.flow_classifier import classify_flow_bulk
+from core.flow_classifier import classify_flow_bulk, detect_hedge_bulk
 
 logger = logging.getLogger(__name__)
 
@@ -235,5 +235,11 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
 
     # Flow Type — clasificación institucional del flujo
     df["Flow_Type"] = classify_flow_bulk(df)
+
+    # Hedge institucional — alertas de protección pesada
+    h_alert, h_level, h_detail = detect_hedge_bulk(df)
+    df["Hedge_Alert"] = h_alert
+    df["Hedge_Level"] = h_level
+    df["Hedge_Detail"] = h_detail
 
     return df.to_dict("records") if was_list else df
