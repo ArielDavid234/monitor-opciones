@@ -111,8 +111,10 @@ def render(ticker_symbol, **kwargs):
                             # Redirigir a Live Scanning con este ticker
                             st.session_state["_redirect"] = {
                                 "page": "🔍 Live Scanning",
-                                "ticker": wl_tk,
+                                "ticker": None,
                             }
+                            # Use query_params to carry ticker (avoids widget-key conflict)
+                            st.query_params["t"] = wl_tk
                             st.session_state.ticker_anterior = ""
                             st.session_state.trigger_scan = True
                             st.session_state.alertas_actuales = []

@@ -86,14 +86,15 @@ st.session_state.current_page = pagina
 
 # Handle redirect from Watchlist / other pages
 _redir = st.session_state.get("_redirect", {})
-_redirect_ticker = _redir.get("ticker")
-_default_ticker = _redirect_ticker or "SPY"
-# Clear redirect after reading (mutate the nested dict, not session_state keys)
-if _redirect_ticker or _redirect_page:
+_redirect_ticker = st.query_params.get("t", "")  # carry ticker via query_params
+if _redirect_ticker:
+    # consume it immediately so it doesn't persist in the URL
+    del st.query_params["t"]
+_default_ticker = _redirect_ticker or st.session_state.get("ticker_anterior", "") or "SPY"
+# Clear page redirect flag
+if _redir.get("page") or _redirect_ticker:
     st.session_state["_redirect"] = {"page": None, "ticker": None}
-    # Pre-write the widget key so text_input picks up the redirect ticker
     if _redirect_ticker:
-        st.session_state["ticker_input"] = _redirect_ticker
         st.session_state.ticker_anterior = _redirect_ticker
 
 # Placeholder ticker for header before input is rendered
@@ -118,7 +119,6 @@ ticker_symbol = st.text_input(
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
     placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
     label_visibility="collapsed",
-    key="ticker_input",
 ).strip().upper()
 
 # Detectar cambio de ticker → auto-escanear
