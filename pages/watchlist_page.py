@@ -109,7 +109,7 @@ def render(ticker_symbol, **kwargs):
                             type="primary",
                         ):
                             # Redirigir a Live Scanning con este ticker
-                            st.session_state["ticker_input"] = wl_tk
+                            st.session_state["_wl_redirect_ticker"] = wl_tk
                             st.session_state["nav_radio"] = "🔍 Live Scanning"
                             st.session_state.ticker_anterior = ""
                             st.session_state.trigger_scan = True

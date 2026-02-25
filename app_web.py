@@ -76,8 +76,12 @@ st.session_state.current_page = pagina
 #                    HEADER + TICKER INPUT
 # ============================================================================
 
+# Handle redirect from Watchlist / other pages
+_redirect_ticker = st.session_state.pop("_wl_redirect_ticker", None)
+_default_ticker = _redirect_ticker or "SPY"
+
 # Placeholder ticker for header before input is rendered
-_ticker_preview = st.session_state.get("ticker_anterior", "SPY") or "SPY"
+_ticker_preview = _redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"
 st.markdown(
     f"""
 <div class="scanner-header">
@@ -93,7 +97,7 @@ st.markdown(
 
 ticker_symbol = st.text_input(
     "🔍 Símbolo del Ticker",
-    value="SPY",
+    value=_default_ticker,
     max_chars=10,
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
     placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
