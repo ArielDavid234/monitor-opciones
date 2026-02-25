@@ -95,6 +95,11 @@ if _redirect_ticker or _redirect_page:
     # Force text_input to pick up the new default on next render
     if "ticker_input" in st.session_state:
         del st.session_state["ticker_input"]
+    # Pre-set ticker_anterior so the change-detection below does NOT
+    # fire st.rerun() (which would abort before the widget value is saved).
+    # The scan is already triggered via trigger_scan from the watchlist page.
+    if _redirect_ticker:
+        st.session_state.ticker_anterior = _redirect_ticker
 
 # Placeholder ticker for header before input is rendered
 _ticker_preview = _redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"
