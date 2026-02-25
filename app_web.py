@@ -63,15 +63,14 @@ with st.sidebar:
     # Handle page redirect from Watchlist / other pages
     _redir = st.session_state.get("_redirect", {})
     _redirect_page = _redir.get("page")
-    _nav_index = _NAV_OPTIONS.index(_redirect_page) if _redirect_page in _NAV_OPTIONS else 0
-    # Force radio to pick up redirect index
-    if _redirect_page and "nav_radio" in st.session_state:
-        del st.session_state["nav_radio"]
+    # Force radio to show the redirect page by pre-writing the widget key
+    # BEFORE the widget is created (Streamlit allows this for unrendered widgets)
+    if _redirect_page and _redirect_page in _NAV_OPTIONS:
+        st.session_state["nav_radio"] = _redirect_page
 
     pagina = st.radio(
         "Navegación",
         _NAV_OPTIONS,
-        index=_nav_index,
         label_visibility="collapsed",
         key="nav_radio",
     )
@@ -92,13 +91,9 @@ _default_ticker = _redirect_ticker or "SPY"
 # Clear redirect after reading (mutate the nested dict, not session_state keys)
 if _redirect_ticker or _redirect_page:
     st.session_state["_redirect"] = {"page": None, "ticker": None}
-    # Force text_input to pick up the new default on next render
-    if "ticker_input" in st.session_state:
-        del st.session_state["ticker_input"]
-    # Pre-set ticker_anterior so the change-detection below does NOT
-    # fire st.rerun() (which would abort before the widget value is saved).
-    # The scan is already triggered via trigger_scan from the watchlist page.
+    # Pre-write the widget key so text_input picks up the redirect ticker
     if _redirect_ticker:
+        st.session_state["ticker_input"] = _redirect_ticker
         st.session_state.ticker_anterior = _redirect_ticker
 
 # Placeholder ticker for header before input is rendered
