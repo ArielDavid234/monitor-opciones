@@ -92,11 +92,11 @@ def render(ticker_symbol, **kwargs):
                         if wl_nm else ""
                     )
                     st.markdown(
-                        f"""<div class="wl-card">
-                            <div class="wl-ticker">{wl_tk}</div>
-                            {nombre_html}
-                            <div class="wl-fecha">Agregado: {wl_dt}</div>
-                        </div>""",
+                        f'<div class="wl-card">'
+                        f'<div class="wl-ticker">{wl_tk}</div>'
+                        f'{nombre_html}'
+                        f'<div class="wl-fecha">Agregado: {wl_dt}</div>'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
 
