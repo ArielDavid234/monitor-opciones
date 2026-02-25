@@ -64,6 +64,9 @@ with st.sidebar:
     _redir = st.session_state.get("_redirect", {})
     _redirect_page = _redir.get("page")
     _nav_index = _NAV_OPTIONS.index(_redirect_page) if _redirect_page in _NAV_OPTIONS else 0
+    # Force radio to pick up redirect index
+    if _redirect_page and "nav_radio" in st.session_state:
+        del st.session_state["nav_radio"]
 
     pagina = st.radio(
         "Navegación",
@@ -89,6 +92,9 @@ _default_ticker = _redirect_ticker or "SPY"
 # Clear redirect after reading (mutate the nested dict, not session_state keys)
 if _redirect_ticker or _redirect_page:
     st.session_state["_redirect"] = {"page": None, "ticker": None}
+    # Force text_input to pick up the new default on next render
+    if "ticker_input" in st.session_state:
+        del st.session_state["ticker_input"]
 
 # Placeholder ticker for header before input is rendered
 _ticker_preview = _redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"
