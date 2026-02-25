@@ -352,10 +352,10 @@ def detect_institutional_hedge(row) -> dict:
     if not is_itm and (abs_delta is None or abs_delta < HEDGE_ALERT_DELTA_L1):
         return {}
 
-    # ── OI Change (posición nueva) ──────────────────────────────────────
+    # ── OI Change (posición nueva) — informativo, ya NO es gate duro ────
+    # OI_Chg puede ser 0 cuando Barchart data no está disponible;
+    # bloquear aquí causaba que la columna Hedge_Alert quedara siempre vacía.
     oi_chg = float(_safe("OI_Chg", 0) or 0)
-    if oi_chg < HEDGE_ALERT_OI_CHG_L1:
-        return {}
 
     # ── DTE (excluir weeklies) ──────────────────────────────────────────
     vencimiento = _safe("Vencimiento")
@@ -456,22 +456,29 @@ def detect_hedge_bulk(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series
     is_put = tipo == "PUT"
     is_ask = lado == "Ask"
     prem_l1 = premium >= HEDGE_ALERT_PREMIUM_L1
-    oi_ok = oi_chg >= HEDGE_ALERT_OI_CHG_L1
     dte_ok = dte >= HEDGE_ALERT_MIN_DTE
     is_itm = moneyness == "ITM"
     delta_l1 = ~np.isnan(abs_delta) & (abs_delta >= HEDGE_ALERT_DELTA_L1)
     itm_or_deep = is_itm | delta_l1
 
-    # Máscara base: todo nivel 1 como mínimo
-    base = is_put & is_ask & prem_l1 & oi_ok & dte_ok & itm_or_deep
+    # Máscara base — OI_Chg removido del gate duro (puede ser 0 si
+    # Barchart data no está disponible); se usa como booster de score.
+    base = is_put & is_ask & prem_l1 & dte_ok & itm_or_deep
 
-    # Score para nivel
+    # Score para nivel — OI_Chg contribuye como booster (no como gate)
     prem_l2 = premium >= HEDGE_ALERT_PREMIUM_L2
     delta_l2 = ~np.isnan(abs_delta) & (abs_delta >= HEDGE_ALERT_DELTA_L2)
+    oi_l1 = oi_chg >= HEDGE_ALERT_OI_CHG_L1
     oi_l2 = oi_chg >= HEDGE_ALERT_OI_CHG_L2
     deep_itm = is_itm & (distance_pct >= ITM_DEEP_DISTANCE_PCT)
 
-    score = (prem_l2.astype(int) * 2) + delta_l2.astype(int) + oi_l2.astype(int) + deep_itm.astype(int)
+    score = (
+        prem_l2.astype(int) * 2
+        + delta_l2.astype(int)
+        + oi_l1.astype(int)       # +1 if OI_Chg >= L1 (new position)
+        + oi_l2.astype(int)       # +1 extra if OI_Chg >= L2 (huge new position)
+        + deep_itm.astype(int)
+    )
     is_critical = base & (score >= 2)
     is_warning = base & ~is_critical
 
