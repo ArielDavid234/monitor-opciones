@@ -38,33 +38,34 @@ def render(ticker_symbol, **kwargs):
     umbral_prima = kwargs.get("umbral_prima", st.session_state.umbral_prima)
     umbral_delta = kwargs.get("umbral_delta", st.session_state.umbral_delta)
 
-    with st.expander("⚙️ Umbrales de Filtrado", expanded=False):
-        _umb_c1, _umb_c2, _umb_c3, _umb_c4, _umb_c5 = st.columns(5)
-        with _umb_c1:
-            umbral_vol = st.number_input("Volumen mínimo", value=st.session_state.umbral_vol, step=500, format="%d",
-                                          help="Solo muestra opciones con Volumen ≥ este valor", key="inp_umbral_vol")
-        with _umb_c2:
-            umbral_oi = st.number_input("Open Interest mínimo", value=st.session_state.umbral_oi, step=1_000, format="%d",
-                                         help="Solo muestra contratos con OI ≥ este valor", key="inp_umbral_oi")
-        with _umb_c3:
-            umbral_prima = st.number_input("Prima Total mínima ($)", value=st.session_state.umbral_prima, step=500_000, format="%d",
-                                            help="Prima Total = Volumen × Precio × 100", key="inp_umbral_prima")
-        with _umb_c4:
-            umbral_delta = st.slider(
-                "Delta mínimo (|Δ|)",
-                min_value=0.00, max_value=1.00, value=float(st.session_state.umbral_delta),
-                step=0.01, format="%.2f",
-                help=(
-                    "Filtra contratos por valor absoluto de Delta.\n\n"
-                    "• Delta mide la sensibilidad del precio de la opción ante movimientos del subyacente.\n"
-                    "• Calls: 0 → 1 | Puts: -1 → 0\n"
-                    "• 0.50 ≈ ATM (mayor probabilidad ITM ~50%)\n"
-                    "• 0.16 ≈ límite 1σ (probabilidad ITM ~16%)\n"
-                    "• 0.00 = sin filtro (mostrar todos)"
-                ),
-                key="inp_umbral_delta",
-            )
-        with _umb_c5:
+    # ── Side-by-side filter expanders ────────────────────────────────────
+    _fcol_left, _fcol_right = st.columns(2)
+
+    with _fcol_left:
+        with st.expander("⚙️ Umbrales de Filtrado", expanded=False):
+            _umb_c1, _umb_c2 = st.columns(2)
+            with _umb_c1:
+                umbral_vol = st.number_input("Volumen mínimo", value=st.session_state.umbral_vol, step=500, format="%d",
+                                              help="Solo muestra opciones con Volumen ≥ este valor", key="inp_umbral_vol")
+                umbral_oi = st.number_input("Open Interest mínimo", value=st.session_state.umbral_oi, step=1_000, format="%d",
+                                             help="Solo muestra contratos con OI ≥ este valor", key="inp_umbral_oi")
+            with _umb_c2:
+                umbral_prima = st.number_input("Prima Total mínima ($)", value=st.session_state.umbral_prima, step=500_000, format="%d",
+                                                help="Prima Total = Volumen × Precio × 100", key="inp_umbral_prima")
+                umbral_delta = st.slider(
+                    "Delta mínimo (|Δ|)",
+                    min_value=0.00, max_value=1.00, value=float(st.session_state.umbral_delta),
+                    step=0.01, format="%.2f",
+                    help=(
+                        "Filtra contratos por valor absoluto de Delta.\n\n"
+                        "• Delta mide la sensibilidad del precio de la opción ante movimientos del subyacente.\n"
+                        "• Calls: 0 → 1 | Puts: -1 → 0\n"
+                        "• 0.50 ≈ ATM (mayor probabilidad ITM ~50%)\n"
+                        "• 0.16 ≈ límite 1σ (probabilidad ITM ~16%)\n"
+                        "• 0.00 = sin filtro (mostrar todos)"
+                    ),
+                    key="inp_umbral_delta",
+                )
             min_sm_flow_score = st.slider(
                 "Min SM Flow Score",
                 min_value=0, max_value=100,
@@ -78,16 +79,14 @@ def render(ticker_symbol, **kwargs):
                 ),
                 key="inp_min_sm_flow",
             )
-        st.session_state.umbral_vol = umbral_vol
-        st.session_state.umbral_oi = umbral_oi
-        st.session_state.umbral_prima = umbral_prima
-        st.session_state.umbral_delta = umbral_delta
-        st.session_state.min_sm_flow_score = min_sm_flow_score
+            st.session_state.umbral_vol = umbral_vol
+            st.session_state.umbral_oi = umbral_oi
+            st.session_state.umbral_prima = umbral_prima
+            st.session_state.umbral_delta = umbral_delta
+            st.session_state.min_sm_flow_score = min_sm_flow_score
 
-    # ── Institutional Flow Filter ──────────────────────────────────────────
-    with st.expander("🏦 Institutional Flow Filter", expanded=False):
-        _inst_c1, _inst_c2 = st.columns([1, 1])
-        with _inst_c1:
+    with _fcol_right:
+        with st.expander("🏦 Institutional Flow Filter", expanded=False):
             min_inst_flow = st.slider(
                 "Min Inst Flow Score",
                 min_value=0, max_value=100,
@@ -101,11 +100,24 @@ def render(ticker_symbol, **kwargs):
                 key="inp_min_inst_flow",
             )
             st.session_state.min_inst_flow_score = min_inst_flow
-        with _inst_c2:
             inst_only_inst_whale = st.checkbox("Solo Institutional & Whale", key="ck_inst_whale")
             inst_only_delta_60_80 = st.checkbox("Solo Delta 0.60-0.80 (agresivo)", key="ck_delta_60_80")
             inst_only_stock_sub = st.checkbox("Solo Stock Substitute (≥0.80)", key="ck_stock_sub")
-        institutional_flow_legend()
+            institutional_flow_legend()
+
+    # ── Page header (below filters) ───────────────────────────────────────
+    st.markdown(
+        f"""
+    <div class="scanner-header">
+        <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
+        <p class="subtitle">
+            Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
+        </p>
+        <span class="badge">● LIVE • Análisis Avanzado</span>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
     # ── Scan button + auto-scan checkbox ─────────────────────────────────
     col_btn1, col_btn2 = st.columns([1, 1])

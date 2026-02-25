@@ -103,8 +103,9 @@ if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
     st.session_state.trigger_scan = True
     st.rerun()
 
-st.markdown(
-    f"""
+if pagina != "🔍 Live Scanning":
+    st.markdown(
+        f"""
     <div class="scanner-header">
         <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
         <p class="subtitle">
@@ -113,8 +114,8 @@ st.markdown(
         <span class="badge">● LIVE • Análisis Avanzado</span>
     </div>
     """,
-    unsafe_allow_html=True,
-)
+        unsafe_allow_html=True,
+    )
 
 # ============================================================================
 #                    PAGE DISPATCH
