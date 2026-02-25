@@ -682,6 +682,29 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
 #                   PRO HTML TABLE — Dark Dashboard Style
 # ============================================================================
 
+def _sm_flow_badge(score) -> str:
+    """Return a colored HTML badge for sm_flow_score (0-100).
+
+    Color scale mirrors smart-money conviction strength:
+        ≥ 75 → green  (Smart / Whale tier)
+        ≥ 55 → amber  (Mixed tier)
+        <  55 → red   (Retail tier)
+    """
+    try:
+        v = float(score)
+    except (TypeError, ValueError):
+        return f'<span class="ok-badge ok-badge-neutral">{score}</span>'
+    if v >= 75:
+        alpha = round(v / 100, 2)
+        style = f"background:rgba(0,255,136,{alpha});color:#0f172a;border:none;font-weight:700;"
+    elif v >= 55:
+        alpha = round(v / 100, 2)
+        style = f"background:rgba(255,165,0,{alpha});color:#0f172a;border:none;font-weight:700;"
+    else:
+        style = "background:rgba(255,60,60,0.40);color:#fff;border:none;font-weight:700;"
+    return f'<span class="ok-badge" style="{style}">{v:.1f}</span>'
+
+
 def _badge_html(text, variant="neutral"):
     """Return a small badge <span> in a given variant.
 
@@ -741,6 +764,8 @@ _SPECIAL_COLS = {
     "Prioridad": "priority",
     "Flow_Type": "flow",
     "Hedge_Alert": "hedge_alert",
+    "sm_flow_score": "sm_flow",
+    "SM Flow": "sm_flow",
 }
 
 _NUMERIC_COLS = {
@@ -819,6 +844,8 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
                     # Determine level from row context
                     _ha_level = row.get("Hedge_Level", "warning") if hasattr(row, "get") else "warning"
                     val = _ha_badge(str(val), str(_ha_level)) if val and str(val).strip() else ""
+                elif fmt_kind == "sm_flow":
+                    val = _sm_flow_badge(val)
             elif col == "OI_Chg" or col == "OI Chg":
                 val = _delta_cell(val)
 

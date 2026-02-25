@@ -37,7 +37,7 @@ def render(ticker_symbol, **kwargs):
     umbral_delta = kwargs.get("umbral_delta", st.session_state.umbral_delta)
 
     with st.expander("⚙️ Umbrales de Filtrado", expanded=False):
-        _umb_c1, _umb_c2, _umb_c3, _umb_c4 = st.columns(4)
+        _umb_c1, _umb_c2, _umb_c3, _umb_c4, _umb_c5 = st.columns(5)
         with _umb_c1:
             umbral_vol = st.number_input("Volumen mínimo", value=st.session_state.umbral_vol, step=500, format="%d",
                                           help="Solo muestra opciones con Volumen ≥ este valor", key="inp_umbral_vol")
@@ -62,10 +62,25 @@ def render(ticker_symbol, **kwargs):
                 ),
                 key="inp_umbral_delta",
             )
+        with _umb_c5:
+            min_sm_flow_score = st.slider(
+                "Min SM Flow Score",
+                min_value=0, max_value=100,
+                value=int(st.session_state.get("min_sm_flow_score", 60)),
+                step=5,
+                help=(
+                    "Filtra el visor de datos enriquecidos por Smart Money Flow Score.\n\n"
+                    "• Score 0-100: cuantifica la probabilidad de flujo institucional.\n"
+                    "• ≥ 90 = Whale | ≥ 75 = Smart | ≥ 50 = Mixed | < 50 = Retail\n"
+                    "• 0 = sin filtro (mostrar todos)"
+                ),
+                key="inp_min_sm_flow",
+            )
         st.session_state.umbral_vol = umbral_vol
         st.session_state.umbral_oi = umbral_oi
         st.session_state.umbral_prima = umbral_prima
         st.session_state.umbral_delta = umbral_delta
+        st.session_state.min_sm_flow_score = min_sm_flow_score
 
     # ── Scan button + auto-scan checkbox ─────────────────────────────────
     col_btn1, col_btn2 = st.columns([1, 1])
@@ -821,7 +836,22 @@ def render(ticker_symbol, **kwargs):
                     axis=1
                 )
 
-            cols_mostrar = ['Sentimiento', 'Flow_Type', 'Hedge_Alert', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
+            if 'sm_flow_score' in display_scan.columns:
+                display_scan["SM Flow"] = display_scan["sm_flow_score"].apply(
+                    lambda x: f"{float(x):.1f}" if pd.notna(x) else "-"
+                )
+            if 'smart_money_tier' in display_scan.columns:
+                display_scan["SM Tier"] = display_scan["smart_money_tier"]
+
+            # Apply Min SM Flow Score filter (slider in ⚙️ Umbrales de Filtrado)
+            _min_sm = int(st.session_state.get("min_sm_flow_score", 0))
+            if _min_sm > 0 and 'sm_flow_score' in display_scan.columns:
+                _scores = pd.to_numeric(display_scan['sm_flow_score'], errors='coerce').fillna(0)
+                display_scan = display_scan[_scores >= _min_sm]
+                if display_scan.empty:
+                    st.info(f"⚠️ Sin opciones con SM Flow Score ≥ {_min_sm}. Reduce el filtro en Umbrales de Filtrado.")
+
+            cols_mostrar = ['Sentimiento', 'SM Flow', 'SM Tier', 'Flow_Type', 'Hedge_Alert', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 

@@ -12,7 +12,8 @@ import streamlit as st
 from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
 from core.watchlist_builder import construir_watchlist_consolidadas, construir_watchlist_emergentes
 from core.barchart_oi import obtener_oi_simbolo
-from core.flow_classifier import classify_flow_bulk, detect_hedge_bulk
+from core.flow_classifier import classify_flow_bulk, detect_hedge_bulk, add_smart_money_tier
+from core.smart_money import calculate_sm_flow_score
 
 logger = logging.getLogger(__name__)
 
@@ -241,5 +242,18 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
     df["Hedge_Alert"] = h_alert
     df["Hedge_Level"] = h_level
     df["Hedge_Detail"] = h_detail
+
+    # Smart Money Flow Score (0-100) — convicción institucional compuesta
+    # Marcar filas con hedge activo para recibir bonus de +12% en el score
+    if "Hedge_Level" in df.columns:
+        df["is_smart_money_hedge"] = df["Hedge_Level"].ne("")
+    spot = precio_subyacente if precio_subyacente and precio_subyacente > 0 else 0.0
+    try:
+        df = calculate_sm_flow_score(df, spot)
+    except Exception:
+        df["sm_flow_score"] = 0.0
+
+    # Smart Money Tier — categoría cualitativa basada en el score
+    df = add_smart_money_tier(df)
 
     return df.to_dict("records") if was_list else df

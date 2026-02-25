@@ -515,3 +515,30 @@ def hedge_alert_badge(alert_text: str, level: str) -> str:
         return ""
     variant = "hedgecrit" if level == "critical" else "hedgewarn"
     return f'<span class="ok-badge ok-badge-{variant}">{alert_text}</span>'
+
+
+def add_smart_money_tier(df: pd.DataFrame) -> pd.DataFrame:
+    """Categoriza filas por cuartil de sm_flow_score en 4 tiers.
+
+    Requiere que el DataFrame ya tenga la columna 'sm_flow_score'
+    (generada por calculate_sm_flow_score). Si no existe, agrega
+    la columna con valor 'N/A' sin lanzar excepción.
+
+    Tiers:
+        Retail  — score 0-50   (flujo minorista o señal débil)
+        Mixed   — score 50-75  (señal mixta, sin consenso claro)
+        Smart   — score 75-90  (alta probabilidad institucional)
+        Whale   — score 90-100 (tier máximo: movimiento de whale)
+    """
+    if 'sm_flow_score' not in df.columns:
+        df = df.copy()
+        df['smart_money_tier'] = 'N/A'
+        return df
+    df = df.copy()
+    df['smart_money_tier'] = pd.cut(
+        df['sm_flow_score'],
+        bins=[0, 50, 75, 90, 100],
+        labels=['Retail', 'Mixed', 'Smart', 'Whale'],
+        include_lowest=True,
+    ).astype(str)
+    return df

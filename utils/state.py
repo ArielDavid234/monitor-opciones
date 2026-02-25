@@ -49,6 +49,7 @@ _DEFAULTS = {
     "umbral_oi": DEFAULT_MIN_OI,
     "umbral_prima": DEFAULT_MIN_PRIMA,
     "umbral_delta": 0.0,
+    "min_sm_flow_score": 60,
     # Navegación y estado de precio
     "current_page": "\U0001f50d Live Scanning",
     "rango_delta": DEFAULT_TARGET_DELTA,
