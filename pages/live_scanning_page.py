@@ -105,20 +105,6 @@ def render(ticker_symbol, **kwargs):
             inst_only_stock_sub = st.checkbox("Solo Stock Substitute (≥0.80)", key="ck_stock_sub")
             institutional_flow_legend()
 
-    # ── Page header (below filters) ───────────────────────────────────────
-    st.markdown(
-        f"""
-    <div class="scanner-header">
-        <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
-        <p class="subtitle">
-            Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
-        </p>
-        <span class="badge">● LIVE • Análisis Avanzado</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-
     # ── Scan button + auto-scan checkbox ─────────────────────────────────
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:

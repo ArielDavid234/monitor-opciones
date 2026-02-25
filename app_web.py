@@ -73,8 +73,24 @@ with st.sidebar:
 st.session_state.current_page = pagina
 
 # ============================================================================
-#                    TICKER INPUT + HEADER
+#                    HEADER + TICKER INPUT
 # ============================================================================
+
+# Placeholder ticker for header before input is rendered
+_ticker_preview = st.session_state.get("ticker_anterior", "SPY") or "SPY"
+st.markdown(
+    f"""
+<div class="scanner-header">
+    <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
+    <p class="subtitle">
+        Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{_ticker_preview}</b>
+    </p>
+    <span class="badge">● LIVE • Análisis Avanzado</span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
 ticker_symbol = st.text_input(
     "🔍 Símbolo del Ticker",
     value="SPY",
@@ -102,20 +118,6 @@ if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
     limpiar_cache_ticker(ticker_symbol)
     st.session_state.trigger_scan = True
     st.rerun()
-
-if pagina != "🔍 Live Scanning":
-    st.markdown(
-        f"""
-    <div class="scanner-header">
-        <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
-        <p class="subtitle">
-            Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{ticker_symbol}</b>
-        </p>
-        <span class="badge">● LIVE • Análisis Avanzado</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
 
 # ============================================================================
 #                    PAGE DISPATCH
