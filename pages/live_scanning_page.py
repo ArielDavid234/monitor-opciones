@@ -1,5 +1,6 @@
 import logging
 import time
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -17,7 +18,7 @@ from utils.formatters import (
 )
 from utils.favorites import _es_favorito, _agregar_favorito
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart, _enriquecer_datos_opcion
-from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
+from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge, detect_hedge_bulk
 from ui.components import (
     render_metric_card, render_metric_row,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge,
@@ -531,10 +532,34 @@ def render(ticker_symbol, **kwargs):
             alertas_df["Flow_Type"] = alertas_df.apply(classify_flow_type, axis=1)
         alertas_df["Flow_Type"] = alertas_df["Flow_Type"].apply(flow_badge)
         # Hedge Alert column for alertas table
+        # Raw alertas lack Moneyness, Distance_Pct and OI_Chg — compute them here
+        # before running the bulk detector, which gates on those columns.
         if "Hedge_Alert" not in alertas_df.columns:
-            alertas_df["Hedge_Alert"] = alertas_df.apply(
-                lambda r: detect_institutional_hedge(r).get("alerta", ""), axis=1
-            )
+            _spot = st.session_state.get("precio_subyacente") or 0.0
+            # 1. Moneyness + Distance_Pct
+            if _spot > 0 and "Moneyness" not in alertas_df.columns:
+                _tipo_m = alertas_df["Tipo_Opcion"].str.upper() if "Tipo_Opcion" in alertas_df.columns else pd.Series([""] * len(alertas_df))
+                _strike_m = pd.to_numeric(alertas_df["Strike"], errors="coerce").fillna(0)
+                _ratio_m = np.where(_tipo_m == "CALL", _strike_m / _spot, _spot / _strike_m)
+                alertas_df["Moneyness"] = np.where(
+                    _strike_m <= 0, "N/A",
+                    np.where(_ratio_m < 0.95, "ITM", np.where(_ratio_m > 1.05, "OTM", "ATM"))
+                )
+                alertas_df["Distance_Pct"] = np.where(
+                    _strike_m > 0, np.abs(_strike_m - _spot) / _spot * 100, 0.0
+                )
+            # 2. OI_Chg — try Barchart data, fall back to 0
+            if "OI_Chg" not in alertas_df.columns:
+                _bc = st.session_state.get("barchart_data")
+                if _bc is not None and not _bc.empty and "Contrato" in _bc.columns and "OI_Chg" in _bc.columns:
+                    _oi_map = _bc.set_index("Contrato")["OI_Chg"].to_dict()
+                    alertas_df["OI_Chg"] = alertas_df["Contrato"].map(_oi_map).fillna(0)
+                else:
+                    alertas_df["OI_Chg"] = 0
+            # 3. Run vectorized detector — also stores Hedge_Level for badge color
+            _ha, _hl, _hd = detect_hedge_bulk(alertas_df)
+            alertas_df["Hedge_Alert"] = _ha
+            alertas_df["Hedge_Level"] = _hl
         if "Tipo_Opcion" in alertas_df.columns:
             alertas_df["Tipo_Opcion"] = alertas_df["Tipo_Opcion"].apply(_type_badge)
         if "Lado" in alertas_df.columns:
@@ -550,13 +575,24 @@ def render(ticker_symbol, **kwargs):
 
         _col_left, _col_right = st.columns([1, 1], gap="medium")
 
+        # Column order for the alertas table — excludes internal helper columns
+        # Hedge_Level is included (hidden column) so the badge can use the correct color
+        _ALERTAS_COLS = [
+            "Prioridad", "Sentimiento", "Flow_Type", "Hedge_Alert", "Hedge_Level",
+            "Tipo_Opcion", "Vencimiento", "Strike",
+            "Volumen", "OI", "OI_Chg", "Delta",
+            "Ask", "Bid", "Ultimo", "IV",
+            "Lado", "Prima Total", "Contrato",
+        ]
+        _alertas_display = alertas_df[[c for c in _ALERTAS_COLS if c in alertas_df.columns]]
+
         with _col_left:
             st.markdown(
                 render_pro_table(
-                    alertas_df,
+                    _alertas_display,
                     title="📋 Unusual Activity — Alertas",
-                    badge_count=f"{len(alertas_df)} alertas",
-                    footer_text=f"Ordenadas por prima · {len(alertas_df)} resultados",
+                    badge_count=f"{len(_alertas_display)} alertas",
+                    footer_text=f"Ordenadas por prima · {len(_alertas_display)} resultados",
                     special_format={"Prioridad": _priority_badge},
                 ),
                 unsafe_allow_html=True,

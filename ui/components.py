@@ -764,6 +764,7 @@ _SPECIAL_COLS = {
     "Prioridad": "priority",
     "Flow_Type": "flow",
     "Hedge_Alert": "hedge_alert",
+    "Hedge_Level": "_hidden",
     "sm_flow_score": "sm_flow",
     "SM Flow": "sm_flow",
 }
@@ -805,8 +806,8 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
             f'</div>'
         )
 
-    # Build <thead>
-    ths = "".join(f'<th>{col}</th>' for col in df.columns)
+    # Build <thead> — skip _hidden columns
+    ths = "".join(f'<th>{col}</th>' for col in df.columns if _SPECIAL_COLS.get(col) != "_hidden")
     thead = f'<thead><tr>{ths}</tr></thead>'
 
     # Build <tbody>
@@ -814,6 +815,9 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
     for _, row in df.iterrows():
         cells = []
         for col in df.columns:
+            # _hidden columns contribute to row context but produce no <td>
+            if _SPECIAL_COLS.get(col) == "_hidden":
+                continue
             val = row[col]
             if val is None or (isinstance(val, float) and pd.isna(val)):
                 val = "-"
