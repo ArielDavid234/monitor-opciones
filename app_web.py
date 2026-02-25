@@ -48,21 +48,26 @@ initialize_session_state()  # Inicializa TODOS los defaults incluyendo umbrales 
 with st.sidebar:
     render_sidebar_logo()
 
+    _NAV_OPTIONS = [
+        "🔍 Live Scanning",
+        "📊 Open Interest",
+        "📈 Data Analysis",
+        "📐 Range",
+        "⭐ Favorites",
+        "📌 Watchlist",
+        "🏢 Important Companies",
+        "📰 News",
+        "📅 Calendar",
+        "📋 Reports",
+    ]
+    # Handle page redirect from Watchlist / other pages
+    _redirect_page = st.session_state.pop("_wl_redirect_page", None)
+    _nav_index = _NAV_OPTIONS.index(_redirect_page) if _redirect_page in _NAV_OPTIONS else 0
+
     pagina = st.radio(
         "Navegación",
-        [
-            "🔍 Live Scanning",
-            "📊 Open Interest",
-            "📈 Data Analysis",
-            "📐 Range",
-            "⭐ Favorites",
-            "📌 Watchlist",
-            "🏢 Important Companies",
-            "📰 News",
-            "📅 Calendar",
-            "📋 Reports",
-        ],
-        index=0,
+        _NAV_OPTIONS,
+        index=_nav_index,
         label_visibility="collapsed",
         key="nav_radio",
     )
