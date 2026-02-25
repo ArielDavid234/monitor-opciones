@@ -61,7 +61,8 @@ with st.sidebar:
         "📋 Reports",
     ]
     # Handle page redirect from Watchlist / other pages
-    _redirect_page = st.session_state.pop("_wl_redirect_page", None)
+    _redir = st.session_state.get("_redirect", {})
+    _redirect_page = _redir.get("page")
     _nav_index = _NAV_OPTIONS.index(_redirect_page) if _redirect_page in _NAV_OPTIONS else 0
 
     pagina = st.radio(
@@ -82,8 +83,12 @@ st.session_state.current_page = pagina
 # ============================================================================
 
 # Handle redirect from Watchlist / other pages
-_redirect_ticker = st.session_state.pop("_wl_redirect_ticker", None)
+_redir = st.session_state.get("_redirect", {})
+_redirect_ticker = _redir.get("ticker")
 _default_ticker = _redirect_ticker or "SPY"
+# Clear redirect after reading (mutate the nested dict, not session_state keys)
+if _redirect_ticker or _redirect_page:
+    st.session_state["_redirect"] = {"page": None, "ticker": None}
 
 # Placeholder ticker for header before input is rendered
 _ticker_preview = _redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"

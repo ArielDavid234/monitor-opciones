@@ -59,6 +59,8 @@ _DEFAULTS = {
     # Resultados de análisis de empresas
     "proyecciones_resultados": None,
     "emergentes_resultados": None,
+    # Redirect container (mutable dict — avoids widget-key conflicts)
+    "_redirect": {"page": None, "ticker": None},
 }
 
 
