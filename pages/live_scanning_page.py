@@ -22,6 +22,7 @@ from core.flow_classifier import classify_flow_type, flow_badge, detect_institut
 from ui.components import (
     render_metric_card, render_metric_row,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge,
+    institutional_flow_legend,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,29 @@ def render(ticker_symbol, **kwargs):
         st.session_state.umbral_prima = umbral_prima
         st.session_state.umbral_delta = umbral_delta
         st.session_state.min_sm_flow_score = min_sm_flow_score
+
+    # ── Institutional Flow Filter ──────────────────────────────────────────
+    with st.expander("🏦 Institutional Flow Filter", expanded=False):
+        _inst_c1, _inst_c2 = st.columns([1, 1])
+        with _inst_c1:
+            min_inst_flow = st.slider(
+                "Min Inst Flow Score",
+                min_value=0, max_value=100,
+                value=int(st.session_state.get("min_inst_flow_score", 65)),
+                step=5,
+                help=(
+                    "Filtra por Institutional Flow Score (0-100).\n\n"
+                    "• ≥ 88 = Whale | ≥ 75 = Institutional | ≥ 55 = Mixed | < 55 = Retail\n"
+                    "• 0 = sin filtro"
+                ),
+                key="inp_min_inst_flow",
+            )
+            st.session_state.min_inst_flow_score = min_inst_flow
+        with _inst_c2:
+            inst_only_inst_whale = st.checkbox("Solo Institutional & Whale", key="ck_inst_whale")
+            inst_only_delta_60_80 = st.checkbox("Solo Delta 0.60-0.80 (agresivo)", key="ck_delta_60_80")
+            inst_only_stock_sub = st.checkbox("Solo Stock Substitute (≥0.80)", key="ck_stock_sub")
+        institutional_flow_legend()
 
     # ── Scan button + auto-scan checkbox ─────────────────────────────────
     col_btn1, col_btn2 = st.columns([1, 1])
@@ -878,16 +902,37 @@ def render(ticker_symbol, **kwargs):
                 )
             if 'smart_money_tier' in display_scan.columns:
                 display_scan["SM Tier"] = display_scan["smart_money_tier"]
+            if 'inst_flow_score' in display_scan.columns:
+                display_scan["Inst Flow"] = display_scan["inst_flow_score"].apply(
+                    lambda x: f"{float(x):.1f}" if pd.notna(x) else "-"
+                )
+            if 'inst_tier' in display_scan.columns:
+                display_scan["Inst Tier"] = display_scan["inst_tier"]
 
             # Apply Min SM Flow Score filter (slider in ⚙️ Umbrales de Filtrado)
             _min_sm = int(st.session_state.get("min_sm_flow_score", 0))
             if _min_sm > 0 and 'sm_flow_score' in display_scan.columns:
                 _scores = pd.to_numeric(display_scan['sm_flow_score'], errors='coerce').fillna(0)
                 display_scan = display_scan[_scores >= _min_sm]
-                if display_scan.empty:
-                    st.info(f"⚠️ Sin opciones con SM Flow Score ≥ {_min_sm}. Reduce el filtro en Umbrales de Filtrado.")
 
-            cols_mostrar = ['Sentimiento', 'SM Flow', 'SM Tier', 'Flow_Type', 'Hedge_Alert', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
+            # Apply Institutional Flow filters (🏦 Institutional Flow Filter)
+            _min_inst = int(st.session_state.get("min_inst_flow_score", 0))
+            if _min_inst > 0 and 'inst_flow_score' in display_scan.columns:
+                _iscores = pd.to_numeric(display_scan['inst_flow_score'], errors='coerce').fillna(0)
+                display_scan = display_scan[_iscores >= _min_inst]
+            if st.session_state.get("ck_inst_whale") and 'inst_tier' in display_scan.columns:
+                display_scan = display_scan[display_scan['inst_tier'].isin(['Institutional', 'Whale'])]
+            if st.session_state.get("ck_delta_60_80") and 'abs_delta' in display_scan.columns:
+                _ad = pd.to_numeric(display_scan['abs_delta'], errors='coerce').fillna(0)
+                display_scan = display_scan[(_ad >= 0.60) & (_ad <= 0.80)]
+            if st.session_state.get("ck_stock_sub") and 'abs_delta' in display_scan.columns:
+                _ad2 = pd.to_numeric(display_scan['abs_delta'], errors='coerce').fillna(0)
+                display_scan = display_scan[_ad2 >= 0.80]
+
+            if display_scan.empty:
+                st.info("⚠️ Sin opciones con los filtros actuales. Reduce los umbrales para ver resultados.")
+
+            cols_mostrar = ['Sentimiento', 'Inst Flow', 'Inst Tier', 'SM Flow', 'SM Tier', 'Flow_Type', 'Hedge_Alert', 'Tipo', 'Strike', 'Vencimiento', 'Volumen', 'OI_F', 'OI_Chg_F', 'Delta', 'Gamma', 'Theta', 'Rho', 'Ask_F', 'Bid_F', 'Spread_%',
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 

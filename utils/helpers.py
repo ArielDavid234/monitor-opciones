@@ -13,7 +13,7 @@ from config.watchlists import WATCHLIST_EMPRESAS, WATCHLIST_EMERGENTES
 from core.watchlist_builder import construir_watchlist_consolidadas, construir_watchlist_emergentes
 from core.barchart_oi import obtener_oi_simbolo
 from core.flow_classifier import classify_flow_bulk, detect_hedge_bulk, add_smart_money_tier
-from core.smart_money import calculate_sm_flow_score
+from core.smart_money import calculate_sm_flow_score, calculate_institutional_flow_score
 
 logger = logging.getLogger(__name__)
 
@@ -255,5 +255,12 @@ def _enriquecer_datos_opcion(datos, precio_subyacente=None):
 
     # Smart Money Tier — categoría cualitativa basada en el score
     df = add_smart_money_tier(df)
+
+    # Institutional Flow Score (0-100) — convicción institucional basada en Delta+Gamma+Prima+DTE
+    try:
+        df = calculate_institutional_flow_score(df)
+    except Exception:
+        df["inst_flow_score"] = 0.0
+        df["inst_tier"] = "N/A"
 
     return df.to_dict("records") if was_list else df
