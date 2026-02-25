@@ -223,10 +223,34 @@ def render(ticker_symbol, **kwargs):
             st.session_state.scan_error = None
             st.rerun()
 
-    # ── Metrics row ──────────────────────────────────────────────────────
+    # ── Build datos_df ONCE + cache enrichment ─────────────────────────
+    # All downstream sections reuse _datos_df instead of re-creating it.
+    _datos_df: pd.DataFrame | None = None
+    _datos_enriquecidos_cache: list | None = None
+
     if st.session_state.datos_completos:
+        _datos_df = pd.DataFrame(st.session_state.datos_completos)
+
+        # Enrichment cache — only recompute when scan data changes
+        _enrich_key = (
+            st.session_state.get("scan_count", 0),
+            st.session_state.get("last_scan_time", ""),
+            st.session_state.get("precio_subyacente", 0),
+        )
+        if st.session_state.get("_enrich_cache_key") != _enrich_key:
+            _datos_enriquecidos_cache = _enriquecer_datos_opcion(
+                st.session_state.datos_completos,
+                precio_subyacente=st.session_state.get("precio_subyacente"),
+            )
+            st.session_state["_enrich_cache"] = _datos_enriquecidos_cache
+            st.session_state["_enrich_cache_key"] = _enrich_key
+        else:
+            _datos_enriquecidos_cache = st.session_state["_enrich_cache"]
+
+    # ── Metrics row ──────────────────────────────────────────────────────
+    if _datos_df is not None:
         st.markdown("### 📊 Métricas del Escaneo")
-        datos_df = pd.DataFrame(st.session_state.datos_completos)
+        datos_df = _datos_df
         _n_calls = len(datos_df[datos_df["Tipo"] == "CALL"])
         _n_puts = len(datos_df[datos_df["Tipo"] == "PUT"])
         _n_alertas = len(st.session_state.alertas_actuales)
@@ -242,9 +266,15 @@ def render(ticker_symbol, **kwargs):
 
         _precio_sub_gex = st.session_state.get("precio_subyacente") or 0
         if _precio_sub_gex and _precio_sub_gex > 0:
-            _gex_result = calcular_gex_desde_scanner(
-                st.session_state.datos_completos, spot_price=_precio_sub_gex, mode="standard"
-            )
+            # Cache GEX — same key as enrichment (data hasn't changed)
+            if st.session_state.get("_gex_cache_key") != _enrich_key:
+                _gex_result = calcular_gex_desde_scanner(
+                    st.session_state.datos_completos, spot_price=_precio_sub_gex, mode="standard"
+                )
+                st.session_state["_gex_cache"] = _gex_result
+                st.session_state["_gex_cache_key"] = _enrich_key
+            else:
+                _gex_result = st.session_state["_gex_cache"]
             _gex_total = _gex_result["total_gex"]
             _gex_zero = _gex_result["zero_gamma_level"]
             _gex_cw = _gex_result["call_wall"]
@@ -708,8 +738,8 @@ def render(ticker_symbol, **kwargs):
                 '🔍 Options Flow Screener</div>',
                 unsafe_allow_html=True,
             )
-            if st.session_state.datos_completos:
-                datos_df = pd.DataFrame(st.session_state.datos_completos)
+            if _datos_df is not None:
+                datos_df = _datos_df
 
                 _rf1, _rf2 = st.columns(2)
                 with _rf1:
@@ -771,13 +801,13 @@ def render(ticker_symbol, **kwargs):
         st.success("✅ Sin alertas relevantes en este ciclo.")
 
     # ── Options Flow Screener (no alerts) ────────────────────────────────
-    if not st.session_state.alertas_actuales and st.session_state.datos_completos:
+    if not st.session_state.alertas_actuales and _datos_df is not None:
         st.markdown(
             '<div style="font-size:1.05rem;font-weight:700;color:#e2e8f0;margin-bottom:8px;">'
             '🔍 Options Flow Screener</div>',
             unsafe_allow_html=True,
         )
-        datos_df = pd.DataFrame(st.session_state.datos_completos)
+        datos_df = _datos_df
 
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
@@ -834,10 +864,10 @@ def render(ticker_symbol, **kwargs):
         st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
 
     # ── Scan data viewer ─────────────────────────────────────────────────
-    if st.session_state.datos_completos:
+    if _datos_df is not None:
         st.markdown("---")
         st.markdown("#### 📊 Datos del Último Escaneo")
-        datos_df_esc = pd.DataFrame(st.session_state.datos_completos)
+        datos_df_esc = _datos_df
         _a_calls = len(datos_df_esc[datos_df_esc["Tipo"] == "CALL"])
         _a_puts = len(datos_df_esc[datos_df_esc["Tipo"] == "PUT"])
         _a_total = len(datos_df_esc)
@@ -855,11 +885,8 @@ def render(ticker_symbol, **kwargs):
         ]), unsafe_allow_html=True)
 
         with st.expander("🔍 Ver todas las opciones escaneadas", expanded=False):
-            datos_enriquecidos = _enriquecer_datos_opcion(
-                st.session_state.datos_completos,
-                precio_subyacente=st.session_state.get('precio_subyacente')
-            )
-            display_scan = pd.DataFrame(datos_enriquecidos)
+            datos_enriquecidos = _datos_enriquecidos_cache or []
+            display_scan = pd.DataFrame(datos_enriquecidos) if datos_enriquecidos else pd.DataFrame()
 
             if 'Prima_Vol' in display_scan.columns:
                 display_scan["Prima Total"] = display_scan["Prima_Vol"].apply(_fmt_monto)

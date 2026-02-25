@@ -12,6 +12,7 @@ import logging
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import streamlit as st
 from datetime import datetime
 from functools import wraps
 from random import uniform, choice
@@ -330,8 +331,9 @@ def construir_simbolo_contrato(ticker_sym, exp_date, opt_type, strike):
     return f"{ticker_sym}{fecha_fmt}{tipo_letra}{strike_fmt}"
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def obtener_historial_contrato(contract_symbol):
-    """Obtiene el historial de precios de un contrato de opción."""
+    """Obtiene el historial de precios de un contrato de opción (cached 5 min)."""
     max_retries = 3
     for attempt in range(max_retries):
         try:

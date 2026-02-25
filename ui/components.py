@@ -871,53 +871,70 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
     ths = "".join(f'<th>{col}</th>' for col in df.columns if _SPECIAL_COLS.get(col) != "_hidden")
     thead = f'<thead><tr>{ths}</tr></thead>'
 
-    # Build <tbody>
+    # Build <tbody> — pre-format per column then join (faster than iterrows)
+    visible_cols = [c for c in df.columns if _SPECIAL_COLS.get(c) != "_hidden"]
+    # Pre-compute td class per column (constant per column)
+    _col_cls = {}
+    for col in visible_cols:
+        if col in ("Ticker", "Contrato"):
+            _col_cls[col] = ' class="td-ticker"'
+        elif col in _NUMERIC_COLS or col in ("OI Chg",):
+            _col_cls[col] = ' class="td-num"'
+        else:
+            _col_cls[col] = ""
+
+    # Pre-import flow badges once (avoid per-cell import)
+    _flow_badge_fn = None
+    _ha_badge_fn = None
+    if any(_SPECIAL_COLS.get(c) == "flow" for c in visible_cols):
+        from core.flow_classifier import flow_badge as _flow_badge_fn
+    if any(_SPECIAL_COLS.get(c) == "hedge_alert" for c in visible_cols):
+        from core.flow_classifier import hedge_alert_badge as _ha_badge_fn
+
+    # Pre-format each column as a list of HTML cell strings
+    col_cells = {}
+    for col in visible_cols:
+        series = df[col]
+        cls = _col_cls[col]
+
+        if col in special_format:
+            fmt_fn = special_format[col]
+            vals = [fmt_fn(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+        elif col in _SPECIAL_COLS:
+            fmt_kind = _SPECIAL_COLS[col]
+            if fmt_kind == "sentiment":
+                vals = [str(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+            elif fmt_kind == "type":
+                vals = [_type_badge(str(v)) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+            elif fmt_kind == "priority":
+                vals = [_priority_badge(str(v)) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+            elif fmt_kind == "flow" and _flow_badge_fn:
+                vals = [_flow_badge_fn(str(v)) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+            elif fmt_kind == "hedge_alert" and _ha_badge_fn:
+                _levels = df["Hedge_Level"] if "Hedge_Level" in df.columns else pd.Series(["warning"] * len(df))
+                vals = [
+                    _ha_badge_fn(str(v), str(lv)) if v is not None and str(v).strip() else ""
+                    for v, lv in zip(series, _levels)
+                ]
+            elif fmt_kind == "sm_flow":
+                vals = [_sm_flow_badge(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+            elif fmt_kind == "inst_flow":
+                vals = [_inst_flow_badge(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+            else:
+                vals = [str(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+        elif col in ("OI_Chg", "OI Chg"):
+            vals = [_delta_cell(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+        else:
+            vals = [str(v) if v is not None and not (isinstance(v, float) and pd.isna(v)) else "-" for v in series]
+
+        col_cells[col] = [f'<td{cls}>{v}</td>' for v in vals]
+
+    # Assemble rows
+    n_rows = len(df)
     rows = []
-    for _, row in df.iterrows():
-        cells = []
-        for col in df.columns:
-            # _hidden columns contribute to row context but produce no <td>
-            if _SPECIAL_COLS.get(col) == "_hidden":
-                continue
-            val = row[col]
-            if val is None or (isinstance(val, float) and pd.isna(val)):
-                val = "-"
-
-            # Decide class
-            td_cls = ""
-            if col in ("Ticker", "Contrato"):
-                td_cls = ' class="td-ticker"'
-            elif col in _NUMERIC_COLS or col in ("OI Chg",):
-                td_cls = ' class="td-num"'
-
-            # Format value
-            if col in special_format:
-                val = special_format[col](val)
-            elif col in _SPECIAL_COLS:
-                fmt_kind = _SPECIAL_COLS[col]
-                if fmt_kind == "sentiment":
-                    val = str(val)  # already formatted before passing
-                elif fmt_kind == "type":
-                    val = _type_badge(str(val))
-                elif fmt_kind == "priority":
-                    val = _priority_badge(str(val))
-                elif fmt_kind == "flow":
-                    from core.flow_classifier import flow_badge as _flow_badge
-                    val = _flow_badge(str(val))
-                elif fmt_kind == "hedge_alert":
-                    from core.flow_classifier import hedge_alert_badge as _ha_badge
-                    # Determine level from row context
-                    _ha_level = row.get("Hedge_Level", "warning") if hasattr(row, "get") else "warning"
-                    val = _ha_badge(str(val), str(_ha_level)) if val and str(val).strip() else ""
-                elif fmt_kind == "sm_flow":
-                    val = _sm_flow_badge(val)
-                elif fmt_kind == "inst_flow":
-                    val = _inst_flow_badge(val)
-            elif col == "OI_Chg" or col == "OI Chg":
-                val = _delta_cell(val)
-
-            cells.append(f'<td{td_cls}>{val}</td>')
-        rows.append(f'<tr>{"".join(cells)}</tr>')
+    for i in range(n_rows):
+        row_html = "".join(col_cells[col][i] for col in visible_cols)
+        rows.append(f'<tr>{row_html}</tr>')
     tbody = f'<tbody>{"".join(rows)}</tbody>'
 
     # Scroll container
