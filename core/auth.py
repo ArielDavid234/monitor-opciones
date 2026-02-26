@@ -131,11 +131,18 @@ class SupabaseAuth:
             return False, "Las contraseñas no coinciden."
 
         try:
+            # URL a la que Supabase redirige después de confirmar el email.
+            # Debe coincidir exactamente con lo configurado en el dashboard de Supabase
+            # (Authentication → URL Configuration → Site URL / Redirect URLs).
+            _site_url = st.secrets.get("supabase", {}).get(
+                "site_url", "http://localhost:8501"
+            )
             res = self.client.auth.sign_up({
                 "email": email,
                 "password": password,
                 "options": {
                     "data": {"display_name": name},
+                    "email_redirect_to": _site_url,
                 },
             })
             # Supabase devuelve user incluso antes de confirmar email
