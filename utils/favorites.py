@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Sistema de Favoritos — persistencia JSON.
-Extraído de app_web.py — cero cambios de lógica.
+Sistema de Favoritos — persistencia JSON local + Supabase (por usuario).
+
+Cuando hay un usuario autenticado, los cambios se persisten tanto en
+session_state como en Supabase (tabla user_data).  El JSON local se conserva
+como fallback para desarrollo sin auth.
 """
 import json
 import logging
@@ -13,6 +16,19 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 _FAVORITOS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "favoritos.json")
+
+
+def _sync_to_supabase(key: str, data: list) -> None:
+    """Persiste una lista en Supabase si hay usuario autenticado (fire-and-forget)."""
+    user = st.session_state.get("_auth_user")
+    if not user:
+        return
+    try:
+        from core.auth import SupabaseAuth
+        auth = SupabaseAuth()
+        auth.save_user_data(user["id"], key, data)
+    except Exception as exc:
+        logger.warning("Error sincronizando %s a Supabase: %s", key, exc)
 
 
 def _cargar_favoritos():
@@ -55,6 +71,7 @@ def _agregar_favorito(contrato_data):
     favoritos.append(contrato_data)
     st.session_state.favoritos = favoritos
     _guardar_favoritos(favoritos)
+    _sync_to_supabase("favoritos", favoritos)
     return True
 
 
@@ -64,6 +81,7 @@ def _eliminar_favorito(contrato_id):
     favoritos = [f for f in favoritos if f.get("Contrato") != contrato_id]
     st.session_state.favoritos = favoritos
     _guardar_favoritos(favoritos)
+    _sync_to_supabase("favoritos", favoritos)
 
 
 def _es_favorito(contrato_id):
@@ -117,6 +135,7 @@ def _agregar_a_watchlist(ticker, nombre=""):
     })
     st.session_state.watchlist = watchlist
     _guardar_watchlist(watchlist)
+    _sync_to_supabase("watchlist", watchlist)
     return True, f"{ticker} agregado a la Watchlist"
 
 
@@ -126,6 +145,7 @@ def _eliminar_de_watchlist(ticker):
     watchlist = [w for w in watchlist if w["ticker"] != ticker.upper()]
     st.session_state.watchlist = watchlist
     _guardar_watchlist(watchlist)
+    _sync_to_supabase("watchlist", watchlist)
 
 
 def _en_watchlist(ticker):

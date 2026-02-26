@@ -7,7 +7,7 @@ from datetime import datetime
 from utils.formatters import (
     _fmt_monto, _fmt_lado, _fmt_oi_chg, _fmt_delta,
 )
-from utils.favorites import _eliminar_favorito, _guardar_favoritos
+from utils.favorites import _eliminar_favorito, _guardar_favoritos, _sync_to_supabase
 from ui.components import (
     render_metric_card, render_metric_row, render_pro_table,
     _sentiment_badge, _type_badge,
@@ -138,6 +138,7 @@ def render(ticker_symbol, **kwargs):
             if st.button("🗑️ Limpiar todos los favoritos", use_container_width=True, type="secondary"):
                 st.session_state.favoritos = []
                 _guardar_favoritos([])
+                _sync_to_supabase("favoritos", [])
                 st.success("Se eliminaron todos los favoritos")
                 st.rerun()
 

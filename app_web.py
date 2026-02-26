@@ -1,18 +1,44 @@
 # -*- coding: utf-8 -*-
 """
 Monitor de Opciones — Punto de entrada para Streamlit Cloud.
-Orquesta la UI importando lógica desde config/, core/, ui/ y pages/.
+Orquesta la UI importando lógica desde config/, core/, ui/ y page_modules/.
 """
 import streamlit as st
 
-from core.scanner import limpiar_cache_ticker
+# ============================================================================
+#                    PAGE CONFIG  (debe ir ANTES de cualquier widget)
+# ============================================================================
+st.set_page_config(
+    page_title="OPTIONSKING Analytics",
+    page_icon="👑",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-# --- UI helpers ---
-from ui.shared import inject_all_css, render_sidebar_logo, render_sidebar_avatar, render_footer
-from utils.state import initialize_session_state
+# ============================================================================
+#                    AUTH GATE — bloquea TODO si no hay sesión
+# ============================================================================
+from core.auth import SupabaseAuth  # noqa: E402
+from page_modules import login_page  # noqa: E402
+from ui.shared import inject_all_css, render_sidebar_logo, render_sidebar_avatar, render_footer  # noqa: E402
+
+inject_all_css()
+
+_auth = SupabaseAuth()
+if not _auth.is_authenticated():
+    # Intentar restaurar sesión persistente ("Recordarme")
+    if not _auth.try_restore_session():
+        login_page.render()
+        st.stop()  # No renderizar nada más
+
+# ── A partir de aquí, el usuario ESTÁ autenticado ────────────────────────
+_current_user = _auth.get_current_user()  # {id, email, name}
+
+from core.scanner import limpiar_cache_ticker  # noqa: E402
+from utils.state import initialize_session_state  # noqa: E402
 
 # --- Pages ---
-from page_modules import (
+from page_modules import (  # noqa: E402
     live_scanning_page,
     open_interest_page,
     data_analysis_page,
@@ -25,28 +51,48 @@ from page_modules import (
     calendar_page,
 )
 
-
-# ============================================================================
-#                    PAGE CONFIG
-# ============================================================================
-st.set_page_config(
-    page_title="OPTIONSKING Analytics",
-    page_icon="👑",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
 # ============================================================================
 #                    CSS + SESSION STATE
 # ============================================================================
-inject_all_css()
 initialize_session_state()  # Inicializa TODOS los defaults incluyendo umbrales y navegación
+
+# ── Sincronizar favoritos de Supabase → session_state (una vez por sesión) ──
+if not st.session_state.get("_favs_synced"):
+    cloud_favs = _auth.load_user_data(_current_user["id"], "favoritos")
+    if cloud_favs and isinstance(cloud_favs, list):
+        st.session_state.favoritos = cloud_favs
+    cloud_wl = _auth.load_user_data(_current_user["id"], "watchlist")
+    if cloud_wl and isinstance(cloud_wl, list):
+        st.session_state.watchlist = cloud_wl
+    st.session_state["_favs_synced"] = True
 
 # ============================================================================
 #                    SIDEBAR
 # ============================================================================
 with st.sidebar:
     render_sidebar_logo()
+
+    # ── Info de usuario autenticado ──────────────────────────────────────
+    _user_initials = "".join(
+        w[0].upper() for w in (_current_user["name"] or "U").split()[:2]
+    )
+    st.markdown(
+        f'<div style="text-align:center;margin-bottom:0.8rem;">'
+        f'<div style="width:42px;height:42px;border-radius:50%;'
+        f'background:linear-gradient(135deg,#00ff88,#10b981);'
+        f'display:inline-flex;align-items:center;justify-content:center;'
+        f'font-size:16px;font-weight:700;color:#0f172a;'
+        f'margin-bottom:4px;box-shadow:0 0 12px rgba(0,255,136,0.2);">{_user_initials}</div>'
+        f'<div style="color:white;font-weight:600;font-size:0.85rem;">{_current_user["name"]}</div>'
+        f'<div style="color:#64748b;font-size:0.7rem;">● Pro Plan</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout"):
+        _auth.logout()
+        st.rerun()
+
+    st.markdown("---")
 
     _NAV_OPTIONS = [
         "🔍 Live Scanning",
@@ -76,7 +122,6 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    render_sidebar_avatar()
 
 st.session_state.current_page = pagina
 
