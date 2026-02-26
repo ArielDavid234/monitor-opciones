@@ -105,6 +105,77 @@ class SupabaseAuth:
         bucket.pop(email, None)
 
     # ────────────────────────────────────────────────────────────────────
+    #  Callback de confirmación por email (redirect desde Supabase)
+    # ────────────────────────────────────────────────────────────────────
+    def handle_email_callback(self) -> bool:
+        """Detecta si el usuario llega desde un enlace de confirmación de email.
+
+        Supabase redirige al usuario con tokens en los query params
+        (PKCE: ?code=...) o en hash fragments convertidos a params por JS.
+        También puede incluir access_token y refresh_token directamente.
+
+        Returns True si logró autenticar al usuario automáticamente.
+        """
+        params = dict(st.query_params)
+        if not params:
+            return False
+
+        # ── PKCE flow: Supabase envía ?code=... ─────────────────────────
+        code = params.get("code")
+        if code:
+            try:
+                res = self.client.auth.exchange_code_for_session({"auth_code": code})
+                if res.user and res.session:
+                    self._set_session_from_response(res)
+                    st.query_params.clear()
+                    return True
+            except Exception as exc:
+                logger.warning("Error intercambiando code por sesión: %s", exc)
+            # Limpiar el code para no reintentar
+            st.query_params.clear()
+            st.session_state["_email_just_confirmed"] = True
+            return False
+
+        # ── Implicit flow: access_token + refresh_token en params ───────
+        access_token = params.get("access_token")
+        refresh_token = params.get("refresh_token")
+        if access_token and refresh_token:
+            try:
+                res = self.client.auth.set_session(access_token, refresh_token)
+                if res.user and res.session:
+                    self._set_session_from_response(res)
+                    st.query_params.clear()
+                    return True
+            except Exception as exc:
+                logger.warning("Error restaurando sesión desde tokens: %s", exc)
+            st.query_params.clear()
+            st.session_state["_email_just_confirmed"] = True
+            return False
+
+        # ── Solo type param (confirmación sin tokens) ───────────────────
+        token_type = params.get("type", "")
+        if token_type in ("signup", "email", "recovery", "magiclink"):
+            st.query_params.clear()
+            st.session_state["_email_just_confirmed"] = True
+            return False
+
+        return False
+
+    def _set_session_from_response(self, res: Any) -> None:
+        """Helper: guarda usuario + tokens en session_state desde una respuesta auth."""
+        st.session_state["_auth_user"] = {
+            "id": res.user.id,
+            "email": res.user.email,
+            "name": (
+                res.user.user_metadata.get("display_name")
+                or res.user.email.split("@")[0]
+            ),
+        }
+        st.session_state["_auth_access_token"] = res.session.access_token
+        st.session_state["_auth_refresh_token"] = res.session.refresh_token
+        st.session_state["_auth_remember"] = True
+
+    # ────────────────────────────────────────────────────────────────────
     #  Registro
     # ────────────────────────────────────────────────────────────────────
     def register(
@@ -131,15 +202,21 @@ class SupabaseAuth:
             return False, "Las contraseñas no coinciden."
 
         try:
-            # No pasamos email_redirect_to — Supabase usa el Site URL
-            # configurado en Dashboard > Authentication > URL Configuration.
-            # Pasar una URL no whitelisteada causa que el email no se envíe.
+            # Redirect URL para que al confirmar el email, el usuario
+            # aterrice directamente en la app.
+            # IMPORTANTE: esta URL debe estar en Supabase Dashboard >
+            # Authentication > URL Configuration > Redirect URLs.
+            site_url = st.secrets["supabase"].get("site_url", "")
+            sign_up_opts: dict[str, Any] = {
+                "data": {"display_name": name},
+            }
+            if site_url:
+                sign_up_opts["email_redirect_to"] = site_url
+
             res = self.client.auth.sign_up({
                 "email": email,
                 "password": password,
-                "options": {
-                    "data": {"display_name": name},
-                },
+                "options": sign_up_opts,
             })
             # Supabase devuelve user incluso antes de confirmar email
             if res.user:

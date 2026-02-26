@@ -111,6 +111,13 @@ def render() -> bool:
         # Logo (un solo st.markdown — no se pueden abrir/cerrar divs entre calls)
         st.markdown(_render_logo_html(), unsafe_allow_html=True)
 
+        # ── Banner si viene de confirmación de email ─────────────────────
+        if st.session_state.pop("_email_just_confirmed", False):
+            st.success(
+                "✅ ¡Tu correo ha sido confirmado exitosamente! "
+                "Ya puedes iniciar sesión con tu cuenta."
+            )
+
         # ── Tabs: Login / Registro ───────────────────────────────────────
         tab_login, tab_register = st.tabs(["🔐 Iniciar Sesión", "📝 Crear Cuenta"])
 

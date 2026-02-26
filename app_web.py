@@ -25,6 +25,13 @@ from ui.shared import inject_all_css, render_sidebar_logo, render_sidebar_avatar
 inject_all_css()
 
 _auth = SupabaseAuth()
+
+# ── Callback de confirmación por email ───────────────────────────────────
+# Si el usuario viene de clicar el enlace de confirmación, intentar
+# autenticarlo automáticamente (PKCE / implicit tokens en query params).
+if _auth.handle_email_callback():
+    pass  # Ya autenticado — continúa al dashboard
+
 if not _auth.is_authenticated():
     # Intentar restaurar sesión persistente ("Recordarme")
     if not _auth.try_restore_session():
