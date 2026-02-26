@@ -153,7 +153,15 @@ class SupabaseAuth:
             msg = str(exc).lower()
             if "already registered" in msg or "already been registered" in msg:
                 return False, "Este correo ya está registrado. Intenta iniciar sesión."
-            return False, "Error al crear la cuenta. Verifica tus datos e intenta de nuevo."
+            if "weak" in msg or "password" in msg:
+                return False, "La contraseña es muy débil. Usa al menos 8 caracteres con letras y números."
+            if "invalid" in msg and "email" in msg:
+                return False, "El correo electrónico no es válido. Verifica el formato."
+            if "signup" in msg and "disabled" in msg:
+                return False, "El registro de nuevos usuarios está deshabilitado temporalmente."
+            # Mostrar detalle real para diagnóstico
+            detail = str(exc)[:200]
+            return False, f"Error al crear la cuenta: {detail}"
 
     # ────────────────────────────────────────────────────────────────────
     #  Login
@@ -210,7 +218,9 @@ class SupabaseAuth:
                 return False, "Correo o contraseña incorrectos."
             if "email not confirmed" in msg or "not confirmed" in msg:
                 return False, "Tu correo aún no ha sido confirmado. Revisa tu bandeja de entrada."
-            return False, "Error al iniciar sesión. Intenta de nuevo."
+            # Mostrar detalle real para diagnóstico
+            detail = str(exc)[:200]
+            return False, f"Error al iniciar sesión: {detail}"
 
     # ────────────────────────────────────────────────────────────────────
     #  Restaurar sesión (refresh token)
