@@ -153,8 +153,6 @@ class SupabaseAuth:
             msg = str(exc).lower()
             if "already registered" in msg or "already been registered" in msg:
                 return False, "Este correo ya está registrado. Intenta iniciar sesión."
-            if "rate" in msg or "limit" in msg:
-                return False, "Demasiadas solicitudes. Espera unos minutos e intenta de nuevo."
             return False, "Error al crear la cuenta. Verifica tus datos e intenta de nuevo."
 
     # ────────────────────────────────────────────────────────────────────
@@ -212,8 +210,6 @@ class SupabaseAuth:
                 return False, "Correo o contraseña incorrectos."
             if "email not confirmed" in msg or "not confirmed" in msg:
                 return False, "Tu correo aún no ha sido confirmado. Revisa tu bandeja de entrada."
-            if "rate" in msg or "limit" in msg:
-                return False, "Demasiados intentos. Espera unos minutos."
             return False, "Error al iniciar sesión. Intenta de nuevo."
 
     # ────────────────────────────────────────────────────────────────────
