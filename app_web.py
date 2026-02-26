@@ -12,7 +12,7 @@ from ui.shared import inject_all_css, render_sidebar_logo, render_sidebar_avatar
 from utils.state import initialize_session_state
 
 # --- Pages ---
-from pages import (
+from page_modules import (
     live_scanning_page,
     open_interest_page,
     data_analysis_page,

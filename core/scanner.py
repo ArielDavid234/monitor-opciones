@@ -40,10 +40,11 @@ from core.cache import get_cached_chain, cache_chain
 # ============================================================================
 #                    CACHE TTL (evita rate-limiting)
 # ============================================================================
-# Basado en lru_cache pero con expiración temporal.
-# Si los datos ya fueron descargados en los últimos `ttl` segundos,
-# se devuelven desde memoria sin hacer una nueva petición a Yahoo Finance.
-
+"""
+    Basado en lru_cache pero con expiración temporal.
+    Si los datos ya fueron descargados en los últimos `ttl` segundos,
+    se devuelven desde memoria sin hacer una nueva petición a Yahoo Finance.
+"""
 def ttl_cache(ttl_seconds=300, maxsize=128):
     """Decorador de caché con TTL (time-to-live).
 
