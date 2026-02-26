@@ -23,10 +23,10 @@ from supabase import create_client, Client
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-#                    RATE LIMITING CONFIG
+#                    RATE LIMITING CONFIG (desactivado — intentos ilimitados)
 # ============================================================================
-_MAX_LOGIN_ATTEMPTS = 3          # intentos máximos por email
-_RATE_LIMIT_WINDOW = 300         # ventana en segundos (5 min)
+# _MAX_LOGIN_ATTEMPTS = 3
+# _RATE_LIMIT_WINDOW = 300
 
 
 def _get_supabase_client() -> Client:
@@ -177,15 +177,7 @@ class SupabaseAuth:
         if not email or not password:
             return False, "Ingresa tu correo y contraseña."
 
-        # Rate limiting
-        blocked, remaining = self._check_rate_limit(email)
-        if blocked:
-            mins = remaining // 60
-            secs = remaining % 60
-            return False, (
-                f"⏳ Demasiados intentos fallidos. "
-                f"Intenta de nuevo en {mins}m {secs}s."
-            )
+        # Rate limiting desactivado — intentos ilimitados
 
         try:
             res = self.client.auth.sign_in_with_password({
@@ -215,7 +207,6 @@ class SupabaseAuth:
             return False, "Credenciales incorrectas."
         except Exception as exc:
             logger.warning("Error en login: %s", exc)
-            self._record_attempt(email)
             msg = str(exc).lower()
             if "invalid" in msg or "credentials" in msg:
                 return False, "Correo o contraseña incorrectos."
