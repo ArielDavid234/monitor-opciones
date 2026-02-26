@@ -72,32 +72,16 @@ _LOGIN_CSS = """
 """
 
 
-# ============================================================================
-#                    LOGO SVG (reutilizado del sidebar)
-# ============================================================================
-_LOGO_SVG = """
-<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="72" height="72">
-    <defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#00ff88"/><stop offset="100%" stop-color="#10b981"/>
-    </linearGradient></defs>
-    <path d="M8 48h48l-6-28-10 12-10-20-10 20-10-12z" fill="url(#cg)" stroke="#00ff88" stroke-width="1.5"/>
-    <rect x="8" y="48" width="48" height="6" rx="2" fill="url(#cg)"/>
-    <circle cx="32" cy="12" r="3" fill="#00ff88"/>
-    <circle cx="12" cy="22" r="2.5" fill="#10b981"/>
-    <circle cx="52" cy="22" r="2.5" fill="#10b981"/>
-</svg>
-"""
-
-
-def _render_logo() -> str:
-    """HTML del logo + título para la pantalla de login."""
-    return f"""
-    <div class="login-logo">
-        {_LOGO_SVG}
-        <h1>OPTIONSKING</h1>
-        <p class="sub">Analytics v5.0</p>
-    </div>
-    """
+def _render_logo_html() -> str:
+    """HTML del logo para la pantalla de login (sin SVG — máxima compatibilidad)."""
+    return (
+        '<div style="text-align:center;padding:1.2rem 0 1.6rem 0;">'
+        '<div style="font-size:3rem;margin-bottom:4px;">&#x1F451;</div>'
+        '<div style="font-size:2rem;font-weight:800;color:#00ff88;'
+        'letter-spacing:-0.02em;line-height:1.1;">OPTIONSKING</div>'
+        '<div style="color:#94a3b8;font-size:0.9rem;margin-top:4px;">Analytics v5.0</div>'
+        '</div>'
+    )
 
 
 # ============================================================================
@@ -124,8 +108,8 @@ def render() -> bool:
     _, col_center, _ = st.columns([1, 2, 1])
 
     with col_center:
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        st.markdown(_render_logo(), unsafe_allow_html=True)
+        # Logo (un solo st.markdown — no se pueden abrir/cerrar divs entre calls)
+        st.markdown(_render_logo_html(), unsafe_allow_html=True)
 
         # ── Tabs: Login / Registro ───────────────────────────────────────
         tab_login, tab_register = st.tabs(["🔐 Iniciar Sesión", "📝 Crear Cuenta"])
@@ -211,8 +195,6 @@ def render() -> bool:
                     st.success(msg)
                 else:
                     st.error(msg)
-
-        st.markdown('</div>', unsafe_allow_html=True)
 
     return False
 
