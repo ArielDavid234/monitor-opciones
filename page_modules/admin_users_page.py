@@ -60,13 +60,51 @@ def render(**kwargs) -> None:
         st.info("No se encontraron perfiles de usuarios.")
         return
 
+    # ── Contadores para los botones ──────────────────────────────────────
+    total     = len(profiles)
+    activos   = sum(1 for p in profiles if p.get("is_active", True))
+    inactivos = total - activos
+    admins    = sum(1 for p in profiles if p.get("role") == "admin")
+
+    # ── Botones de métrica / filtro rápido ───────────────────────────────
+    filtro_metrica = st.session_state.get("admin_metric_filter", "Todos")
+
+    btn_defs = [
+        ("Todos",     total,     "Todos"),
+        ("Activos",   activos,   "activos"),
+        ("Inactivos", inactivos, "inactivos"),
+        ("Admins",    admins,    "admins"),
+    ]
+
+    cols = st.columns(4)
+    for i, (label, count, key) in enumerate(btn_defs):
+        with cols[i]:
+            is_sel = filtro_metrica == key
+            btn_label = f"{'✅ ' if is_sel else ''}{label} ({count})"
+            if st.button(btn_label, key=f"admin_metric_btn_{i}",
+                         use_container_width=True,
+                         type="primary" if is_sel else "secondary"):
+                st.session_state["admin_metric_filter"] = key
+                st.rerun()
+
+    st.markdown("")
+
     df = pd.DataFrame(profiles)
 
-    # ── Aplicar filtros ──────────────────────────────────────────────────
-    if solo_activos:
-        df = df[df["is_active"] == True]  # noqa: E712
-    if filtro_rol != "Todos":
-        df = df[df["role"] == filtro_rol]
+    # ── Aplicar filtro de botón ──────────────────────────────────────────
+    filtro_metrica = st.session_state.get("admin_metric_filter", "Todos")
+    if filtro_metrica == "activos":
+        df = df[df["is_active"] == True]   # noqa: E712
+    elif filtro_metrica == "inactivos":
+        df = df[df["is_active"] == False]  # noqa: E712
+    elif filtro_metrica == "admins":
+        df = df[df["role"] == "admin"]
+    else:
+        # "Todos" — aplicar los filtros del expander
+        if solo_activos:
+            df = df[df["is_active"] == True]   # noqa: E712
+        if filtro_rol != "Todos":
+            df = df[df["role"] == filtro_rol]
 
     # ── Formatear para mostrar ───────────────────────────────────────────
     df_display = df.copy()
@@ -90,23 +128,6 @@ def render(**kwargs) -> None:
         df_display["Fecha Creación"] = pd.to_datetime(
             df_display["Fecha Creación"], errors="coerce"
         ).dt.strftime("%Y-%m-%d %H:%M")
-
-    # ── Métricas rápidas ─────────────────────────────────────────────────
-    total = len(profiles)
-    activos = sum(1 for p in profiles if p.get("is_active", True))
-    admins = sum(1 for p in profiles if p.get("role") == "admin")
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Total Usuarios", total)
-    with c2:
-        st.metric("Activos", activos)
-    with c3:
-        st.metric("Inactivos", total - activos)
-    with c4:
-        st.metric("Admins", admins)
-
-    st.markdown("")
 
     # ── Tabla de usuarios ────────────────────────────────────────────────
     display_cols = [c for c in ["Nombre", "Rol", "Activo", "Fecha Creación"] if c in df_display.columns]
