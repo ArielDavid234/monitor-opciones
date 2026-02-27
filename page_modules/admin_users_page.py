@@ -57,7 +57,7 @@ def render(**kwargs) -> None:
     st.markdown("#### ⚙️ Acciones Rápidas")
 
     user_options = {
-        f"{row.get('name', 'Sin nombre')} ({row.get('role', 'user')})": row["id"]
+        f"{row.get('name', 'Sin nombre')} ({row.get('role', 'user')}) · {row['id']}": row["id"]
         for row in profiles
     }
 
