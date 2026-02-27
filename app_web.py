@@ -91,6 +91,14 @@ _user_initials = "".join(
 with st.sidebar:
     render_sidebar_logo()
 
+    # === DEBUG ADMIN (temporal) ===
+    _dbg_user = _auth.get_current_user()
+    st.write("DEBUG - Usuario actual:")
+    st.write(_dbg_user)
+    st.write(f"Role: {_dbg_user.get('role') if _dbg_user else None}")
+    st.write(f"Es admin? {_auth.is_admin()}")
+    st.markdown("---")
+
     # ── CSS: flex column para empujar usuario al fondo ───────────────────
     st.markdown(
         """
