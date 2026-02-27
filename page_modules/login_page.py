@@ -207,24 +207,93 @@ def render() -> bool:
 
 
 # ============================================================================
-#                    WELCOME SPLASH (3 sec → redirect)
+#                    WELCOME SPLASH (full-screen overlay → redirect)
 # ============================================================================
 def _show_welcome_and_redirect(auth: SupabaseAuth) -> None:
-    """Muestra pantalla de bienvenida por 3 segundos y hace rerun."""
+    """Pantalla de bienvenida full-screen sobre toda la app, luego rerun."""
     user = auth.get_current_user()
     name = user["name"] if user else "Usuario"
+    initials = "".join(w[0].upper() for w in name.split()[:2]) if name else "U"
 
-    placeholder = st.empty()
-    placeholder.markdown(
+    splash = st.empty()
+    splash.markdown(
         f"""
-        <div class="welcome-splash">
-            <h1>👑 ¡Bienvenido!</h1>
-            <h2 style="color: white; font-weight: 700;">{name}</h2>
-            <p>Preparando tu dashboard...</p>
+        <style>
+        [data-testid="stSidebar"],
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"] {{ display: none !important; }}
+        .ok-overlay {{
+            position: fixed; inset: 0; z-index: 999999;
+            background: linear-gradient(135deg, #0a0f1e 0%, #0d1b2a 50%, #0a1628 100%);
+            display: flex; align-items: center; justify-content: center;
+            animation: okFadeIn 0.4s ease;
+        }}
+        @keyframes okFadeIn {{ from {{ opacity:0; }} to {{ opacity:1; }} }}
+        .ok-card {{
+            text-align: center;
+            padding: 3.5rem 4rem;
+            background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 24px;
+            border: 1px solid #1e3a5f;
+            box-shadow: 0 0 80px rgba(0,255,136,0.08), 0 8px 40px rgba(0,0,0,0.6);
+            max-width: 460px; width: 90%;
+            animation: okSlideUp 0.45s cubic-bezier(.22,1,.36,1) both;
+        }}
+        @keyframes okSlideUp {{
+            from {{ transform: translateY(28px); opacity:0; }}
+            to   {{ transform: translateY(0);   opacity:1; }}
+        }}
+        .ok-av {{
+            width:72px; height:72px; border-radius:50%;
+            background: linear-gradient(135deg, #00ff88, #10b981);
+            display:inline-flex; align-items:center; justify-content:center;
+            font-size:26px; font-weight:800; color:#0f172a;
+            margin-bottom:1.2rem;
+            box-shadow: 0 0 24px rgba(0,255,136,0.35);
+        }}
+        .ok-label {{
+            font-size:0.85rem; color:#64748b; font-weight:500;
+            letter-spacing:0.12em; text-transform:uppercase; margin-bottom:0.3rem;
+        }}
+        .ok-name {{
+            font-size:2rem; font-weight:800; color:#fff; line-height:1.15;
+            margin-bottom:0.6rem;
+        }}
+        .ok-badge {{
+            display:inline-block;
+            background:rgba(0,255,136,0.1); border:1px solid rgba(0,255,136,0.25);
+            color:#00ff88; font-size:0.78rem; font-weight:600;
+            padding:0.25rem 0.9rem; border-radius:999px;
+            margin-bottom:1.8rem; letter-spacing:0.06em;
+        }}
+        .ok-sub {{ color:#475569; font-size:0.88rem; }}
+        .ok-dots {{
+            display:flex; justify-content:center; gap:6px; margin-top:1.6rem;
+        }}
+        .ok-dots span {{
+            width:7px; height:7px; border-radius:50%; background:#00ff88;
+            animation: okBounce 1.2s infinite ease-in-out both;
+        }}
+        .ok-dots span:nth-child(1) {{ animation-delay:-0.32s; }}
+        .ok-dots span:nth-child(2) {{ animation-delay:-0.16s; }}
+        @keyframes okBounce {{
+            0%,80%,100% {{ transform:scale(0); opacity:0.4; }}
+            40%          {{ transform:scale(1); opacity:1;   }}
+        }}
+        </style>
+        <div class="ok-overlay">
+          <div class="ok-card">
+            <div class="ok-av">{initials}</div>
+            <div class="ok-label">&#x1F451;&ensp;Bienvenido de vuelta</div>
+            <div class="ok-name">{name}</div>
+            <div class="ok-badge">Pro Plan</div>
+            <div class="ok-sub">Preparando tu dashboard&hellip;</div>
+            <div class="ok-dots"><span></span><span></span><span></span></div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    time.sleep(3)
-    placeholder.empty()
+    time.sleep(2)
+    splash.empty()
     st.rerun()

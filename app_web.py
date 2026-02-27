@@ -76,30 +76,36 @@ if not st.session_state.get("_favs_synced"):
 # ============================================================================
 #                    SIDEBAR
 # ============================================================================
+# Precalcular initials antes del bloque sidebar
+_user_initials = "".join(
+    w[0].upper() for w in (_current_user["name"] or "U").split()[:2]
+)
+
 with st.sidebar:
     render_sidebar_logo()
 
-    # ── Info de usuario autenticado ──────────────────────────────────────
-    _user_initials = "".join(
-        w[0].upper() for w in (_current_user["name"] or "U").split()[:2]
-    )
+    # ── CSS: flex column para empujar usuario al fondo ───────────────────
     st.markdown(
-        f'<div style="text-align:center;margin-bottom:0.8rem;">'
-        f'<div style="width:42px;height:42px;border-radius:50%;'
-        f'background:linear-gradient(135deg,#00ff88,#10b981);'
-        f'display:inline-flex;align-items:center;justify-content:center;'
-        f'font-size:16px;font-weight:700;color:#0f172a;'
-        f'margin-bottom:4px;box-shadow:0 0 12px rgba(0,255,136,0.2);">{_user_initials}</div>'
-        f'<div style="color:white;font-weight:600;font-size:0.85rem;">{_current_user["name"]}</div>'
-        f'<div style="color:#64748b;font-size:0.7rem;">● Pro Plan</div>'
-        f'</div>',
+        """
+        <style>
+        section[data-testid="stSidebar"] > div:first-child {
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100vh !important;
+            padding-bottom: 0 !important;
+        }
+        .sidebar-nav-area { flex: 1 1 auto; }
+        .sidebar-user-block {
+            padding: 0.6rem 0 0.8rem 0;
+            border-top: 1px solid #1e293b;
+        }
+        </style>
+        """,
         unsafe_allow_html=True,
     )
-    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout"):
-        _auth.logout()
-        st.rerun()
 
-    st.markdown("---")
+    # ── Navegación ───────────────────────────────────────────────────────
+    st.markdown('<div class="sidebar-nav-area">', unsafe_allow_html=True)
 
     _NAV_OPTIONS = [
         "🔍 Live Scanning",
@@ -128,7 +134,26 @@ with st.sidebar:
         key="nav_radio",
     )
 
-    st.markdown("---")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Info de usuario — al fondo del sidebar ───────────────────────────
+    st.markdown('<div class="sidebar-user-block">', unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="text-align:center;padding:0.4rem 0 0.6rem 0;">'
+        f'<div style="width:42px;height:42px;border-radius:50%;'
+        f'background:linear-gradient(135deg,#00ff88,#10b981);'
+        f'display:inline-flex;align-items:center;justify-content:center;'
+        f'font-size:16px;font-weight:700;color:#0f172a;'
+        f'margin-bottom:4px;box-shadow:0 0 12px rgba(0,255,136,0.2);">{_user_initials}</div>'
+        f'<div style="color:white;font-weight:600;font-size:0.85rem;">{_current_user["name"]}</div>'
+        f'<div style="color:#64748b;font-size:0.72rem;margin-top:1px;">● Pro Plan</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout"):
+        _auth.logout()
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.session_state.current_page = pagina
 
