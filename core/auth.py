@@ -375,11 +375,15 @@ class SupabaseAuth:
     def get_current_user() -> dict | None:
         """Retorna dict {id, email, name, role, is_active} del usuario actual, o None."""
         return st.session_state.get("_auth_user")
+
     @staticmethod
     def is_admin() -> bool:
         """True si el usuario actual tiene rol 'admin'."""
-        user = st.session_state.get("_auth_user")
-        return bool(user and user.get("role") == "admin")
+        try:
+            user = st.session_state.get("_auth_user")
+            return bool(user and user.get("role") == "admin")
+        except Exception:
+            return False
 
     # ────────────────────────────────────────────────────────────────────
     #  Perfil de usuario (tabla public.profiles)
@@ -387,7 +391,8 @@ class SupabaseAuth:
     def _fetch_profile(self, user_id: str) -> dict | None:
         """Obtiene el perfil del usuario desde public.profiles.
 
-        Retorna dict con {name, role, is_active} o None si no existe.
+        Retorna dict con {name, role, is_active} o None si no existe
+        o si la tabla aún no ha sido creada.
         """
         try:
             res = (
@@ -399,6 +404,7 @@ class SupabaseAuth:
             )
             return res.data if res.data else None
         except Exception as exc:
+            # La tabla puede no existir aún — no romper el login
             logger.warning("Error obteniendo perfil para %s: %s", user_id, exc)
             return None
 

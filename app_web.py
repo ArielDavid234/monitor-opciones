@@ -127,7 +127,11 @@ with st.sidebar:
         "📋 Reports",
     ]
     # Agregar opción de admin solo si el usuario es administrador
-    if _auth.is_admin():
+    try:
+        _is_admin = _auth.is_admin()
+    except Exception:
+        _is_admin = False
+    if _is_admin:
         _NAV_OPTIONS.append("👑 Administrar Usuarios")
     # Handle page redirect from Watchlist / other pages
     _redir = st.session_state.get("_redirect", {})
