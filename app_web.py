@@ -41,6 +41,12 @@ if not _auth.is_authenticated():
 # ── A partir de aquí, el usuario ESTÁ autenticado ────────────────────────
 _current_user = _auth.get_current_user()  # {id, email, name}
 
+# ── Splash de bienvenida (full-screen, una sola vez tras login) ───────────
+if st.session_state.pop("_show_welcome_splash", False):
+    from page_modules.login_page import show_welcome_splash  # noqa: E402
+    show_welcome_splash(_current_user)
+    # Después del splash, rerun para cargar el dashboard limpio
+
 from core.scanner import limpiar_cache_ticker  # noqa: E402
 from utils.state import initialize_session_state  # noqa: E402
 

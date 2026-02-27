@@ -145,8 +145,8 @@ def render() -> bool:
             if login_submit:
                 ok, msg = auth.login(login_email, login_password, login_remember)
                 if ok:
-                    _show_welcome_and_redirect(auth)
-                    return True  # nunca se alcanza por el rerun, pero por consistencia
+                    st.session_state["_show_welcome_splash"] = True
+                    st.rerun()
                 else:
                     st.error(msg)
 
@@ -209,10 +209,13 @@ def render() -> bool:
 # ============================================================================
 #                    WELCOME SPLASH (full-screen overlay → redirect)
 # ============================================================================
-def _show_welcome_and_redirect(auth: SupabaseAuth) -> None:
-    """Pantalla de bienvenida full-screen sobre toda la app, luego rerun."""
-    user = auth.get_current_user()
-    name = user["name"] if user else "Usuario"
+def show_welcome_splash(user: dict | None = None) -> None:
+    """Pantalla de bienvenida full-screen sobre toda la app, luego rerun.
+
+    Se llama desde app_web.py a nivel top-level (sin columnas) para
+    que el overlay cubra toda la pantalla correctamente.
+    """
+    name = (user or {}).get("name", "Usuario")
     initials = "".join(w[0].upper() for w in name.split()[:2]) if name else "U"
 
     splash = st.empty()
