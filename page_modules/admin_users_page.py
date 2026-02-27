@@ -135,28 +135,38 @@ def render(**kwargs) -> None:
     selected_id = user_options[selected_label]
     selected_profile = next((p for p in profiles if p["id"] == selected_id), {})
 
-    col_a, col_b = st.columns(2)
+    # ── Protección: no se puede modificar a otro admin ───────────────────
+    current_user = auth.get_current_user()
+    target_is_admin = selected_profile.get("role") == "admin"
+    target_is_self = selected_id == current_user.get("id")
 
-    with col_a:
-        new_role = st.selectbox(
-            "Cambiar rol",
-            ["user", "admin"],
-            index=0 if selected_profile.get("role") == "user" else 1,
-            key="admin_new_role",
-        )
-        if st.button("💾 Guardar Rol", use_container_width=True, key="btn_save_role"):
-            if auth.update_profile(selected_id, {"role": new_role}):
-                st.success(f"Rol actualizado a '{new_role}'.")
-                st.rerun()
-            else:
-                st.error("Error al actualizar el rol.")
+    if target_is_admin and not target_is_self:
+        st.warning("⚠️ No puedes modificar a otro administrador.")
+    elif target_is_self:
+        st.info("ℹ️ Este eres tú — no puedes cambiar tu propio rol ni desactivarte.")
+    else:
+        col_a, col_b = st.columns(2)
 
-    with col_b:
-        is_active = selected_profile.get("is_active", True)
-        action_label = "🚫 Desactivar" if is_active else "✅ Activar"
-        if st.button(action_label, use_container_width=True, key="btn_toggle_active"):
-            if auth.update_profile(selected_id, {"is_active": not is_active}):
-                st.success(f"Usuario {'activado' if not is_active else 'desactivado'}.")
-                st.rerun()
-            else:
-                st.error("Error al cambiar el estado.")
+        with col_a:
+            new_role = st.selectbox(
+                "Cambiar rol",
+                ["user", "admin"],
+                index=0 if selected_profile.get("role") == "user" else 1,
+                key="admin_new_role",
+            )
+            if st.button("💾 Guardar Rol", use_container_width=True, key="btn_save_role"):
+                if auth.update_profile(selected_id, {"role": new_role}):
+                    st.success(f"Rol actualizado a '{new_role}'.")
+                    st.rerun()
+                else:
+                    st.error("Error al actualizar el rol.")
+
+        with col_b:
+            is_active = selected_profile.get("is_active", True)
+            action_label = "🚫 Desactivar" if is_active else "✅ Activar"
+            if st.button(action_label, use_container_width=True, key="btn_toggle_active"):
+                if auth.update_profile(selected_id, {"is_active": not is_active}):
+                    st.success(f"Usuario {'activado' if not is_active else 'desactivado'}.")
+                    st.rerun()
+                else:
+                    st.error("Error al cambiar el estado.")
