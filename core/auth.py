@@ -163,6 +163,7 @@ class SupabaseAuth:
 
     def _set_session_from_response(self, res: Any) -> None:
         """Helper: guarda usuario + tokens en session_state desde una respuesta auth."""
+        profile = self._fetch_profile(res.user.id)
         st.session_state["_auth_user"] = {
             "id": res.user.id,
             "email": res.user.email,
@@ -170,6 +171,8 @@ class SupabaseAuth:
                 res.user.user_metadata.get("display_name")
                 or res.user.email.split("@")[0]
             ),
+            "role": profile.get("role", "user") if profile else "user",
+            "is_active": profile.get("is_active", True) if profile else True,
         }
         st.session_state["_auth_access_token"] = res.session.access_token
         st.session_state["_auth_refresh_token"] = res.session.refresh_token
@@ -270,6 +273,7 @@ class SupabaseAuth:
             if res.user and res.session:
                 self._clear_attempts(email)
                 # Guardar sesión en session_state
+                profile = self._fetch_profile(res.user.id)
                 st.session_state["_auth_user"] = {
                     "id": res.user.id,
                     "email": res.user.email,
@@ -277,6 +281,8 @@ class SupabaseAuth:
                         res.user.user_metadata.get("display_name")
                         or res.user.email.split("@")[0]
                     ),
+                    "role": profile.get("role", "user") if profile else "user",
+                    "is_active": profile.get("is_active", True) if profile else True,
                 }
                 st.session_state["_auth_access_token"] = res.session.access_token
                 st.session_state["_auth_refresh_token"] = res.session.refresh_token
@@ -318,6 +324,7 @@ class SupabaseAuth:
         try:
             res = self.client.auth.refresh_session(refresh)
             if res.user and res.session:
+                profile = self._fetch_profile(res.user.id)
                 st.session_state["_auth_user"] = {
                     "id": res.user.id,
                     "email": res.user.email,
@@ -325,6 +332,8 @@ class SupabaseAuth:
                         res.user.user_metadata.get("display_name")
                         or res.user.email.split("@")[0]
                     ),
+                    "role": profile.get("role", "user") if profile else "user",
+                    "is_active": profile.get("is_active", True) if profile else True,
                 }
                 st.session_state["_auth_access_token"] = res.session.access_token
                 st.session_state["_auth_refresh_token"] = res.session.refresh_token
@@ -364,9 +373,64 @@ class SupabaseAuth:
 
     @staticmethod
     def get_current_user() -> dict | None:
-        """Retorna dict {id, email, name} del usuario actual, o None."""
+        """Retorna dict {id, email, name, role, is_active} del usuario actual, o None."""
         return st.session_state.get("_auth_user")
+    @staticmethod
+    def is_admin() -> bool:
+        """True si el usuario actual tiene rol 'admin'."""
+        user = st.session_state.get("_auth_user")
+        return bool(user and user.get("role") == "admin")
 
+    # ────────────────────────────────────────────────────────────────────
+    #  Perfil de usuario (tabla public.profiles)
+    # ────────────────────────────────────────────────────────────────────
+    def _fetch_profile(self, user_id: str) -> dict | None:
+        """Obtiene el perfil del usuario desde public.profiles.
+
+        Retorna dict con {name, role, is_active} o None si no existe.
+        """
+        try:
+            res = (
+                self.client.table("profiles")
+                .select("name, role, is_active")
+                .eq("id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            return res.data if res.data else None
+        except Exception as exc:
+            logger.warning("Error obteniendo perfil para %s: %s", user_id, exc)
+            return None
+
+    def fetch_all_profiles(self) -> list[dict]:
+        """Obtiene todos los perfiles (solo para administradores).
+
+        Retorna lista de dicts con {id, name, role, is_active, created_at, email}.
+        Requiere que el admin tenga permisos de lectura sobre profiles.
+        """
+        try:
+            res = (
+                self.client.table("profiles")
+                .select("id, name, role, is_active, created_at")
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return res.data or []
+        except Exception as exc:
+            logger.error("Error obteniendo todos los perfiles: %s", exc)
+            return []
+
+    def update_profile(self, user_id: str, updates: dict) -> bool:
+        """Actualiza campos del perfil de un usuario.
+
+        `updates` puede contener: name, role, is_active.
+        """
+        try:
+            self.client.table("profiles").update(updates).eq("id", user_id).execute()
+            return True
+        except Exception as exc:
+            logger.error("Error actualizando perfil %s: %s", user_id, exc)
+            return False
     # ────────────────────────────────────────────────────────────────────
     #  Recuperación de contraseña
     # ────────────────────────────────────────────────────────────────────

@@ -62,6 +62,7 @@ from page_modules import (  # noqa: E402
     news_page,
     reports_page,
     calendar_page,
+    admin_users_page,
 )
 
 # ============================================================================
@@ -125,6 +126,9 @@ with st.sidebar:
         "📅 Calendar",
         "📋 Reports",
     ]
+    # Agregar opción de admin solo si el usuario es administrador
+    if _auth.is_admin():
+        _NAV_OPTIONS.append("👑 Administrar Usuarios")
     # Handle page redirect from Watchlist / other pages
     _redir = st.session_state.get("_redirect", {})
     _redirect_page = _redir.get("page")
@@ -152,7 +156,8 @@ with st.sidebar:
         f'font-size:16px;font-weight:700;color:#0f172a;'
         f'margin-bottom:4px;box-shadow:0 0 12px rgba(0,255,136,0.2);">{_user_initials}</div>'
         f'<div style="color:white;font-weight:600;font-size:0.85rem;">{_current_user["name"]}</div>'
-        f'<div style="color:#64748b;font-size:0.72rem;margin-top:1px;">● Pro Plan</div>'
+        f'<div style="color:#64748b;font-size:0.72rem;margin-top:1px;">'
+        f'{"\U0001f451 Admin" if _current_user.get("role") == "admin" else "\u25cf Pro Plan"}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -252,6 +257,8 @@ elif pagina == "📅 Calendar":
     calendar_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "📋 Reports":
     reports_page.render(ticker_symbol, **_page_kwargs)
+elif pagina == "👑 Administrar Usuarios":
+    admin_users_page.render(**_page_kwargs)
 
 # ============================================================================
 #                    FOOTER
