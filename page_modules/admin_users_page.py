@@ -40,19 +40,6 @@ def render(**kwargs) -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Filtros dentro de la página ──────────────────────────────────────
-    with st.expander("🔧 Filtros de Usuarios", expanded=True):
-        col_f1, col_f2 = st.columns([1, 2])
-        with col_f1:
-            solo_activos = st.toggle("Mostrar solo activos", value=True, key="admin_solo_activos")
-        with col_f2:
-            filtro_rol = st.selectbox(
-                "Rol",
-                ["Todos", "user", "admin"],
-                index=0,
-                key="admin_filtro_rol",
-            )
-
     # ── Obtener perfiles ─────────────────────────────────────────────────
     profiles = auth.fetch_all_profiles()
 
@@ -99,12 +86,7 @@ def render(**kwargs) -> None:
         df = df[df["is_active"] == False]  # noqa: E712
     elif filtro_metrica == "admins":
         df = df[df["role"] == "admin"]
-    else:
-        # "Todos" — aplicar los filtros del expander
-        if solo_activos:
-            df = df[df["is_active"] == True]   # noqa: E712
-        if filtro_rol != "Todos":
-            df = df[df["role"] == filtro_rol]
+    # "Todos" — sin filtros adicionales, muestra todos
 
     # ── Formatear para mostrar ───────────────────────────────────────────
     df_display = df.copy()
