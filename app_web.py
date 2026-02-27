@@ -97,7 +97,7 @@ with st.sidebar:
     st.write(_dbg_user)
     # Query directo a la tabla profiles
     try:
-        _dbg_profile = _auth.client.table("profiles").select("*").eq("id", _dbg_user["id"]).maybe_single().execute()
+        _dbg_profile = _auth.client.table("profiles").select("*").eq("id", _dbg_user["id"]).execute()
         st.write("DEBUG - profiles table:")
         st.write(_dbg_profile.data)
     except Exception as _dbg_exc:

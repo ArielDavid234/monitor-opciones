@@ -359,7 +359,7 @@ class SupabaseAuth:
         """Elimina todos los keys de autenticación del session_state."""
         for k in [
             "_auth_user", "_auth_access_token", "_auth_refresh_token",
-            "_auth_remember",
+            "_auth_remember", "_profile_synced",
         ]:
             st.session_state.pop(k, None)
 
@@ -374,19 +374,24 @@ class SupabaseAuth:
     def get_current_user(self) -> dict | None:
         """Retorna dict {id, email, name, role, is_active} del usuario actual, o None.
 
-        Si el dict cacheado no tiene 'role' (sesión antigua), consulta
-        la tabla profiles y actualiza el cache automáticamente.
+        Si el rol aún no fue verificado contra la tabla profiles en esta
+        sesión, lo consulta una vez y actualiza el cache.
         """
         user = st.session_state.get("_auth_user")
         if not user:
             return None
 
-        # Auto-heal: si falta 'role', fetch desde profiles
-        if "role" not in user:
+        # Fetch profile una vez por sesión para tener el role real de la DB
+        if not st.session_state.get("_profile_synced"):
             profile = self._fetch_profile(user["id"])
-            user["role"] = profile.get("role", "user") if profile else "user"
-            user["is_active"] = profile.get("is_active", True) if profile else True
+            if profile:
+                user["role"] = profile.get("role", "user")
+                user["is_active"] = profile.get("is_active", True)
+            else:
+                user.setdefault("role", "user")
+                user.setdefault("is_active", True)
             st.session_state["_auth_user"] = user
+            st.session_state["_profile_synced"] = True
 
         return user
 
@@ -406,16 +411,20 @@ class SupabaseAuth:
 
         Retorna dict con {name, role, is_active} o None si no existe
         o si la tabla aún no ha sido creada.
+
+        Nota: NO usa maybe_single() porque algunas versiones de supabase-py
+        lanzan excepción con HTTP 204 en vez de retornar None.
         """
         try:
             res = (
                 self.client.table("profiles")
                 .select("name, role, is_active")
                 .eq("id", user_id)
-                .maybe_single()
                 .execute()
             )
-            return res.data if res.data else None
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
         except Exception as exc:
             # La tabla puede no existir aún — no romper el login
             logger.warning("Error obteniendo perfil para %s: %s", user_id, exc)
@@ -513,11 +522,10 @@ class SupabaseAuth:
                 .select("data_value")
                 .eq("user_id", user_id)
                 .eq("data_key", key)
-                .maybe_single()
                 .execute()
             )
-            if res.data:
-                return res.data["data_value"]
+            if res.data and len(res.data) > 0:
+                return res.data[0]["data_value"]
         except Exception as exc:
             logger.warning("Error cargando datos de usuario (%s/%s): %s", user_id, key, exc)
         return None
