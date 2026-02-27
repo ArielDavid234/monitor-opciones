@@ -221,7 +221,13 @@ class SupabaseAuth:
                 "password": password,
                 "options": sign_up_opts,
             })
-            # Supabase devuelve user incluso antes de confirmar email
+            # Si la confirmación por email está desactivada, Supabase
+            # devuelve una sesión activa de inmediato.
+            if res.session:
+                self._set_session_from_response(res)
+                st.session_state["_show_welcome_splash"] = True
+                return True, "✅ Cuenta creada exitosamente. ¡Bienvenido!"
+            # Si hay confirmación activa, pedir que revisen el correo
             if res.user:
                 return True, (
                     "✅ Cuenta creada exitosamente. "

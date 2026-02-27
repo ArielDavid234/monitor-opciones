@@ -199,7 +199,11 @@ def render() -> bool:
             if reg_submit:
                 ok, msg = auth.register(reg_email, reg_password, reg_name, reg_confirm)
                 if ok:
-                    st.success(msg)
+                    if SupabaseAuth.is_authenticated():
+                        # Registro sin confirmación de email → ya autenticado
+                        st.rerun()
+                    else:
+                        st.success(msg)
                 else:
                     st.error(msg)
 
