@@ -53,6 +53,59 @@ def render(**kwargs) -> None:
     inactivos = total - activos
     admins    = sum(1 for p in profiles if p.get("role") == "admin")
 
+    # ── Sección de acciones ──────────────────────────────────────────────
+    st.markdown("#### ⚙️ Acciones Rápidas")
+
+    user_options = {
+        f"{row.get('name', 'Sin nombre')} ({row.get('role', 'user')})": row["id"]
+        for row in profiles
+    }
+
+    selected_label = st.selectbox(
+        "Seleccionar usuario",
+        list(user_options.keys()),
+        key="admin_select_user",
+    )
+    selected_id = user_options[selected_label]
+    selected_profile = next((p for p in profiles if p["id"] == selected_id), {})
+
+    current_user = auth.get_current_user()
+    target_is_admin = selected_profile.get("role") == "admin"
+    target_is_self = selected_id == current_user.get("id")
+
+    if target_is_admin and not target_is_self:
+        st.warning("⚠️ No puedes modificar a otro administrador.")
+    elif target_is_self:
+        st.info("ℹ️ Este eres tú — no puedes cambiar tu propio rol ni desactivarte.")
+    else:
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            new_role = st.selectbox(
+                "Cambiar rol",
+                ["user", "admin"],
+                index=0 if selected_profile.get("role") == "user" else 1,
+                key="admin_new_role",
+            )
+            if st.button("💾 Guardar Rol", use_container_width=True, key="btn_save_role"):
+                if auth.update_profile(selected_id, {"role": new_role}):
+                    st.success(f"Rol actualizado a '{new_role}'.")
+                    st.rerun()
+                else:
+                    st.error("Error al actualizar el rol.")
+
+        with col_b:
+            is_active = selected_profile.get("is_active", True)
+            action_label = "🚫 Desactivar" if is_active else "✅ Activar"
+            if st.button(action_label, use_container_width=True, key="btn_toggle_active"):
+                if auth.update_profile(selected_id, {"is_active": not is_active}):
+                    st.success(f"Usuario {'activado' if not is_active else 'desactivado'}.")
+                    st.rerun()
+                else:
+                    st.error("Error al cambiar el estado.")
+
+    st.markdown("---")
+
     # ── Botones de métrica / filtro rápido ───────────────────────────────
     filtro_metrica = st.session_state.get("admin_metric_filter", "Todos")
 
@@ -91,7 +144,6 @@ def render(**kwargs) -> None:
     # ── Formatear para mostrar ───────────────────────────────────────────
     df_display = df.copy()
 
-    # Renombrar columnas a español
     col_map = {
         "id": "ID",
         "name": "Nombre",
@@ -101,11 +153,9 @@ def render(**kwargs) -> None:
     }
     df_display = df_display.rename(columns=col_map)
 
-    # Formatear rol y activo
     df_display["Rol"] = df_display["Rol"].map({"admin": "👑 Admin", "user": "👤 Usuario"}).fillna("👤 Usuario")
     df_display["Activo"] = df_display["Activo"].map({True: "✅ Sí", False: "❌ No"}).fillna("✅ Sí")
 
-    # Formatear fecha
     if "Fecha Creación" in df_display.columns:
         df_display["Fecha Creación"] = pd.to_datetime(
             df_display["Fecha Creación"], errors="coerce"
@@ -119,59 +169,3 @@ def render(**kwargs) -> None:
         hide_index=True,
         height=min(400, 40 + len(df_display) * 35),
     )
-
-    # ── Sección de acciones ──────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("#### ⚙️ Acciones Rápidas")
-
-    # Seleccionar usuario por nombre
-    user_options = {
-        f"{row.get('name', 'Sin nombre')} ({row.get('role', 'user')})": row["id"]
-        for row in profiles
-    }
-    if not user_options:
-        return
-
-    selected_label = st.selectbox(
-        "Seleccionar usuario",
-        list(user_options.keys()),
-        key="admin_select_user",
-    )
-    selected_id = user_options[selected_label]
-    selected_profile = next((p for p in profiles if p["id"] == selected_id), {})
-
-    # ── Protección: no se puede modificar a otro admin ───────────────────
-    current_user = auth.get_current_user()
-    target_is_admin = selected_profile.get("role") == "admin"
-    target_is_self = selected_id == current_user.get("id")
-
-    if target_is_admin and not target_is_self:
-        st.warning("⚠️ No puedes modificar a otro administrador.")
-    elif target_is_self:
-        st.info("ℹ️ Este eres tú — no puedes cambiar tu propio rol ni desactivarte.")
-    else:
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            new_role = st.selectbox(
-                "Cambiar rol",
-                ["user", "admin"],
-                index=0 if selected_profile.get("role") == "user" else 1,
-                key="admin_new_role",
-            )
-            if st.button("💾 Guardar Rol", use_container_width=True, key="btn_save_role"):
-                if auth.update_profile(selected_id, {"role": new_role}):
-                    st.success(f"Rol actualizado a '{new_role}'.")
-                    st.rerun()
-                else:
-                    st.error("Error al actualizar el rol.")
-
-        with col_b:
-            is_active = selected_profile.get("is_active", True)
-            action_label = "🚫 Desactivar" if is_active else "✅ Activar"
-            if st.button(action_label, use_container_width=True, key="btn_toggle_active"):
-                if auth.update_profile(selected_id, {"is_active": not is_active}):
-                    st.success(f"Usuario {'activado' if not is_active else 'desactivado'}.")
-                    st.rerun()
-                else:
-                    st.error("Error al cambiar el estado.")
