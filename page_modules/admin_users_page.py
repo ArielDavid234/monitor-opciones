@@ -106,6 +106,8 @@ def render(**kwargs) -> None:
 
     st.markdown("---")
 
+    st.markdown("#### 👥 Usuarios")
+
     # ── Botones de métrica / filtro rápido ───────────────────────────────
     filtro_metrica = st.session_state.get("admin_metric_filter", "Todos")
 
@@ -149,20 +151,14 @@ def render(**kwargs) -> None:
         "name": "Nombre",
         "role": "Rol",
         "is_active": "Activo",
-        "created_at": "Fecha Creación",
     }
     df_display = df_display.rename(columns=col_map)
 
     df_display["Rol"] = df_display["Rol"].map({"admin": "👑 Admin", "user": "👤 Usuario"}).fillna("👤 Usuario")
     df_display["Activo"] = df_display["Activo"].map({True: "✅ Sí", False: "❌ No"}).fillna("✅ Sí")
 
-    if "Fecha Creación" in df_display.columns:
-        df_display["Fecha Creación"] = pd.to_datetime(
-            df_display["Fecha Creación"], errors="coerce"
-        ).dt.strftime("%Y-%m-%d %H:%M")
-
     # ── Tabla de usuarios ────────────────────────────────────────────────
-    display_cols = [c for c in ["Nombre", "Rol", "Activo", "Fecha Creación"] if c in df_display.columns]
+    display_cols = [c for c in ["ID", "Nombre", "Rol", "Activo"] if c in df_display.columns]
     st.dataframe(
         df_display[display_cols],
         use_container_width=True,
