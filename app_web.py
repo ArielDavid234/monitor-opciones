@@ -93,9 +93,15 @@ with st.sidebar:
 
     # === DEBUG ADMIN (temporal) ===
     _dbg_user = _auth.get_current_user()
-    st.write("DEBUG - Usuario actual:")
+    st.write("DEBUG - session_state user:")
     st.write(_dbg_user)
-    st.write(f"Role: {_dbg_user.get('role') if _dbg_user else None}")
+    # Query directo a la tabla profiles
+    try:
+        _dbg_profile = _auth.client.table("profiles").select("*").eq("id", _dbg_user["id"]).maybe_single().execute()
+        st.write("DEBUG - profiles table:")
+        st.write(_dbg_profile.data)
+    except Exception as _dbg_exc:
+        st.write(f"DEBUG - Error querying profiles: {_dbg_exc}")
     st.write(f"Es admin? {_auth.is_admin()}")
     st.markdown("---")
 
