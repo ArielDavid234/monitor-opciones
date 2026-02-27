@@ -91,22 +91,6 @@ _user_initials = "".join(
 with st.sidebar:
     render_sidebar_logo()
 
-    # === DEBUG ADMIN (temporal) ===
-    # Forzar re-fetch del perfil (borrar cache anterior)
-    st.session_state.pop("_profile_synced", None)
-    _dbg_user = _auth.get_current_user()
-    st.write("DEBUG - session_state user:")
-    st.write(_dbg_user)
-    # Query directo a la tabla profiles
-    try:
-        _dbg_profile = _auth.client.table("profiles").select("*").eq("id", _dbg_user["id"]).execute()
-        st.write("DEBUG - profiles table:")
-        st.write(_dbg_profile.data)
-    except Exception as _dbg_exc:
-        st.write(f"DEBUG - Error querying profiles: {_dbg_exc}")
-    st.write(f"Es admin? {_auth.is_admin()}")
-    st.markdown("---")
-
     # ── CSS: flex column para empujar usuario al fondo ───────────────────
     st.markdown(
         """
