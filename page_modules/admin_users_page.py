@@ -40,16 +40,18 @@ def render(**kwargs) -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Filtros en sidebar ───────────────────────────────────────────────
-    with st.sidebar:
-        st.markdown("### 🔧 Filtros de Usuarios")
-        solo_activos = st.toggle("Mostrar solo activos", value=True, key="admin_solo_activos")
-        filtro_rol = st.selectbox(
-            "Rol",
-            ["Todos", "user", "admin"],
-            index=0,
-            key="admin_filtro_rol",
-        )
+    # ── Filtros dentro de la página ──────────────────────────────────────
+    with st.expander("🔧 Filtros de Usuarios", expanded=True):
+        col_f1, col_f2 = st.columns([1, 2])
+        with col_f1:
+            solo_activos = st.toggle("Mostrar solo activos", value=True, key="admin_solo_activos")
+        with col_f2:
+            filtro_rol = st.selectbox(
+                "Rol",
+                ["Todos", "user", "admin"],
+                index=0,
+                key="admin_filtro_rol",
+            )
 
     # ── Obtener perfiles ─────────────────────────────────────────────────
     profiles = auth.fetch_all_profiles()
