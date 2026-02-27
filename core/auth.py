@@ -371,16 +371,29 @@ class SupabaseAuth:
         """True si hay un usuario autenticado en la sesión actual."""
         return "_auth_user" in st.session_state and st.session_state["_auth_user"] is not None
 
-    @staticmethod
-    def get_current_user() -> dict | None:
-        """Retorna dict {id, email, name, role, is_active} del usuario actual, o None."""
-        return st.session_state.get("_auth_user")
+    def get_current_user(self) -> dict | None:
+        """Retorna dict {id, email, name, role, is_active} del usuario actual, o None.
 
-    @staticmethod
-    def is_admin() -> bool:
+        Si el dict cacheado no tiene 'role' (sesión antigua), consulta
+        la tabla profiles y actualiza el cache automáticamente.
+        """
+        user = st.session_state.get("_auth_user")
+        if not user:
+            return None
+
+        # Auto-heal: si falta 'role', fetch desde profiles
+        if "role" not in user:
+            profile = self._fetch_profile(user["id"])
+            user["role"] = profile.get("role", "user") if profile else "user"
+            user["is_active"] = profile.get("is_active", True) if profile else True
+            st.session_state["_auth_user"] = user
+
+        return user
+
+    def is_admin(self) -> bool:
         """True si el usuario actual tiene rol 'admin'."""
         try:
-            user = st.session_state.get("_auth_user")
+            user = self.get_current_user()
             return bool(user and user.get("role") == "admin")
         except Exception:
             return False
