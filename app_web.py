@@ -92,6 +92,8 @@ with st.sidebar:
     render_sidebar_logo()
 
     # === DEBUG ADMIN (temporal) ===
+    # Forzar re-fetch del perfil (borrar cache anterior)
+    st.session_state.pop("_profile_synced", None)
     _dbg_user = _auth.get_current_user()
     st.write("DEBUG - session_state user:")
     st.write(_dbg_user)
