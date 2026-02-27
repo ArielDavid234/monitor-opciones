@@ -290,13 +290,13 @@ def show_welcome_splash(user: dict | None = None) -> None:
             <div class="ok-label">&#x1F451;&ensp;Bienvenido de vuelta</div>
             <div class="ok-name">{name}</div>
             <div class="ok-badge">Pro Plan</div>
-            <div class="ok-sub">Preparando tu dashboard&hellip;</div>
+            <div class="ok-sub">Cargando&hellip;</div>
             <div class="ok-dots"><span></span><span></span><span></span></div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    time.sleep(2)
+    time.sleep(3)
     splash.empty()
     st.rerun()
