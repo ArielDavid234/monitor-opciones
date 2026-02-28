@@ -161,16 +161,40 @@ class SupabaseAuth:
 
         return False
 
+    def _ensure_profile(self, user_id: str, name: str) -> dict | None:
+        """Crea el perfil en public.profiles si no existe. Retorna el perfil."""
+        profile = self._fetch_profile(user_id)
+        if profile:
+            return profile
+        try:
+            res = (
+                self.client.table("profiles")
+                .insert({
+                    "id": user_id,
+                    "name": name,
+                    "role": "user",
+                    "is_active": True,
+                })
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                logger.info("Perfil creado para %s", user_id)
+                return res.data[0]
+        except Exception as exc:
+            logger.warning("Error creando perfil para %s: %s", user_id, exc)
+        return None
+
     def _set_session_from_response(self, res: Any) -> None:
         """Helper: guarda usuario + tokens en session_state desde una respuesta auth."""
-        profile = self._fetch_profile(res.user.id)
+        display_name = (
+            res.user.user_metadata.get("display_name")
+            or res.user.email.split("@")[0]
+        )
+        profile = self._ensure_profile(res.user.id, display_name)
         st.session_state["_auth_user"] = {
             "id": res.user.id,
             "email": res.user.email,
-            "name": (
-                res.user.user_metadata.get("display_name")
-                or res.user.email.split("@")[0]
-            ),
+            "name": profile.get("name", display_name) if profile else display_name,
             "role": profile.get("role", "user") if profile else "user",
             "is_active": profile.get("is_active", True) if profile else True,
         }
@@ -279,14 +303,15 @@ class SupabaseAuth:
             if res.user and res.session:
                 self._clear_attempts(email)
                 # Guardar sesión en session_state
-                profile = self._fetch_profile(res.user.id)
+                display_name = (
+                    res.user.user_metadata.get("display_name")
+                    or res.user.email.split("@")[0]
+                )
+                profile = self._ensure_profile(res.user.id, display_name)
                 st.session_state["_auth_user"] = {
                     "id": res.user.id,
                     "email": res.user.email,
-                    "name": (
-                        res.user.user_metadata.get("display_name")
-                        or res.user.email.split("@")[0]
-                    ),
+                    "name": profile.get("name", display_name) if profile else display_name,
                     "role": profile.get("role", "user") if profile else "user",
                     "is_active": profile.get("is_active", True) if profile else True,
                 }
@@ -330,14 +355,15 @@ class SupabaseAuth:
         try:
             res = self.client.auth.refresh_session(refresh)
             if res.user and res.session:
-                profile = self._fetch_profile(res.user.id)
+                display_name = (
+                    res.user.user_metadata.get("display_name")
+                    or res.user.email.split("@")[0]
+                )
+                profile = self._ensure_profile(res.user.id, display_name)
                 st.session_state["_auth_user"] = {
                     "id": res.user.id,
                     "email": res.user.email,
-                    "name": (
-                        res.user.user_metadata.get("display_name")
-                        or res.user.email.split("@")[0]
-                    ),
+                    "name": profile.get("name", display_name) if profile else display_name,
                     "role": profile.get("role", "user") if profile else "user",
                     "is_active": profile.get("is_active", True) if profile else True,
                 }
