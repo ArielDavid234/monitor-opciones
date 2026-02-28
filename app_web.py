@@ -263,9 +263,9 @@ elif pagina == "📅 Calendar":
     calendar_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "📋 Reports":
     reports_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "� Venta de Prima":
+elif pagina == "💰 Venta de Prima":
     credit_spread_page.render(**_page_kwargs)
-elif pagina == "�👑 Administrar Usuarios":
+elif pagina == "👑 Administrar Usuarios":
     admin_users_page.render(**_page_kwargs)
 
 # ============================================================================

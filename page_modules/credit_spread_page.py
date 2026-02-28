@@ -4,6 +4,7 @@ Venta de Prima — Credit Spread Scanner.
 
 Escanea cadenas de opciones para encontrar Bull Put Spreads y Bear Call Spreads
 con alta probabilidad de ganancia y buen retorno sobre riesgo.
+Usa AgGrid para tabla interactiva (sortable, filterable, color-coded).
 """
 from __future__ import annotations
 
@@ -13,17 +14,59 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+
 from core.credit_spread_scanner import scan_credit_spreads
 
 logger = logging.getLogger(__name__)
 
 # ── Tickers populares por defecto ────────────────────────────────────────
-_DEFAULT_TICKERS = ["SPY", "QQQ", "NVDA", "TSLA", "AAPL"]
+_DEFAULT_TICKERS = ["SPY", "QQQ", "NVDA", "TSLA", "AAPL", "AMD"]
 _ALL_TICKERS = [
-    "SPY", "QQQ", "NVDA", "TSLA", "AAPL", "MSFT", "AMZN", "META",
-    "GOOGL", "AMD", "NFLX", "DIS", "BA", "JPM", "GS", "V", "MA",
+    "SPY", "QQQ", "NVDA", "TSLA", "AAPL", "AMD", "MSFT", "AMZN", "META",
+    "GOOGL", "NFLX", "DIS", "BA", "JPM", "GS", "V", "MA",
     "XOM", "COIN", "PLTR", "SOFI", "MARA", "IWM", "DIA", "GLD",
 ]
+
+# ── JS cell-style functions para AgGrid ──────────────────────────────────
+_JS_RETORNO_STYLE = JsCode("""
+function(params) {
+    if (params.value > 25) return {'color': '#00ff88', 'fontWeight': '700'};
+    if (params.value > 15) return {'color': '#fbbf24', 'fontWeight': '600'};
+    return {'color': '#94a3b8'};
+}
+""")
+
+_JS_POP_STYLE = JsCode("""
+function(params) {
+    if (params.value > 80) return {'color': '#00ff88', 'fontWeight': '700'};
+    if (params.value > 70) return {'color': '#22d3ee', 'fontWeight': '600'};
+    return {'color': '#94a3b8'};
+}
+""")
+
+_JS_TIPO_STYLE = JsCode("""
+function(params) {
+    if (params.value === 'Bull Put') return {'color': '#22c55e', 'fontWeight': '600'};
+    return {'color': '#ef4444', 'fontWeight': '600'};
+}
+""")
+
+_JS_RISK_STYLE = JsCode("""
+function(params) {
+    if (params.value <= 200) return {'color': '#22c55e'};
+    if (params.value <= 500) return {'color': '#fbbf24'};
+    return {'color': '#ef4444'};
+}
+""")
+
+_JS_LIQUIDEZ_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 5000) return {'color': '#00ff88'};
+    if (params.value >= 1000) return {'color': '#94a3b8'};
+    return {'color': '#64748b'};
+}
+""")
 
 
 def render(**kwargs) -> None:
@@ -36,61 +79,54 @@ def render(**kwargs) -> None:
                     border:1px solid #0f3460;border-radius:16px;
                     padding:1.5rem 2rem;margin-bottom:1.5rem;">
             <h2 style="color:#e94560;margin:0 0 0.3rem 0;">
-                💰 VENTA DE PRIMA — Credit Spread Scanner
+                💰 VENTA DE PRIMA — Scanner de Oportunidades
             </h2>
             <p style="color:#94a3b8;margin:0;font-size:0.9rem;">
-                Encuentra Bull Put Spreads y Bear Call Spreads con alta probabilidad
-                de ganancia y retorno óptimo sobre riesgo.
+                Vista rápida de los contratos con mayor probabilidad de éxito —
+                Bull Put Spreads &amp; Bear Call Spreads.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ── Filtros ──────────────────────────────────────────────────────────
-    with st.expander("⚙️ Configuración del Scanner", expanded=True):
-        col1, col2 = st.columns(2)
+    # ── Filtros en el sidebar ────────────────────────────────────────────
+    with st.sidebar:
+        st.markdown("### ⚙️ Filtros — Venta de Prima")
 
-        with col1:
-            selected_tickers = st.multiselect(
-                "🔍 Tickers a escanear",
-                options=_ALL_TICKERS,
-                default=_DEFAULT_TICKERS,
-                help="Selecciona los tickers donde buscar spreads.",
-                key="cs_tickers",
-            )
-            min_pop_pct = st.slider(
-                "📊 Min POP % (Prob. de Ganancia)",
-                min_value=50, max_value=95, value=70, step=5,
-                help="Solo muestra spreads con probabilidad de ganancia ≥ este valor.",
-                key="cs_min_pop",
-            )
-
-        with col2:
-            max_dte = st.slider(
-                "📅 Máx DTE (Días al Vencimiento)",
-                min_value=7, max_value=90, value=45, step=1,
-                help="Máximo de días hasta vencimiento.",
-                key="cs_max_dte",
-            )
-            min_credit = st.slider(
-                "💵 Min Crédito ($)",
-                min_value=0.10, max_value=5.00, value=0.30, step=0.05,
-                format="$%.2f",
-                help="Crédito neto mínimo del spread.",
-                key="cs_min_credit",
-            )
-
-        col3, col4 = st.columns(2)
-        with col3:
-            tipo_filter = st.radio(
-                "📈 Tipo de Spread",
-                ["Todos", "Bull Put", "Bear Call"],
-                horizontal=True,
-                key="cs_tipo_filter",
-            )
-        with col4:
-            st.markdown("")  # spacer
+        selected_tickers = st.multiselect(
+            "🔍 Tickers a escanear",
+            options=_ALL_TICKERS,
+            default=_DEFAULT_TICKERS,
+            help="Selecciona los tickers donde buscar spreads.",
+            key="cs_tickers",
+        )
+        min_pop_pct = st.slider(
+            "📊 Min POP %",
+            min_value=50, max_value=95, value=70, step=5,
+            help="Solo spreads con probabilidad de ganancia ≥ este valor.",
+            key="cs_min_pop",
+        )
+        max_dte = st.slider(
+            "📅 Máx DTE (días)",
+            min_value=7, max_value=90, value=45, step=1,
+            help="Máximo de días hasta vencimiento.",
+            key="cs_max_dte",
+        )
+        min_credit = st.slider(
+            "💵 Min Crédito ($)",
+            min_value=0.10, max_value=5.00, value=0.30, step=0.05,
+            format="$%.2f",
+            help="Crédito neto mínimo del spread.",
+            key="cs_min_credit",
+        )
+        tipo_filter = st.radio(
+            "📈 Tipo de Spread",
+            ["Ambos", "Bull Put", "Bear Call"],
+            horizontal=True,
+            key="cs_tipo_filter",
+        )
+        st.markdown("---")
 
     # ── Botón de escaneo ─────────────────────────────────────────────────
     scan_btn = st.button(
@@ -100,16 +136,16 @@ def render(**kwargs) -> None:
         key="cs_scan_btn",
     )
 
-    # ── Estado del último scan ───────────────────────────────────────────
+    # ── Ejecutar scan ────────────────────────────────────────────────────
     if scan_btn:
         if not selected_tickers:
-            st.warning("⚠️ Selecciona al menos un ticker.")
+            st.warning("⚠️ Selecciona al menos un ticker en el sidebar.")
             return
 
         progress_bar = st.progress(0.0)
         status_text = st.empty()
 
-        def _progress_cb(ticker: str, idx: int, total: int):
+        def _progress_cb(ticker: str, idx: int, total: int) -> None:
             pct = (idx + 1) / total
             progress_bar.progress(pct)
             status_text.markdown(
@@ -131,26 +167,30 @@ def render(**kwargs) -> None:
         progress_bar.empty()
         status_text.empty()
 
-        # Guardar resultados en session_state
         st.session_state["cs_results"] = df
-        st.session_state["cs_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state["cs_scan_time"] = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
     # ── Mostrar resultados ───────────────────────────────────────────────
     df: pd.DataFrame | None = st.session_state.get("cs_results")
-    scan_time = st.session_state.get("cs_scan_time")
+    scan_time: str | None = st.session_state.get("cs_scan_time")
 
     if df is None or df.empty:
         if df is not None:
-            st.info("🔍 No se encontraron spreads con los filtros actuales. Ajusta los parámetros e intenta de nuevo.")
+            st.info(
+                "🔍 No se encontraron spreads con los filtros actuales. "
+                "Ajusta los parámetros e intenta de nuevo."
+            )
         else:
             st.markdown(
                 '<p style="color:#64748b;text-align:center;padding:2rem 0;">'
-                'Pulsa <b>🚀 Ejecutar Scanner</b> para buscar oportunidades.</p>',
+                "Pulsa <b>🚀 Ejecutar Scanner</b> para buscar oportunidades.</p>",
                 unsafe_allow_html=True,
             )
         return
 
-    # Aplicar filtro de tipo
+    # ── Filtro de tipo ───────────────────────────────────────────────────
     df_filtered = df.copy()
     if tipo_filter == "Bull Put":
         df_filtered = df_filtered[df_filtered["Tipo"] == "Bull Put"]
@@ -162,13 +202,13 @@ def render(**kwargs) -> None:
         return
 
     # ── Status bar ───────────────────────────────────────────────────────
-    n_bull = len(df_filtered[df_filtered["Tipo"] == "Bull Put"])
-    n_bear = len(df_filtered[df_filtered["Tipo"] == "Bear Call"])
+    n_bull = int((df_filtered["Tipo"] == "Bull Put").sum())
+    n_bear = int((df_filtered["Tipo"] == "Bear Call").sum())
     st.markdown(
         f"""
         <div style="background:#1e293b;border:1px solid #334155;border-radius:10px;
                     padding:10px 18px;display:flex;align-items:center;gap:18px;
-                    font-size:0.85rem;margin-bottom:1rem;">
+                    font-size:0.85rem;margin-bottom:1rem;flex-wrap:wrap;">
             <span style="color:#00ff88;font-weight:700;">
                 {len(df_filtered)} oportunidades
             </span>
@@ -194,52 +234,102 @@ def render(**kwargs) -> None:
     with mc4:
         st.metric("DTE Promedio", f"{df_filtered['DTE'].mean():.0f}d")
 
-    # ── Tabla estilizada ─────────────────────────────────────────────────
-    def _style_row(row):
-        """Aplica estilos condicionales a cada fila."""
-        styles = [""] * len(row)
-        cols = list(row.index)
-
-        # Retorno % > 25% → verde
-        if "Retorno %" in cols:
-            idx = cols.index("Retorno %")
-            if row["Retorno %"] > 25:
-                styles[idx] = "color: #00ff88; font-weight: 700;"
-            elif row["Retorno %"] > 15:
-                styles[idx] = "color: #fbbf24; font-weight: 600;"
-
-        # POP > 80% → verde bold
-        if "POP %" in cols:
-            idx = cols.index("POP %")
-            if row["POP %"] > 80:
-                styles[idx] = "color: #00ff88; font-weight: 700;"
-
-        # Tipo → color
-        if "Tipo" in cols:
-            idx = cols.index("Tipo")
-            if row["Tipo"] == "Bull Put":
-                styles[idx] = "color: #22c55e;"
-            else:
-                styles[idx] = "color: #ef4444;"
-
-        return styles
-
-    # Columnas a mostrar en la tabla
+    # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
     display_cols = [
         "Ticker", "Tipo", "Spot", "Strike Vendido", "Strike Comprado",
-        "DTE", "Delta Vendido", "POP %", "Crédito", "Riesgo Máx",
-        "Retorno %", "Volumen", "OI", "Bid-Ask",
+        "DTE", "Delta Vendido", "POP %", "Prob OTM %", "Crédito",
+        "Riesgo Máx", "Retorno %", "IV %", "Liquidez", "Volumen",
+        "OI", "Bid-Ask",
     ]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
     df_show = df_filtered[display_cols].reset_index(drop=True)
 
-    styled = df_show.style.apply(_style_row, axis=1)
+    gb = GridOptionsBuilder.from_dataframe(df_show)
+    gb.configure_default_column(
+        resizable=True,
+        sortable=True,
+        filter=True,
+        wrapHeaderText=True,
+        autoHeaderHeight=True,
+    )
 
-    st.dataframe(
-        styled,
-        use_container_width=True,
-        hide_index=True,
-        height=min(600, 40 + len(df_show) * 35),
+    # Column-specific config
+    gb.configure_column("Ticker", pinned="left", width=80)
+    gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
+    gb.configure_column("Spot", width=80, type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("Strike Vendido", width=100, type=["numericColumn"],
+                        valueFormatter="x.toFixed(1)")
+    gb.configure_column("Strike Comprado", width=110, type=["numericColumn"],
+                        valueFormatter="x.toFixed(1)")
+    gb.configure_column("DTE", width=60, type=["numericColumn"])
+    gb.configure_column("Delta Vendido", width=95, type=["numericColumn"],
+                        valueFormatter="x.toFixed(3)")
+    gb.configure_column("POP %", width=75, type=["numericColumn"],
+                        cellStyle=_JS_POP_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Prob OTM %", width=95, type=["numericColumn"],
+                        cellStyle=_JS_POP_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Crédito", width=80, type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("Riesgo Máx", width=95, type=["numericColumn"],
+                        cellStyle=_JS_RISK_STYLE,
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("Retorno %", width=95, type=["numericColumn"],
+                        cellStyle=_JS_RETORNO_STYLE, sort="desc",
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("IV %", width=70, type=["numericColumn"],
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Liquidez", width=85, type=["numericColumn"],
+                        cellStyle=_JS_LIQUIDEZ_STYLE)
+    gb.configure_column("Volumen", width=80, type=["numericColumn"])
+    gb.configure_column("OI", headerName="Open Interest", width=100,
+                        type=["numericColumn"])
+    gb.configure_column("Bid-Ask", width=80, type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
+
+    grid_options = gb.build()
+
+    # Inyectar estilos dark-theme para AgGrid
+    _AGGRID_CSS = {
+        ".ag-root-wrapper": {
+            "background-color": "#0d1117 !important",
+            "border": "1px solid #1e293b !important",
+            "border-radius": "10px !important",
+        },
+        ".ag-header": {
+            "background-color": "#161b22 !important",
+            "color": "#94a3b8 !important",
+            "border-bottom": "1px solid #1e293b !important",
+        },
+        ".ag-header-cell-text": {
+            "color": "#94a3b8 !important",
+            "font-weight": "600 !important",
+            "font-size": "0.78rem !important",
+        },
+        ".ag-row": {
+            "background-color": "#0d1117 !important",
+            "color": "#e2e8f0 !important",
+            "border-bottom": "1px solid #1e293b !important",
+            "font-size": "0.82rem !important",
+        },
+        ".ag-row-hover": {
+            "background-color": "#1e293b !important",
+        },
+        ".ag-cell": {
+            "border-right": "none !important",
+        },
+    }
+
+    AgGrid(
+        df_show,
+        gridOptions=grid_options,
+        custom_css=_AGGRID_CSS,
+        height=min(620, 56 + len(df_show) * 35),
+        theme="alpine",
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=False,
     )
 
     # ── Exportar CSV ─────────────────────────────────────────────────────
@@ -264,16 +354,22 @@ def render(**kwargs) -> None:
         top_bp = df_filtered[df_filtered["Tipo"] == "Bull Put"].head(5)
         if not top_bp.empty:
             for _, row in top_bp.iterrows():
+                _iv = row.get("IV %", 0)
+                _lq = row.get("Liquidez", 0)
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #1e3a2f;'
-                    f'border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:0.82rem;">'
+                    f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
                     f'<b style="color:#22c55e;">{row["Ticker"]}</b> '
-                    f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}P / Buy {row["Strike Comprado"]}P</span> '
+                    f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}P / '
+                    f'Buy {row["Strike Comprado"]}P</span> '
                     f'<span style="color:#64748b;">({row["DTE"]}d)</span><br>'
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
-                    f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span>'
-                    f'</div>',
+                    f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
+                    f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span> · '
+                    f'<span style="color:#64748b;">IV {_iv:.0f}%</span> · '
+                    f'<span style="color:#64748b;">Liq {_lq:,}</span>'
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
         else:
@@ -284,16 +380,22 @@ def render(**kwargs) -> None:
         top_bc = df_filtered[df_filtered["Tipo"] == "Bear Call"].head(5)
         if not top_bc.empty:
             for _, row in top_bc.iterrows():
+                _iv = row.get("IV %", 0)
+                _lq = row.get("Liquidez", 0)
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #3a1e1e;'
-                    f'border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:0.82rem;">'
+                    f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
                     f'<b style="color:#ef4444;">{row["Ticker"]}</b> '
-                    f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}C / Buy {row["Strike Comprado"]}C</span> '
+                    f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}C / '
+                    f'Buy {row["Strike Comprado"]}C</span> '
                     f'<span style="color:#64748b;">({row["DTE"]}d)</span><br>'
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
-                    f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span>'
-                    f'</div>',
+                    f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
+                    f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span> · '
+                    f'<span style="color:#64748b;">IV {_iv:.0f}%</span> · '
+                    f'<span style="color:#64748b;">Liq {_lq:,}</span>'
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
         else:

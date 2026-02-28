@@ -3,6 +3,7 @@
 Credit Spread Scanner — Escanea cadenas de opciones para encontrar
 oportunidades de venta de prima (Bull Put Spreads y Bear Call Spreads).
 
+Usa Black-Scholes (OptionGreeks) para deltas precisos y POP real.
 Reutiliza las sesiones anti-ban y el caché TTL del scanner principal.
 """
 from __future__ import annotations
@@ -11,9 +12,9 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config.constants import RISK_FREE_RATE, DAYS_PER_YEAR
+from core.option_greeks import OptionGreeks
 from core.scanner import (
     _cached_options_dates,
     _cached_option_chain,
@@ -34,6 +35,32 @@ def _dte_from_expiry(exp_str: str) -> int:
         return max((exp - datetime.now()).days, 0)
     except Exception:
         return 0
+
+
+def _bsm_delta(
+    spot: float,
+    strike: float,
+    dte: int,
+    iv: float,
+    option_type: str = "put",
+) -> float:
+    """Calcula delta preciso usando Black-Scholes-Merton.
+
+    Falls back a estimación por moneyness si los inputs no son válidos.
+    """
+    T = max(dte, 1) / DAYS_PER_YEAR
+    sigma = iv if iv > 0.01 else 0.25  # fallback IV 25 %
+    try:
+        greeks = OptionGreeks(S=spot, K=strike, T=T, r=RISK_FREE_RATE, sigma=sigma)
+        d = greeks.delta()
+        return float(d.get(option_type, 0.0))
+    except Exception:
+        # Fallback simple
+        if option_type == "put":
+            m = (spot - strike) / spot
+            return max(-0.50, min(-0.01, -0.50 + m * 3))
+        m = (strike - spot) / spot
+        return max(0.01, min(0.50, 0.50 - m * 3))
 
 
 def _pop_from_delta(delta: float) -> float:
@@ -84,7 +111,6 @@ def _build_spreads_for_expiry(
 
     # ── Bull Put Spreads ─────────────────────────────────────────────────
     if not puts.empty and len(puts) >= 2:
-        # Filtrar puts OTM (strike < spot) con bid > 0
         otm_puts = puts[
             (puts["strike"] < spot) &
             (puts["bid"].fillna(0) > 0)
@@ -95,19 +121,17 @@ def _build_spreads_for_expiry(
             sold_strike = float(sold["strike"])
             sold_bid = float(_safe_num(sold.get("bid", 0)))
             sold_ask = float(_safe_num(sold.get("ask", 0)))
-            sold_delta = float(_safe_num(sold.get("delta", 0), 0))
+            sold_iv = float(_safe_num(sold.get("impliedVolatility", 0), 0))
+            sold_vol = int(_safe_num(sold.get("volume", 0)))
+            sold_oi = int(_safe_num(sold.get("openInterest", 0)))
 
-            # Si no hay delta de la cadena, estimar con moneyness
-            if sold_delta == 0:
-                # Estimación simple basada en distancia al spot
-                moneyness = (spot - sold_strike) / spot
-                sold_delta = max(-0.50, min(-0.01, -0.50 + moneyness * 3))
+            # Delta preciso vía BSM
+            sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "put")
 
             pop = _pop_from_delta(sold_delta)
             if pop < min_pop:
                 continue
 
-            # Buscar strikes comprados más bajos (protección)
             for j in range(i + 1, min(i + 6, len(otm_puts))):
                 bought = otm_puts.iloc[j]
                 bought_strike = float(bought["strike"])
@@ -129,6 +153,8 @@ def _build_spreads_for_expiry(
                     continue
 
                 retorno_pct = round((credit / max_risk) * 100, 2)
+                bought_vol = int(_safe_num(bought.get("volume", 0)))
+                bought_oi = int(_safe_num(bought.get("openInterest", 0)))
 
                 results.append({
                     "Ticker": ticker,
@@ -140,17 +166,19 @@ def _build_spreads_for_expiry(
                     "Expiración": exp_date,
                     "Delta Vendido": round(sold_delta, 4),
                     "POP %": round(pop * 100, 1),
+                    "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
-                    "Volumen": int(_safe_num(sold.get("volume", 0))),
-                    "OI": int(_safe_num(sold.get("openInterest", 0))),
+                    "IV %": round(sold_iv * 100, 1),
+                    "Volumen": sold_vol + bought_vol,
+                    "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
+                    "Liquidez": sold_vol + sold_oi + bought_vol + bought_oi,
                 })
 
     # ── Bear Call Spreads ────────────────────────────────────────────────
     if not calls.empty and len(calls) >= 2:
-        # Filtrar calls OTM (strike > spot) con bid > 0
         otm_calls = calls[
             (calls["strike"] > spot) &
             (calls["bid"].fillna(0) > 0)
@@ -161,18 +189,17 @@ def _build_spreads_for_expiry(
             sold_strike = float(sold["strike"])
             sold_bid = float(_safe_num(sold.get("bid", 0)))
             sold_ask = float(_safe_num(sold.get("ask", 0)))
-            sold_delta = float(_safe_num(sold.get("delta", 0), 0))
+            sold_iv = float(_safe_num(sold.get("impliedVolatility", 0), 0))
+            sold_vol = int(_safe_num(sold.get("volume", 0)))
+            sold_oi = int(_safe_num(sold.get("openInterest", 0)))
 
-            # Si no hay delta, estimar
-            if sold_delta == 0:
-                moneyness = (sold_strike - spot) / spot
-                sold_delta = max(0.01, min(0.50, 0.50 - moneyness * 3))
+            # Delta preciso vía BSM
+            sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "call")
 
             pop = _pop_from_delta(sold_delta)
             if pop < min_pop:
                 continue
 
-            # Buscar strikes comprados más altos (protección)
             for j in range(i + 1, min(i + 6, len(otm_calls))):
                 bought = otm_calls.iloc[j]
                 bought_strike = float(bought["strike"])
@@ -194,6 +221,8 @@ def _build_spreads_for_expiry(
                     continue
 
                 retorno_pct = round((credit / max_risk) * 100, 2)
+                bought_vol = int(_safe_num(bought.get("volume", 0)))
+                bought_oi = int(_safe_num(bought.get("openInterest", 0)))
 
                 results.append({
                     "Ticker": ticker,
@@ -205,12 +234,15 @@ def _build_spreads_for_expiry(
                     "Expiración": exp_date,
                     "Delta Vendido": round(sold_delta, 4),
                     "POP %": round(pop * 100, 1),
+                    "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
-                    "Volumen": int(_safe_num(sold.get("volume", 0))),
-                    "OI": int(_safe_num(sold.get("openInterest", 0))),
+                    "IV %": round(sold_iv * 100, 1),
+                    "Volumen": sold_vol + bought_vol,
+                    "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
+                    "Liquidez": sold_vol + sold_oi + bought_vol + bought_oi,
                 })
 
     return results
