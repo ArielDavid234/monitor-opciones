@@ -16,7 +16,8 @@ from datetime import datetime
 
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
-from core.credit_spread_scanner import scan_credit_spreads, opportunity_score_breakdown
+from core.credit_spread_scanner import scan_credit_spreads, opportunity_score_breakdown, generate_alerts
+from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,17 @@ def render(**kwargs) -> None:
             key="cs_strict_mode",
         )
         st.markdown("---")
+        st.markdown("#### 💰 Cuenta")
+        account_size = st.number_input(
+            "Tamaño de cuenta ($)",
+            min_value=1_000,
+            max_value=1_000_000,
+            value=int(ALERT_DEFAULT_ACCOUNT_SIZE),
+            step=1_000,
+            help="Se usa para la Regla 8: riesgo máx por trade ≤ 5% de tu cuenta.",
+            key="cs_account_size",
+        )
+        st.markdown("---")
 
     # ── Botón de escaneo ─────────────────────────────────────────────────
     scan_btn = st.button(
@@ -303,11 +315,149 @@ def render(**kwargs) -> None:
             "%Y-%m-%d %H:%M:%S"
         )
 
+        # ── Generar alertas (10 reglas) ───────────────────────────────────
+        alerts_df = generate_alerts(df, account_size=account_size)
+        st.session_state["cs_alerts"] = alerts_df
+
     # ── Mostrar resultados ───────────────────────────────────────────────
     df: pd.DataFrame | None = st.session_state.get("cs_results")
     scan_time: str | None = st.session_state.get("cs_scan_time")
     ticker_indicators: dict = st.session_state.get("cs_ticker_indicators", {})
+    alerts_df: pd.DataFrame | None = st.session_state.get("cs_alerts")
 
+    # ────────────────────────────────────────────────────────────────────────
+    #  SISTEMA DE ALERTAS — Panel de alertas (10 reglas)
+    # ────────────────────────────────────────────────────────────────────────
+    if df is not None and not df.empty:
+        if alerts_df is not None and not alerts_df.empty:
+            st.markdown(
+                f"""
+                <div style="background:linear-gradient(135deg,#0d1f12,#132a13);
+                            border:2px solid #22c55e;border-radius:14px;
+                            padding:1.2rem 1.5rem;margin-bottom:1.5rem;">
+                    <h3 style="color:#00ff88;margin:0 0 0.3rem 0;">
+                        🚨 Sistema de Alertas — {len(alerts_df)} Estrategia{"s" if len(alerts_df) != 1 else ""} Lista{"s" if len(alerts_df) != 1 else ""}
+                    </h3>
+                    <p style="color:#94a3b8;margin:0;font-size:0.82rem;">
+                        Cumplen las <b style="color:#22c55e;">10 reglas obligatorias</b> de seguridad.
+                        Riesgo máx por trade ≤ 5% de cuenta (${account_size:,.0f}).
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            for a_idx, (_, a_row) in enumerate(alerts_df.iterrows()):
+                _a_tk = a_row.get("Ticker", "")
+                _a_tipo = a_row.get("Tipo", "")
+                _a_spot = a_row.get("Spot", 0)
+                _a_sv = a_row.get("Strike Vendido", 0)
+                _a_delta = abs(a_row.get("Delta Vendido", 0))
+                _a_ivr = a_row.get("IV Rank", 0)
+                _a_cr = a_row.get("Crédito", 0)
+                _a_risk = a_row.get("Riesgo Máx", 0)
+                _a_ret = a_row.get("Retorno %", 0)
+                _a_pop = a_row.get("POP %", 0)
+                _a_sc = a_row.get("Strike Comprado", 0)
+                _a_dte = a_row.get("DTE", 0)
+                _a_dist = a_row.get("Dist Strike %", 0)
+                _a_opp = a_row.get("Score Oportunidad", 0)
+                _opt = "Put" if "Put" in _a_tipo else "Call"
+                _border_c = "#22c55e" if "Put" in _a_tipo else "#ef4444"
+
+                st.markdown(
+                    f"""
+                    <div style="background:#0d1117;border:1px solid {_border_c};
+                                border-left:4px solid {_border_c};
+                                border-radius:10px;padding:14px 18px;
+                                margin-bottom:10px;font-size:0.86rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <b style="color:{_border_c};font-size:1.05rem;">
+                                {_a_tk} – {_opt} Credit Spread
+                            </b>
+                            <span style="background:rgba(0,255,136,0.1);color:#00ff88;
+                                        padding:3px 10px;border-radius:12px;
+                                        font-size:0.75rem;font-weight:700;">
+                                Score: {_a_opp:.0f}/100
+                            </span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;color:#cbd5e1;">
+                            <span>Precio: <b style="color:white;">${_a_spot:.2f}</b></span>
+                            <span>IV Rank: <b style="color:#fbbf24;">{_a_ivr:.0f}%</b></span>
+                            <span>Strike vendido: <b style="color:white;">{_a_sv:.1f}</b></span>
+                            <span>Strike comprado: <b style="color:white;">{_a_sc:.1f}</b></span>
+                            <span>Delta: <b style="color:white;">{_a_delta:.2f}</b></span>
+                            <span>DTE: <b style="color:white;">{_a_dte}d</b></span>
+                            <span>Crédito: <b style="color:#00ff88;">${_a_cr:.2f}</b></span>
+                            <span>Riesgo: <b style="color:#ef4444;">${_a_risk:.2f}</b></span>
+                            <span>Retorno: <b style="color:#00ff88;">{_a_ret:.1f}%</b></span>
+                            <span>Probabilidad: <b style="color:#22d3ee;">{_a_pop:.0f}%</b></span>
+                            <span>Distancia: <b style="color:white;">{_a_dist:.1f}%</b></span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                # Botón "Estrategia lista para vender prima"
+                if st.button(
+                    f"✅ Estrategia lista para vender prima — {_a_tk} {_a_sv:.0f}/{_a_sc:.0f} {_opt}",
+                    key=f"alert_save_{a_idx}",
+                    use_container_width=True,
+                ):
+                    fav_entry = {
+                        "ticker": _a_tk,
+                        "tipo": _a_tipo,
+                        "spot": _a_spot,
+                        "strike_vendido": _a_sv,
+                        "strike_comprado": _a_sc,
+                        "dte": _a_dte,
+                        "delta": round(_a_delta, 3),
+                        "credito": _a_cr,
+                        "riesgo": _a_risk,
+                        "retorno_pct": _a_ret,
+                        "pop_pct": _a_pop,
+                        "iv_rank": _a_ivr,
+                        "dist_pct": _a_dist,
+                        "score": _a_opp,
+                        "saved_at": datetime.now().isoformat(),
+                        "source": "alert_10_rules",
+                    }
+                    favs = st.session_state.get("favoritos", [])
+                    # Evitar duplicados
+                    dup = any(
+                        f.get("ticker") == _a_tk
+                        and f.get("strike_vendido") == _a_sv
+                        and f.get("strike_comprado") == _a_sc
+                        for f in favs
+                    )
+                    if dup:
+                        st.info(f"ℹ️ {_a_tk} {_a_sv}/{_a_sc} ya está en favoritos.")
+                    else:
+                        favs.append(fav_entry)
+                        st.session_state["favoritos"] = favs
+                        # Sync a Supabase
+                        try:
+                            from core.auth import SupabaseAuth
+                            _auth = SupabaseAuth()
+                            _u = _auth.get_current_user()
+                            if _u:
+                                _auth.save_user_data(_u["id"], "favoritos", favs)
+                        except Exception:
+                            pass
+                        st.success(
+                            f"⭐ **{_a_tk} {_a_sv}/{_a_sc} {_opt}** guardado en Favoritos."
+                        )
+
+            st.markdown("---")
+
+        elif alerts_df is not None and alerts_df.empty and df is not None and not df.empty:
+            st.info(
+                "🚨 **No hay alertas disponibles** — ninguna oportunidad cumple "
+                "todas las 10 reglas de seguridad.\n\n"
+                "Los spreads que aparecen en la tabla cumplen los filtros básicos, "
+                "pero no pasan la verificación completa (tendencia, tamaño de cuenta, etc.)."
+            )
     if df is None or df.empty:
         if df is not None:
             st.warning(

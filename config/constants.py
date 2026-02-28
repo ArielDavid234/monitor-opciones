@@ -73,3 +73,8 @@ OPP_SCORE_VOL_MIN = 100                # +20 si volumen > 100
 OPP_SCORE_OI_MIN = 500                 # +20 si OI > 500
 OPP_SCORE_BA_CREDIT_PCT = 0.10         # +20 si bid-ask ≤ 10% del crédito
 OPP_SCORE_MIN_SHOW = 60                # No mostrar filas con score < 60
+
+# --- Sistema de Alertas — 10 reglas obligatorias ---
+ALERT_DEFAULT_ACCOUNT_SIZE = 10_000    # Tamaño de cuenta por defecto ($)
+ALERT_MAX_RISK_PCT = 0.05              # Riesgo máximo por trade = 5% de la cuenta
+ALERT_TREND_REQUIRED = True            # Regla 5: Neutral = descartar
