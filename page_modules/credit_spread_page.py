@@ -68,6 +68,22 @@ function(params) {
 }
 """)
 
+_JS_DIST_STYLE = JsCode("""
+function(params) {
+    if (params.value > 5) return {'color': '#22c55e', 'fontWeight': '600'};
+    if (params.value >= 3) return {'color': '#fbbf24'};
+    return {'color': '#ef4444', 'fontWeight': '700'};
+}
+""")
+
+_JS_IVRANK_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 40) return {'color': '#00ff88', 'fontWeight': '600'};
+    if (params.value >= 25) return {'color': '#fbbf24'};
+    return {'color': '#64748b'};
+}
+""")
+
 
 def render(**kwargs) -> None:
     """Renderiza la página de Venta de Prima — Credit Spread Scanner."""
@@ -127,6 +143,20 @@ def render(**kwargs) -> None:
             key="cs_tipo_filter",
         )
         st.markdown("---")
+        st.markdown("#### 🎯 Filtros Avanzados")
+        min_iv_rank = st.slider(
+            "📊 Min IV Rank %",
+            min_value=0, max_value=80, value=0, step=5,
+            help="Solo spreads de tickers con IV Rank ≥ este valor. >40 = ideal para venta de prima.",
+            key="cs_min_iv_rank",
+        )
+        filter_by_trend = st.checkbox(
+            "🧭 Solo spreads alineados con tendencia",
+            value=False,
+            help="Bull Put solo si tendencia Alcista, Bear Call solo si Bajista.",
+            key="cs_trend_align",
+        )
+        st.markdown("---")
 
     # ── Botón de escaneo ─────────────────────────────────────────────────
     scan_btn = st.button(
@@ -156,7 +186,7 @@ def render(**kwargs) -> None:
             )
 
         with st.spinner("Analizando cadenas de opciones..."):
-            df = scan_credit_spreads(
+            df, ticker_indicators = scan_credit_spreads(
                 tickers=selected_tickers,
                 min_pop=min_pop_pct / 100.0,
                 max_dte=max_dte,
@@ -168,6 +198,7 @@ def render(**kwargs) -> None:
         status_text.empty()
 
         st.session_state["cs_results"] = df
+        st.session_state["cs_ticker_indicators"] = ticker_indicators
         st.session_state["cs_scan_time"] = datetime.now().strftime(
             "%Y-%m-%d %H:%M:%S"
         )
@@ -175,6 +206,7 @@ def render(**kwargs) -> None:
     # ── Mostrar resultados ───────────────────────────────────────────────
     df: pd.DataFrame | None = st.session_state.get("cs_results")
     scan_time: str | None = st.session_state.get("cs_scan_time")
+    ticker_indicators: dict = st.session_state.get("cs_ticker_indicators", {})
 
     if df is None or df.empty:
         if df is not None:
@@ -196,6 +228,18 @@ def render(**kwargs) -> None:
         df_filtered = df_filtered[df_filtered["Tipo"] == "Bull Put"]
     elif tipo_filter == "Bear Call":
         df_filtered = df_filtered[df_filtered["Tipo"] == "Bear Call"]
+
+    # Filtro IV Rank mínimo
+    if min_iv_rank > 0 and "IV Rank" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["IV Rank"] >= min_iv_rank]
+
+    # Filtro alineación con tendencia
+    if filter_by_trend and "Tendencia" in df_filtered.columns:
+        mask = (
+            ((df_filtered["Tipo"] == "Bull Put") & (df_filtered["Tendencia"] == "Alcista")) |
+            ((df_filtered["Tipo"] == "Bear Call") & (df_filtered["Tendencia"] == "Bajista"))
+        )
+        df_filtered = df_filtered[mask]
 
     if df_filtered.empty:
         st.info(f"No hay spreads de tipo '{tipo_filter}' en los resultados.")
@@ -223,6 +267,45 @@ def render(**kwargs) -> None:
         unsafe_allow_html=True,
     )
 
+    # ── Indicadores por ticker: IV Rank / Percentile + Tendencia ─────────
+    if ticker_indicators:
+        _trend_colors = {"Alcista": "#22c55e", "Bajista": "#ef4444", "Neutral": "#94a3b8"}
+        _trend_icons = {"Alcista": "📈", "Bajista": "📉", "Neutral": "➡️"}
+
+        # Tarjetas horizontales por ticker
+        cards_html = ""
+        for tk, info in ticker_indicators.items():
+            ivr = info.get("iv_rank", 0)
+            ivp = info.get("iv_percentile", 0)
+            trend = info.get("trend", "Neutral")
+            pref = info.get("preferred_type")
+            vwap = info.get("vwap", 0)
+            ema9 = info.get("ema9", 0)
+            ema21 = info.get("ema21", 0)
+
+            ivr_color = "#00ff88" if ivr >= 40 else ("#fbbf24" if ivr >= 25 else "#64748b")
+            t_color = _trend_colors.get(trend, "#94a3b8")
+            t_icon = _trend_icons.get(trend, "➡️")
+            pref_label = f' → <span style="color:#fbbf24;">{pref}</span>' if pref else ""
+
+            cards_html += (
+                f'<div style="background:#0d1117;border:1px solid #1e293b;'
+                f'border-radius:8px;padding:8px 14px;min-width:220px;flex:1;">'
+                f'<b style="color:#e2e8f0;font-size:0.9rem;">{tk}</b><br>'
+                f'<span style="color:{ivr_color};font-size:0.82rem;">IV Rank: {ivr:.0f}%</span> · '
+                f'<span style="color:{ivr_color};font-size:0.82rem;">IV Pctil: {ivp:.0f}%</span><br>'
+                f'<span style="color:{t_color};font-size:0.82rem;">{t_icon} {trend}{pref_label}</span><br>'
+                f'<span style="color:#64748b;font-size:0.75rem;">'
+                f'VWAP ${vwap:.2f} · EMA9 ${ema9:.2f} · EMA21 ${ema21:.2f}</span>'
+                f'</div>'
+            )
+
+        st.markdown(
+            f'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem;">'
+            f'{cards_html}</div>',
+            unsafe_allow_html=True,
+        )
+
     # ── Métricas rápidas ─────────────────────────────────────────────────
     mc1, mc2, mc3, mc4 = st.columns(4)
     with mc1:
@@ -238,8 +321,9 @@ def render(**kwargs) -> None:
     display_cols = [
         "Ticker", "Tipo", "Spot", "Strike Vendido", "Strike Comprado",
         "DTE", "Delta Vendido", "POP %", "Prob OTM %", "Crédito",
-        "Riesgo Máx", "Retorno %", "IV %", "Liquidez", "Volumen",
-        "OI", "Bid-Ask",
+        "Riesgo Máx", "Retorno %", "Dist Strike %", "IV %",
+        "IV Rank", "IV Pctil", "Tendencia",
+        "Liquidez", "Volumen", "OI", "Bid-Ask",
     ]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
     df_show = df_filtered[display_cols].reset_index(drop=True)
@@ -279,8 +363,18 @@ def render(**kwargs) -> None:
     gb.configure_column("Retorno %", width=95, type=["numericColumn"],
                         cellStyle=_JS_RETORNO_STYLE, sort="desc",
                         valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Dist Strike %", headerName="Dist Strike %", width=105,
+                        type=["numericColumn"], cellStyle=_JS_DIST_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
     gb.configure_column("IV %", width=70, type=["numericColumn"],
                         valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("IV Rank", width=80, type=["numericColumn"],
+                        cellStyle=_JS_IVRANK_STYLE,
+                        valueFormatter="x.toFixed(0) + '%'")
+    gb.configure_column("IV Pctil", headerName="IV Pctil", width=80,
+                        type=["numericColumn"], cellStyle=_JS_IVRANK_STYLE,
+                        valueFormatter="x.toFixed(0) + '%'")
+    gb.configure_column("Tendencia", width=90)
     gb.configure_column("Liquidez", width=85, type=["numericColumn"],
                         cellStyle=_JS_LIQUIDEZ_STYLE)
     gb.configure_column("Volumen", width=80, type=["numericColumn"])
@@ -354,8 +448,10 @@ def render(**kwargs) -> None:
         top_bp = df_filtered[df_filtered["Tipo"] == "Bull Put"].head(5)
         if not top_bp.empty:
             for _, row in top_bp.iterrows():
-                _iv = row.get("IV %", 0)
-                _lq = row.get("Liquidez", 0)
+                _dist = row.get("Dist Strike %", 0)
+                _ivr = row.get("IV Rank", 0)
+                _trend = row.get("Tendencia", "")
+                _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #1e3a2f;'
                     f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
@@ -366,9 +462,10 @@ def render(**kwargs) -> None:
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
                     f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
-                    f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span> · '
-                    f'<span style="color:#64748b;">IV {_iv:.0f}%</span> · '
-                    f'<span style="color:#64748b;">Liq {_lq:,}</span>'
+                    f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span><br>'
+                    f'<span style="color:#64748b;">Dist: {_dist:.1f}%</span> · '
+                    f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
+                    f'<span style="color:#64748b;">{_trend}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -380,8 +477,10 @@ def render(**kwargs) -> None:
         top_bc = df_filtered[df_filtered["Tipo"] == "Bear Call"].head(5)
         if not top_bc.empty:
             for _, row in top_bc.iterrows():
-                _iv = row.get("IV %", 0)
-                _lq = row.get("Liquidez", 0)
+                _dist = row.get("Dist Strike %", 0)
+                _ivr = row.get("IV Rank", 0)
+                _trend = row.get("Tendencia", "")
+                _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #3a1e1e;'
                     f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
@@ -392,9 +491,10 @@ def render(**kwargs) -> None:
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
                     f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
-                    f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span> · '
-                    f'<span style="color:#64748b;">IV {_iv:.0f}%</span> · '
-                    f'<span style="color:#64748b;">Liq {_lq:,}</span>'
+                    f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span><br>'
+                    f'<span style="color:#64748b;">Dist: {_dist:.1f}%</span> · '
+                    f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
+                    f'<span style="color:#64748b;">{_trend}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )

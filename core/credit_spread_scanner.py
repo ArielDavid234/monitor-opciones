@@ -4,6 +4,8 @@ Credit Spread Scanner — Escanea cadenas de opciones para encontrar
 oportunidades de venta de prima (Bull Put Spreads y Bear Call Spreads).
 
 Usa Black-Scholes (OptionGreeks) para deltas precisos y POP real.
+Incluye IV Rank / IV Percentile, indicadores de tendencia (VWAP, EMA9/21)
+y distancia al strike vendido.
 Reutiliza las sesiones anti-ban y el caché TTL del scanner principal.
 """
 from __future__ import annotations
@@ -18,6 +20,7 @@ from core.option_greeks import OptionGreeks
 from core.scanner import (
     _cached_options_dates,
     _cached_option_chain,
+    _cached_history,
     obtener_precio_actual,
     _safe_num,
 )
@@ -75,6 +78,152 @@ def _bid_ask_spread(bid: float, ask: float) -> float:
     return 0.0
 
 
+def _strike_distance_pct(spot: float, strike: float) -> float:
+    """% de distancia entre spot y strike vendido."""
+    if spot <= 0:
+        return 0.0
+    return round(abs(spot - strike) / spot * 100, 2)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  IV Rank & IV Percentile (usa HV a 20 días como proxy de IV)
+# ────────────────────────────────────────────────────────────────────────────
+
+def compute_iv_rank_percentile(ticker: str) -> dict:
+    """Calcula IV Rank e IV Percentile para un ticker.
+
+    Usa la volatilidad histórica anualizada a 20 días (close-to-close)
+    como proxy de la IV, con datos del último año.
+
+    Returns
+    -------
+    dict con keys: iv_current, iv_rank, iv_percentile, iv_1y_high, iv_1y_low
+    """
+    default = {
+        "iv_current": 0.0,
+        "iv_rank": 0.0,
+        "iv_percentile": 0.0,
+        "iv_1y_high": 0.0,
+        "iv_1y_low": 0.0,
+    }
+    try:
+        hist = _cached_history(ticker, "1y")
+        if hist is None or hist.empty or len(hist) < 30:
+            return default
+
+        close = hist["Close"]
+        if hasattr(close, "squeeze"):
+            close = close.squeeze()
+
+        # HV rolling 20 días, anualizada (√252)
+        log_ret = np.log(close / close.shift(1)).dropna()
+        hv_series = log_ret.rolling(window=20).std() * np.sqrt(252)
+        hv_series = hv_series.dropna()
+
+        if hv_series.empty:
+            return default
+
+        current_hv = float(hv_series.iloc[-1])
+        hv_1y_high = float(hv_series.max())
+        hv_1y_low = float(hv_series.min())
+
+        # IV Rank
+        rng = hv_1y_high - hv_1y_low
+        iv_rank = ((current_hv - hv_1y_low) / rng * 100) if rng > 0 else 0.0
+
+        # IV Percentile = % de días del último año con HV < actual
+        iv_pctile = float((hv_series < current_hv).sum()) / len(hv_series) * 100
+
+        return {
+            "iv_current": round(current_hv * 100, 1),
+            "iv_rank": round(iv_rank, 1),
+            "iv_percentile": round(iv_pctile, 1),
+            "iv_1y_high": round(hv_1y_high * 100, 1),
+            "iv_1y_low": round(hv_1y_low * 100, 1),
+        }
+    except Exception as exc:
+        logger.warning("Error calculando IV Rank para %s: %s", ticker, exc)
+        return default
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  Indicadores de tendencia: VWAP, EMA9, EMA21
+# ────────────────────────────────────────────────────────────────────────────
+
+def compute_trend(ticker: str) -> dict:
+    """Calcula VWAP (del día), EMA9 y EMA21 para determinar tendencia.
+
+    Returns
+    -------
+    dict con keys: vwap, ema9, ema21, trend, spot
+        trend: "Alcista" | "Bajista" | "Neutral"
+        preferred_type: "Bull Put" | "Bear Call" | None
+    """
+    default = {
+        "vwap": 0.0,
+        "ema9": 0.0,
+        "ema21": 0.0,
+        "trend": "Neutral",
+        "preferred_type": None,
+    }
+    try:
+        # Historial de 1 mes para EMAs, 5 días para VWAP intradiario
+        hist_1mo = _cached_history(ticker, "1mo")
+        if hist_1mo is None or hist_1mo.empty or len(hist_1mo) < 21:
+            return default
+
+        close = hist_1mo["Close"]
+        if hasattr(close, "squeeze"):
+            close = close.squeeze()
+
+        # EMA 9 y 21
+        ema9 = float(close.ewm(span=9, adjust=False).mean().iloc[-1])
+        ema21 = float(close.ewm(span=21, adjust=False).mean().iloc[-1])
+
+        # VWAP aproximado (usando datos diarios del último mes)
+        # Usamos típico = (H+L+C)/3 * Volume / cumSum(Volume)
+        high = hist_1mo["High"]
+        low = hist_1mo["Low"]
+        vol = hist_1mo["Volume"]
+        if hasattr(high, "squeeze"):
+            high = high.squeeze()
+            low = low.squeeze()
+            vol = vol.squeeze()
+
+        typical = (high + low + close) / 3
+        cum_vol = vol.cumsum()
+        cum_tp_vol = (typical * vol).cumsum()
+        vwap_series = cum_tp_vol / cum_vol.replace(0, np.nan)
+        vwap = float(vwap_series.iloc[-1]) if not vwap_series.empty else 0.0
+
+        spot = float(close.iloc[-1])
+
+        # Determinar tendencia
+        above_vwap = spot > vwap if vwap > 0 else False
+        ema_bullish = ema9 > ema21
+
+        if above_vwap and ema_bullish:
+            trend = "Alcista"
+            preferred = "Bull Put"
+        elif not above_vwap and not ema_bullish:
+            trend = "Bajista"
+            preferred = "Bear Call"
+        else:
+            trend = "Neutral"
+            preferred = None
+
+        return {
+            "vwap": round(vwap, 2),
+            "ema9": round(ema9, 2),
+            "ema21": round(ema21, 2),
+            "trend": trend,
+            "preferred_type": preferred,
+        }
+    except Exception as exc:
+        logger.warning("Error calculando tendencia para %s: %s", ticker, exc)
+        return default
+
+
 # ────────────────────────────────────────────────────────────────────────────
 #  Construcción de spreads para una fecha de expiración
 # ────────────────────────────────────────────────────────────────────────────
@@ -85,6 +234,7 @@ def _build_spreads_for_expiry(
     exp_date: str,
     min_pop: float,
     min_credit: float,
+    ticker_meta: dict | None = None,
 ) -> list[dict]:
     """Genera Bull Put Spreads y Bear Call Spreads para una expiración.
 
@@ -156,7 +306,7 @@ def _build_spreads_for_expiry(
                 bought_vol = int(_safe_num(bought.get("volume", 0)))
                 bought_oi = int(_safe_num(bought.get("openInterest", 0)))
 
-                results.append({
+                row = {
                     "Ticker": ticker,
                     "Tipo": "Bull Put",
                     "Spot": round(spot, 2),
@@ -171,11 +321,15 @@ def _build_spreads_for_expiry(
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
                     "IV %": round(sold_iv * 100, 1),
+                    "Dist Strike %": _strike_distance_pct(spot, sold_strike),
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
                     "Liquidez": sold_vol + sold_oi + bought_vol + bought_oi,
-                })
+                }
+                if ticker_meta:
+                    row.update(ticker_meta)
+                results.append(row)
 
     # ── Bear Call Spreads ────────────────────────────────────────────────
     if not calls.empty and len(calls) >= 2:
@@ -224,7 +378,7 @@ def _build_spreads_for_expiry(
                 bought_vol = int(_safe_num(bought.get("volume", 0)))
                 bought_oi = int(_safe_num(bought.get("openInterest", 0)))
 
-                results.append({
+                row = {
                     "Ticker": ticker,
                     "Tipo": "Bear Call",
                     "Spot": round(spot, 2),
@@ -239,11 +393,15 @@ def _build_spreads_for_expiry(
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
                     "IV %": round(sold_iv * 100, 1),
+                    "Dist Strike %": _strike_distance_pct(spot, sold_strike),
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
                     "Liquidez": sold_vol + sold_oi + bought_vol + bought_oi,
-                })
+                }
+                if ticker_meta:
+                    row.update(ticker_meta)
+                results.append(row)
 
     return results
 
@@ -257,18 +415,34 @@ def _scan_single_ticker(
     min_pop: float,
     max_dte: int,
     min_credit: float,
-) -> list[dict]:
-    """Escanea todas las expiraciones válidas de un ticker."""
+) -> tuple[list[dict], dict]:
+    """Escanea todas las expiraciones válidas de un ticker.
+
+    Returns
+    -------
+    tuple[list[dict], dict]
+        (lista de spreads, metadata del ticker — IV rank, trend, etc.)
+    """
     spot, err = obtener_precio_actual(ticker)
     if not spot:
         logger.warning("Sin precio para %s: %s", ticker, err)
-        return []
+        return [], {}
+
+    # Calcular indicadores a nivel de ticker (una sola vez)
+    iv_info = compute_iv_rank_percentile(ticker)
+    trend_info = compute_trend(ticker)
+
+    ticker_meta = {
+        "IV Rank": iv_info["iv_rank"],
+        "IV Pctil": iv_info["iv_percentile"],
+        "Tendencia": trend_info["trend"],
+    }
 
     try:
         exp_dates = _cached_options_dates(ticker)
     except Exception as exc:
         logger.warning("Sin fechas de expiración para %s: %s", ticker, exc)
-        return []
+        return [], {"ticker": ticker, **iv_info, **trend_info}
 
     all_spreads: list[dict] = []
 
@@ -276,10 +450,12 @@ def _scan_single_ticker(
         dte = _dte_from_expiry(exp_date)
         if dte <= 0 or dte > max_dte:
             continue
-        spreads = _build_spreads_for_expiry(ticker, spot, exp_date, min_pop, min_credit)
+        spreads = _build_spreads_for_expiry(
+            ticker, spot, exp_date, min_pop, min_credit, ticker_meta,
+        )
         all_spreads.extend(spreads)
 
-    return all_spreads
+    return all_spreads, {"ticker": ticker, **iv_info, **trend_info}
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -292,7 +468,7 @@ def scan_credit_spreads(
     max_dte: int = 45,
     min_credit: float = 0.30,
     progress_callback=None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, dict[str, dict]]:
     """Escanea múltiples tickers buscando Credit Spreads óptimos.
 
     Parameters
@@ -310,11 +486,12 @@ def scan_credit_spreads(
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame con todas las oportunidades encontradas, ordenado por
-        Retorno % descendente, luego por POP % descendente.
+    tuple[pd.DataFrame, dict[str, dict]]
+        (DataFrame de oportunidades ordenado por Retorno %,
+         dict {ticker: {iv_rank, iv_percentile, trend, ...}} por ticker)
     """
     all_results: list[dict] = []
+    ticker_indicators: dict[str, dict] = {}
 
     for idx, ticker in enumerate(tickers):
         ticker = ticker.strip().upper()
@@ -324,13 +501,15 @@ def scan_credit_spreads(
             progress_callback(ticker, idx, len(tickers))
 
         try:
-            spreads = _scan_single_ticker(ticker, min_pop, max_dte, min_credit)
+            spreads, t_meta = _scan_single_ticker(ticker, min_pop, max_dte, min_credit)
             all_results.extend(spreads)
+            if t_meta:
+                ticker_indicators[ticker] = t_meta
         except Exception as exc:
             logger.error("Error escaneando %s: %s", ticker, exc)
 
     if not all_results:
-        return pd.DataFrame()
+        return pd.DataFrame(), ticker_indicators
 
     df = pd.DataFrame(all_results)
 
@@ -340,4 +519,4 @@ def scan_credit_spreads(
         ascending=[False, False],
     ).reset_index(drop=True)
 
-    return df
+    return df, ticker_indicators
