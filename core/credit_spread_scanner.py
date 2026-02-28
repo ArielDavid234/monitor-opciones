@@ -26,6 +26,22 @@ from config.constants import (
     INCOME_SCORE_DIST_PCT_MIN,
     INCOME_SCORE_LABEL_ALTA,
     INCOME_SCORE_LABEL_BUENA,
+    # ── Filtro estricto pipeline ──
+    CS_WHITELIST,
+    CS_MIN_PRICE,
+    CS_MIN_AVG_VOLUME,
+    CS_MIN_CHAIN_OI,
+    CS_MIN_IV_RANK,
+    CS_DTE_MIN,
+    CS_DTE_MAX,
+    CS_DELTA_MIN,
+    CS_DELTA_MAX,
+    CS_ALLOWED_WIDTHS,
+    CS_MIN_CREDIT_PCT,
+    CS_MIN_DIST_PCT,
+    CS_MIN_SOLD_OI,
+    CS_MIN_SOLD_VOL,
+    CS_MAX_BID_ASK_PCT,
 )
 from core.option_greeks import OptionGreeks
 from core.scanner import (
@@ -94,6 +110,72 @@ def _strike_distance_pct(spot: float, strike: float) -> float:
     if spot <= 0:
         return 0.0
     return round(abs(spot - strike) / spot * 100, 2)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  Helpers de pre-filtro (underlying y liquidez)
+# ────────────────────────────────────────────────────────────────────────────
+
+def _avg_daily_volume(ticker: str, days: int = 20) -> float:
+    """Volumen diario promedio (acciones) de los últimos *days* días."""
+    try:
+        hist = _cached_history(ticker, "1mo")
+        if hist is None or hist.empty:
+            return 0.0
+        vol = hist["Volume"]
+        if hasattr(vol, "squeeze"):
+            vol = vol.squeeze()
+        return float(vol.tail(days).mean())
+    except Exception:
+        return 0.0
+
+
+def _avg_chain_oi(ticker: str) -> float:
+    """OI promedio en los strikes más cercanos (ATM ±5) de la primera expiración."""
+    try:
+        dates = _cached_options_dates(ticker)
+        if not dates:
+            return 0.0
+        chain = _cached_option_chain(ticker, dates[0])
+        puts = chain.get("puts", pd.DataFrame())
+        calls = chain.get("calls", pd.DataFrame())
+        oi_vals = []
+        for df_chain in (puts, calls):
+            if not df_chain.empty and "openInterest" in df_chain.columns:
+                oi_vals.extend(df_chain["openInterest"].dropna().tolist())
+        if not oi_vals:
+            return 0.0
+        # Tomar strikes centrales (ordenar por OI y promediar top-10)
+        oi_vals.sort(reverse=True)
+        return float(np.mean(oi_vals[: min(10, len(oi_vals))]))
+    except Exception:
+        return 0.0
+
+
+def _passes_underlying_filter(ticker: str, spot: float) -> tuple[bool, str]:
+    """Filtro 1 — verifica precio, volumen promedio y OI de cadena.
+
+    Returns (passed, reason).
+    """
+    if spot < CS_MIN_PRICE:
+        return False, f"Precio ${spot:.2f} < ${CS_MIN_PRICE}"
+    avg_vol = _avg_daily_volume(ticker)
+    if avg_vol < CS_MIN_AVG_VOLUME:
+        return False, f"Vol prom {avg_vol:,.0f} < {CS_MIN_AVG_VOLUME:,}"
+    avg_oi = _avg_chain_oi(ticker)
+    if avg_oi < CS_MIN_CHAIN_OI:
+        return False, f"OI cadena prom {avg_oi:.0f} < {CS_MIN_CHAIN_OI}"
+    return True, ""
+
+
+def _passes_bid_ask_filter(bid: float, ask: float) -> bool:
+    """Filtro 9c — Bid-Ask Spread ≤ 10% del mid price."""
+    if ask <= 0 or bid < 0:
+        return False
+    mid = (bid + ask) / 2
+    if mid <= 0:
+        return False
+    return (ask - bid) / mid <= CS_MAX_BID_ASK_PCT
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -311,17 +393,24 @@ def _build_spreads_for_expiry(
     min_pop: float,
     min_credit: float,
     ticker_meta: dict | None = None,
+    allowed_type: str | None = None,
+    strict: bool = False,
 ) -> list[dict]:
     """Genera Bull Put Spreads y Bear Call Spreads para una expiración.
 
-    Bull Put Spread (alcista):
-        Vender Put alto + Comprar Put bajo → crédito neto.
-
-    Bear Call Spread (bajista):
-        Vender Call bajo + Comprar Call alto → crédito neto.
+    Parameters
+    ----------
+    allowed_type : str | None
+        Si se pasa "Bull Put" o "Bear Call", solo genera ese tipo (filtro 5).
+    strict : bool
+        Si True, aplica los 9 filtros obligatorios del pipeline.
     """
     dte = _dte_from_expiry(exp_date)
     if dte <= 0:
+        return []
+
+    # Filtro 3 — DTE estricto (solo en modo strict)
+    if strict and (dte < CS_DTE_MIN or dte > CS_DTE_MAX):
         return []
 
     try:
@@ -336,7 +425,7 @@ def _build_spreads_for_expiry(
     results: list[dict] = []
 
     # ── Bull Put Spreads ─────────────────────────────────────────────────
-    if not puts.empty and len(puts) >= 2:
+    if (allowed_type is None or allowed_type == "Bull Put") and not puts.empty and len(puts) >= 2:
         otm_puts = puts[
             (puts["strike"] < spot) &
             (puts["bid"].fillna(0) > 0)
@@ -354,8 +443,27 @@ def _build_spreads_for_expiry(
             # Delta preciso vía BSM
             sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "put")
 
+            # Filtro 4 — Delta del short strike (strict)
+            if strict:
+                abs_d = abs(sold_delta)
+                if abs_d < CS_DELTA_MIN or abs_d > CS_DELTA_MAX:
+                    continue
+
             pop = _pop_from_delta(sold_delta)
             if pop < min_pop:
+                continue
+
+            # Filtro 8 — Distancia del strike (strict)
+            dist_pct = _strike_distance_pct(spot, sold_strike)
+            if strict and dist_pct < CS_MIN_DIST_PCT:
+                continue
+
+            # Filtro 9a/9b — Liquidez del contrato vendido (strict)
+            if strict and (sold_oi < CS_MIN_SOLD_OI or sold_vol < CS_MIN_SOLD_VOL):
+                continue
+
+            # Filtro 9c — Bid-Ask (strict)
+            if strict and not _passes_bid_ask_filter(sold_bid, sold_ask):
                 continue
 
             for j in range(i + 1, min(i + 6, len(otm_puts))):
@@ -372,6 +480,16 @@ def _build_spreads_for_expiry(
 
                 width = round(sold_strike - bought_strike, 2)
                 if width <= 0:
+                    continue
+
+                # Filtro 6 — Ancho del spread (strict)
+                if strict:
+                    width_int = int(round(width))
+                    if width_int not in CS_ALLOWED_WIDTHS:
+                        continue
+
+                # Filtro 7 — Crédito ≥ 30% del ancho (strict)
+                if strict and credit < width * CS_MIN_CREDIT_PCT:
                     continue
 
                 max_risk = round(width - credit, 2)
@@ -397,7 +515,7 @@ def _build_spreads_for_expiry(
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
                     "IV %": round(sold_iv * 100, 1),
-                    "Dist Strike %": _strike_distance_pct(spot, sold_strike),
+                    "Dist Strike %": dist_pct,
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
@@ -408,7 +526,7 @@ def _build_spreads_for_expiry(
                 results.append(row)
 
     # ── Bear Call Spreads ────────────────────────────────────────────────
-    if not calls.empty and len(calls) >= 2:
+    if (allowed_type is None or allowed_type == "Bear Call") and not calls.empty and len(calls) >= 2:
         otm_calls = calls[
             (calls["strike"] > spot) &
             (calls["bid"].fillna(0) > 0)
@@ -426,8 +544,27 @@ def _build_spreads_for_expiry(
             # Delta preciso vía BSM
             sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "call")
 
+            # Filtro 4 — Delta del short strike (strict)
+            if strict:
+                abs_d = abs(sold_delta)
+                if abs_d < CS_DELTA_MIN or abs_d > CS_DELTA_MAX:
+                    continue
+
             pop = _pop_from_delta(sold_delta)
             if pop < min_pop:
+                continue
+
+            # Filtro 8 — Distancia del strike (strict)
+            dist_pct = _strike_distance_pct(spot, sold_strike)
+            if strict and dist_pct < CS_MIN_DIST_PCT:
+                continue
+
+            # Filtro 9a/9b — Liquidez del contrato vendido (strict)
+            if strict and (sold_oi < CS_MIN_SOLD_OI or sold_vol < CS_MIN_SOLD_VOL):
+                continue
+
+            # Filtro 9c — Bid-Ask (strict)
+            if strict and not _passes_bid_ask_filter(sold_bid, sold_ask):
                 continue
 
             for j in range(i + 1, min(i + 6, len(otm_calls))):
@@ -444,6 +581,16 @@ def _build_spreads_for_expiry(
 
                 width = round(bought_strike - sold_strike, 2)
                 if width <= 0:
+                    continue
+
+                # Filtro 6 — Ancho del spread (strict)
+                if strict:
+                    width_int = int(round(width))
+                    if width_int not in CS_ALLOWED_WIDTHS:
+                        continue
+
+                # Filtro 7 — Crédito ≥ 30% del ancho (strict)
+                if strict and credit < width * CS_MIN_CREDIT_PCT:
                     continue
 
                 max_risk = round(width - credit, 2)
@@ -469,7 +616,7 @@ def _build_spreads_for_expiry(
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
                     "IV %": round(sold_iv * 100, 1),
-                    "Dist Strike %": _strike_distance_pct(spot, sold_strike),
+                    "Dist Strike %": dist_pct,
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
@@ -491,8 +638,14 @@ def _scan_single_ticker(
     min_pop: float,
     max_dte: int,
     min_credit: float,
+    strict: bool = False,
 ) -> tuple[list[dict], dict]:
     """Escanea todas las expiraciones válidas de un ticker.
+
+    Parameters
+    ----------
+    strict : bool
+        Si True, aplica pipeline completo de 9 filtros.
 
     Returns
     -------
@@ -508,6 +661,36 @@ def _scan_single_ticker(
     iv_info = compute_iv_rank_percentile(ticker)
     trend_info = compute_trend(ticker)
 
+    combined_meta = {"ticker": ticker, **iv_info, **trend_info}
+
+    # ── Filtro 1 — Underlying (strict) ───────────────────────────────────
+    if strict:
+        ok, reason = _passes_underlying_filter(ticker, spot)
+        if not ok:
+            logger.info("[STRICT] %s descartado — %s", ticker, reason)
+            return [], combined_meta
+
+    # ── Filtro 2 — IV Rank mínimo (strict) ───────────────────────────────
+    if strict and iv_info["iv_rank"] < CS_MIN_IV_RANK:
+        logger.info(
+            "[STRICT] %s descartado — IV Rank %.1f < %d",
+            ticker, iv_info["iv_rank"], CS_MIN_IV_RANK,
+        )
+        return [], combined_meta
+
+    # ── Filtro 5 — Dirección / Tendencia (strict) ────────────────────────
+    allowed_type: str | None = None
+    if strict:
+        trend = trend_info["trend"]
+        if trend == "Alcista":
+            allowed_type = "Bull Put"
+        elif trend == "Bajista":
+            allowed_type = "Bear Call"
+        else:
+            # Neutral → no mostrar trades
+            logger.info("[STRICT] %s descartado — tendencia Neutral", ticker)
+            return [], combined_meta
+
     ticker_meta = {
         "IV Rank": iv_info["iv_rank"],
         "IV Pctil": iv_info["iv_percentile"],
@@ -518,7 +701,7 @@ def _scan_single_ticker(
         exp_dates = _cached_options_dates(ticker)
     except Exception as exc:
         logger.warning("Sin fechas de expiración para %s: %s", ticker, exc)
-        return [], {"ticker": ticker, **iv_info, **trend_info}
+        return [], combined_meta
 
     all_spreads: list[dict] = []
 
@@ -528,10 +711,12 @@ def _scan_single_ticker(
             continue
         spreads = _build_spreads_for_expiry(
             ticker, spot, exp_date, min_pop, min_credit, ticker_meta,
+            allowed_type=allowed_type,
+            strict=strict,
         )
         all_spreads.extend(spreads)
 
-    return all_spreads, {"ticker": ticker, **iv_info, **trend_info}
+    return all_spreads, combined_meta
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -544,6 +729,7 @@ def scan_credit_spreads(
     max_dte: int = 45,
     min_credit: float = 0.30,
     progress_callback=None,
+    strict: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, dict]]:
     """Escanea múltiples tickers buscando Credit Spreads óptimos.
 
@@ -559,25 +745,35 @@ def scan_credit_spreads(
         Crédito mínimo por spread en USD. Default 0.30.
     progress_callback : callable, optional
         Función(ticker, idx, total) para reportar progreso.
+    strict : bool
+        Si True, aplica los 9 filtros obligatorios del pipeline.
+        En modo strict, solo se escanean tickers de la whitelist.
 
     Returns
     -------
     tuple[pd.DataFrame, dict[str, dict]]
-        (DataFrame de oportunidades ordenado por Retorno %,
+        (DataFrame de oportunidades ordenado por Income Score,
          dict {ticker: {iv_rank, iv_percentile, trend, ...}} por ticker)
     """
     all_results: list[dict] = []
     ticker_indicators: dict[str, dict] = {}
 
-    for idx, ticker in enumerate(tickers):
+    # En modo strict, filtrar contra whitelist
+    effective_tickers = tickers
+    if strict:
+        effective_tickers = [t for t in tickers if t.strip().upper() in CS_WHITELIST]
+
+    for idx, ticker in enumerate(effective_tickers):
         ticker = ticker.strip().upper()
         if not ticker:
             continue
         if progress_callback:
-            progress_callback(ticker, idx, len(tickers))
+            progress_callback(ticker, idx, len(effective_tickers))
 
         try:
-            spreads, t_meta = _scan_single_ticker(ticker, min_pop, max_dte, min_credit)
+            spreads, t_meta = _scan_single_ticker(
+                ticker, min_pop, max_dte, min_credit, strict=strict,
+            )
             all_results.extend(spreads)
             if t_meta:
                 ticker_indicators[ticker] = t_meta

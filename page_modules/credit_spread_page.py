@@ -21,11 +21,11 @@ from core.credit_spread_scanner import scan_credit_spreads
 logger = logging.getLogger(__name__)
 
 # ── Tickers populares por defecto ────────────────────────────────────────
-_DEFAULT_TICKERS = ["SPY", "QQQ", "NVDA", "TSLA", "AAPL", "AMD"]
+_DEFAULT_TICKERS = ["SPY", "QQQ", "IWM", "NVDA", "AAPL", "TSLA", "AMD"]
 _ALL_TICKERS = [
-    "SPY", "QQQ", "NVDA", "TSLA", "AAPL", "AMD", "MSFT", "AMZN", "META",
+    "SPY", "QQQ", "IWM", "NVDA", "TSLA", "AAPL", "AMD", "MSFT", "AMZN", "META",
     "GOOGL", "NFLX", "DIS", "BA", "JPM", "GS", "V", "MA",
-    "XOM", "COIN", "PLTR", "SOFI", "MARA", "IWM", "DIA", "GLD",
+    "XOM", "COIN", "PLTR", "SOFI", "MARA", "DIA", "GLD",
 ]
 
 # ── JS cell-style functions para AgGrid ──────────────────────────────────
@@ -198,6 +198,20 @@ def render(**kwargs) -> None:
             key="cs_trend_align",
         )
         st.markdown("---")
+        st.markdown("#### 🛡️ Modo Estricto")
+        strict_mode = st.checkbox(
+            "✅ Activar filtros estrictos (9 reglas)",
+            value=True,
+            help=(
+                "Aplica 9 filtros obligatorios: whitelist, precio>"
+                "$20, vol>1M, IV Rank≥30, DTE 25-45, delta 0.10-0.20, "
+                "ancho 3 o 5, crédito≥30% ancho, distancia≥3%, "
+                "OI>500, vol>100, bid-ask≤10%. "
+                "Desactiva para ver TODAS las oportunidades sin filtrar."
+            ),
+            key="cs_strict_mode",
+        )
+        st.markdown("---")
 
     # ── Botón de escaneo ─────────────────────────────────────────────────
     scan_btn = st.button(
@@ -233,6 +247,7 @@ def render(**kwargs) -> None:
                 max_dte=max_dte,
                 min_credit=min_credit,
                 progress_callback=_progress_cb,
+                strict=strict_mode,
             )
 
         progress_bar.empty()
@@ -251,9 +266,13 @@ def render(**kwargs) -> None:
 
     if df is None or df.empty:
         if df is not None:
-            st.info(
-                "🔍 No se encontraron spreads con los filtros actuales. "
-                "Ajusta los parámetros e intenta de nuevo."
+            st.warning(
+                "🛡️ **No se encontraron oportunidades que cumplan TODOS los "
+                "criterios de seguridad.**\n\n"
+                "Esto significa que el mercado actual no ofrece spreads de alta "
+                "calidad según los 9 filtros estrictos. "
+                "Puedes desactivar el **Modo Estricto** en el sidebar para ver "
+                "todas las oportunidades sin filtrar, o ajustar los parámetros."
             )
         else:
             st.markdown(
