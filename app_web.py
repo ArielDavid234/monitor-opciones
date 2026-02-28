@@ -63,6 +63,7 @@ from page_modules import (  # noqa: E402
     reports_page,
     calendar_page,
     admin_users_page,
+    credit_spread_page,
 )
 
 # ============================================================================
@@ -125,6 +126,7 @@ with st.sidebar:
         "📰 News",
         "📅 Calendar",
         "📋 Reports",
+        "💰 Venta de Prima",
     ]
     # Agregar opción de admin solo si el usuario es administrador
     try:
@@ -261,7 +263,9 @@ elif pagina == "📅 Calendar":
     calendar_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "📋 Reports":
     reports_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "👑 Administrar Usuarios":
+elif pagina == "� Venta de Prima":
+    credit_spread_page.render(**_page_kwargs)
+elif pagina == "�👑 Administrar Usuarios":
     admin_users_page.render(**_page_kwargs)
 
 # ============================================================================
