@@ -84,6 +84,22 @@ function(params) {
 }
 """)
 
+_JS_INCOME_SCORE_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 80) return {'backgroundColor': '#166534', 'color': '#4ade80', 'fontWeight': '700'};
+    if (params.value >= 60) return {'backgroundColor': '#713f12', 'color': '#fbbf24', 'fontWeight': '600'};
+    return {'backgroundColor': '#3f1219', 'color': '#f87171', 'fontWeight': '600'};
+}
+""")
+
+_JS_CALIDAD_STYLE = JsCode("""
+function(params) {
+    if (params.value === 'Alta probabilidad') return {'color': '#4ade80', 'fontWeight': '700'};
+    if (params.value === 'Buena') return {'color': '#fbbf24', 'fontWeight': '600'};
+    return {'color': '#f87171', 'fontWeight': '600'};
+}
+""")
+
 
 def render(**kwargs) -> None:
     """Renderiza la página de Venta de Prima — Credit Spread Scanner."""
@@ -332,7 +348,7 @@ def render(**kwargs) -> None:
         )
 
     # ── Métricas rápidas ─────────────────────────────────────────────────
-    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
     with mc1:
         st.metric("Mejor Retorno %", f"{df_filtered['Retorno %'].max():.1f}%")
     with mc2:
@@ -341,10 +357,17 @@ def render(**kwargs) -> None:
         st.metric("Crédito Promedio", f"${df_filtered['Crédito'].mean():.2f}")
     with mc4:
         st.metric("DTE Promedio", f"{df_filtered['DTE'].mean():.0f}d")
+    with mc5:
+        best_score = df_filtered["Income Score"].max() if "Income Score" in df_filtered.columns else 0
+        st.metric("⭐ Mejor Score", f"{best_score:.0f}")
+    with mc6:
+        avg_score = df_filtered["Income Score"].mean() if "Income Score" in df_filtered.columns else 0
+        st.metric("Ø Score Prom.", f"{avg_score:.0f}")
 
     # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
     display_cols = [
-        "Ticker", "Tipo", "Spot", "Strike Vendido", "Strike Comprado",
+        "Ticker", "Tipo", "Income Score", "Calidad", "Spot",
+        "Strike Vendido", "Strike Comprado",
         "DTE", "Delta Vendido", "POP %", "Prob OTM %", "Crédito",
         "Riesgo Máx", "Retorno %", "Dist Strike %", "IV %",
         "IV Rank", "IV Pctil", "Tendencia",
@@ -365,6 +388,11 @@ def render(**kwargs) -> None:
     # Column-specific config
     gb.configure_column("Ticker", pinned="left", width=80)
     gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
+    gb.configure_column("Income Score", headerName="Income Score", width=115,
+                        type=["numericColumn"], cellStyle=_JS_INCOME_SCORE_STYLE,
+                        sort="desc", valueFormatter="x.toFixed(0)")
+    gb.configure_column("Calidad", headerName="Calidad", width=130,
+                        cellStyle=_JS_CALIDAD_STYLE)
     gb.configure_column("Spot", width=80, type=["numericColumn"],
                         valueFormatter="'$' + x.toFixed(2)")
     gb.configure_column("Strike Vendido", width=100, type=["numericColumn"],
@@ -476,14 +504,17 @@ def render(**kwargs) -> None:
                 _dist = row.get("Dist Strike %", 0)
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
+                _iscore = row.get("Income Score", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
+                _sc_c = "#4ade80" if _iscore >= 80 else ("#fbbf24" if _iscore >= 60 else "#f87171")
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #1e3a2f;'
                     f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
                     f'<b style="color:#22c55e;">{row["Ticker"]}</b> '
                     f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}P / '
                     f'Buy {row["Strike Comprado"]}P</span> '
-                    f'<span style="color:#64748b;">({row["DTE"]}d)</span><br>'
+                    f'<span style="color:#64748b;">({row["DTE"]}d)</span>'
+                    f'<span style="float:right;color:{_sc_c};font-weight:700;">Score: {_iscore:.0f}</span><br>'
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
                     f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
@@ -505,14 +536,17 @@ def render(**kwargs) -> None:
                 _dist = row.get("Dist Strike %", 0)
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
+                _iscore = row.get("Income Score", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
+                _sc_c = "#4ade80" if _iscore >= 80 else ("#fbbf24" if _iscore >= 60 else "#f87171")
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #3a1e1e;'
                     f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
                     f'<b style="color:#ef4444;">{row["Ticker"]}</b> '
                     f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}C / '
                     f'Buy {row["Strike Comprado"]}C</span> '
-                    f'<span style="color:#64748b;">({row["DTE"]}d)</span><br>'
+                    f'<span style="color:#64748b;">({row["DTE"]}d)</span>'
+                    f'<span style="float:right;color:{_sc_c};font-weight:700;">Score: {_iscore:.0f}</span><br>'
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
                     f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '

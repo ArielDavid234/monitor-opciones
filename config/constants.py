@@ -35,3 +35,13 @@ MAX_EXPIRATION_DATES = 12          # Máximo de fechas de vencimiento a escanear
 # --- Score de proyección ---
 SCORE_THRESHOLD_ALTA = 65
 SCORE_THRESHOLD_MEDIA = 40
+
+# --- Income Score (Venta de Prima) ---
+INCOME_SCORE_IV_RANK_MIN = 40          # +20 si IV Rank > este valor
+INCOME_SCORE_IV_PCTIL_MIN = 60         # ó IV Percentile > este valor
+INCOME_SCORE_DELTA_MAX = 0.20          # +20 si |delta| ≤ este valor
+INCOME_SCORE_VOL_MIN = 100             # +20 si volumen > este valor
+INCOME_SCORE_OI_MIN = 200              # y open interest > este valor
+INCOME_SCORE_DIST_PCT_MIN = 5.0        # +20 si distancia strike % > este valor
+INCOME_SCORE_LABEL_ALTA = 80           # "Alta probabilidad" si score ≥ 80
+INCOME_SCORE_LABEL_BUENA = 60          # "Buena" si score ≥ 60, "Evitar" si < 60

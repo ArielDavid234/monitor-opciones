@@ -15,7 +15,18 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
-from config.constants import RISK_FREE_RATE, DAYS_PER_YEAR
+from config.constants import (
+    RISK_FREE_RATE,
+    DAYS_PER_YEAR,
+    INCOME_SCORE_IV_RANK_MIN,
+    INCOME_SCORE_IV_PCTIL_MIN,
+    INCOME_SCORE_DELTA_MAX,
+    INCOME_SCORE_VOL_MIN,
+    INCOME_SCORE_OI_MIN,
+    INCOME_SCORE_DIST_PCT_MIN,
+    INCOME_SCORE_LABEL_ALTA,
+    INCOME_SCORE_LABEL_BUENA,
+)
 from core.option_greeks import OptionGreeks
 from core.scanner import (
     _cached_options_dates,
@@ -83,6 +94,71 @@ def _strike_distance_pct(spot: float, strike: float) -> float:
     if spot <= 0:
         return 0.0
     return round(abs(spot - strike) / spot * 100, 2)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  Income Score — puntuación única de cada spread (0–100)
+# ────────────────────────────────────────────────────────────────────────────
+
+def compute_income_score(row: dict) -> tuple[float, str]:
+    """Calcula el Income Score (0–100) para un spread individual.
+
+    Componentes (20 pts cada uno, total máximo 100):
+      1. IV alto: IV Rank > 40 ó IV Percentile > 60
+      2. Delta bajo: |delta vendido| ≤ 0.20
+      3. Liquidez: volumen > 100 y OI > 200
+      4. Tendencia alineada: Bull Put + Alcista ó Bear Call + Bajista
+      5. Distancia del strike: dist_pct > 5.0 %
+
+    Umbrales configurables en config/constants.py.
+
+    Returns
+    -------
+    tuple[float, str]
+        (score redondeado a 1 decimal, etiqueta en español)
+    """
+    score = 0.0
+
+    # 1. IV alto
+    iv_rank = row.get("IV Rank", 0) or 0
+    iv_pctil = row.get("IV Pctil", 0) or 0
+    if iv_rank > INCOME_SCORE_IV_RANK_MIN or iv_pctil > INCOME_SCORE_IV_PCTIL_MIN:
+        score += 20
+
+    # 2. Delta bajo
+    delta = abs(row.get("Delta Vendido", 1.0) or 1.0)
+    if delta <= INCOME_SCORE_DELTA_MAX:
+        score += 20
+
+    # 3. Liquidez
+    vol = row.get("Volumen", 0) or 0
+    oi = row.get("OI", 0) or 0
+    if vol > INCOME_SCORE_VOL_MIN and oi > INCOME_SCORE_OI_MIN:
+        score += 20
+
+    # 4. Tendencia alineada con tipo de spread
+    tipo = row.get("Tipo", "")
+    tendencia = row.get("Tendencia", "Neutral")
+    if (tipo == "Bull Put" and tendencia == "Alcista") or \
+       (tipo == "Bear Call" and tendencia == "Bajista"):
+        score += 20
+
+    # 5. Distancia del strike
+    dist_pct = row.get("Dist Strike %", 0) or 0
+    if dist_pct > INCOME_SCORE_DIST_PCT_MIN:
+        score += 20
+
+    score = round(min(max(score, 0), 100), 1)
+
+    # Etiqueta
+    if score >= INCOME_SCORE_LABEL_ALTA:
+        label = "Alta probabilidad"
+    elif score >= INCOME_SCORE_LABEL_BUENA:
+        label = "Buena"
+    else:
+        label = "Evitar"
+
+    return score, label
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -513,10 +589,17 @@ def scan_credit_spreads(
 
     df = pd.DataFrame(all_results)
 
-    # Ordenar por retorno y POP
+    # ── Income Score por cada spread ─────────────────────────────────
+    scores, labels = zip(*[
+        compute_income_score(row) for row in all_results
+    ])
+    df["Income Score"] = list(scores)
+    df["Calidad"] = list(labels)
+
+    # Ordenar por Income Score > Retorno > POP
     df = df.sort_values(
-        ["Retorno %", "POP %"],
-        ascending=[False, False],
+        ["Income Score", "Retorno %", "POP %"],
+        ascending=[False, False, False],
     ).reset_index(drop=True)
 
     return df, ticker_indicators
