@@ -106,6 +106,31 @@ def render(**kwargs) -> None:
         unsafe_allow_html=True,
     )
 
+    # ── Panel educativo (colapsado por defecto) ──────────────────────────
+    with st.expander("📚 Panel educativo para venta de prima", expanded=False):
+        st.markdown(
+            """
+            <div style="font-size:0.84rem;line-height:1.7;color:#cbd5e1;">
+            <b style="color:#e94560;">Antes de vender prima revisa esto:</b>
+            <ul style="list-style:none;padding-left:0;margin:0.4rem 0 0 0;">
+              <li>✅ <b style="color:#22c55e;">Delta ≤ 0.20</b> — alta probabilidad de expirar OTM</li>
+              <li>✅ <b style="color:#22c55e;">IV alto</b> — prima inflada = más crédito recibido</li>
+              <li>✅ <b style="color:#22c55e;">Liquidez alta</b> — spreads ajustados, fácil entrada/salida</li>
+              <li>✅ <b style="color:#22c55e;">DTE 30–45 días</b> — zona óptima de decaimiento theta</li>
+              <li>✅ <b style="color:#22c55e;">Crédito ≥ ⅓ del ancho</b> — relación riesgo/beneficio aceptable</li>
+              <li>✅ <b style="color:#22c55e;">Riesgo ≤ 5% de la cuenta</b> — proteger el capital</li>
+            </ul>
+            <div style="margin-top:0.5rem;padding:6px 10px;background:#0d1117;border-left:3px solid #00ff88;border-radius:4px;">
+              <b style="color:#00ff88;">Gestión recomendada:</b><br>
+              🎯 Tomar ganancias al <b>50%</b> del crédito recibido<br>
+              🛑 Salir si la pérdida llega al <b>100%</b> del crédito<br>
+              ⏰ Cerrar a los <b>21 DTE</b> si la posición sigue abierta
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     # ── Filtros en el sidebar ────────────────────────────────────────────
     with st.sidebar:
         st.markdown("### ⚙️ Filtros — Venta de Prima")
