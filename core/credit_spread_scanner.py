@@ -42,6 +42,16 @@ from config.constants import (
     CS_MIN_SOLD_OI,
     CS_MIN_SOLD_VOL,
     CS_MAX_BID_ASK_PCT,
+    # ── Score de Oportunidad ──
+    OPP_SCORE_IV_RANK_MIN,
+    OPP_SCORE_DELTA_MIN,
+    OPP_SCORE_DELTA_MAX,
+    OPP_SCORE_CREDIT_WIDTH_PCT,
+    OPP_SCORE_DIST_PCT_MIN,
+    OPP_SCORE_VOL_MIN,
+    OPP_SCORE_OI_MIN,
+    OPP_SCORE_BA_CREDIT_PCT,
+    OPP_SCORE_MIN_SHOW,
 )
 from core.option_greeks import OptionGreeks
 from core.scanner import (
@@ -241,6 +251,133 @@ def compute_income_score(row: dict) -> tuple[float, str]:
         label = "Evitar"
 
     return score, label
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  Score de Oportunidad (0–100) — scoring propio de cada spread
+# ────────────────────────────────────────────────────────────────────────────
+
+def compute_opportunity_score(row: dict) -> tuple[float, str]:
+    """Score de Oportunidad (0–100) para un spread individual.
+
+    Componentes (20 pts cada uno):
+      1. IV Rank > 40
+      2. Delta en sweet spot (0.12–0.18)
+      3. Crédito ≥ 35 % del ancho del spread
+      4. Distancia al strike > 4 %
+      5. Liquidez alta (vol > 100, OI > 500, B-A ≤ 10 % del crédito)
+
+    Returns: (score, label)
+    """
+    score = 0.0
+
+    # 1. IV Rank alto
+    iv_rank = row.get("IV Rank", 0) or 0
+    if iv_rank > OPP_SCORE_IV_RANK_MIN:
+        score += 20
+
+    # 2. Delta sweet spot
+    delta = abs(row.get("Delta Vendido", 0) or 0)
+    if OPP_SCORE_DELTA_MIN <= delta <= OPP_SCORE_DELTA_MAX:
+        score += 20
+
+    # 3. Crédito vs ancho
+    width = abs(
+        (row.get("Strike Vendido", 0) or 0) - (row.get("Strike Comprado", 0) or 0)
+    )
+    credit = row.get("Crédito", 0) or 0
+    if width > 0 and credit >= OPP_SCORE_CREDIT_WIDTH_PCT * width:
+        score += 20
+
+    # 4. Distancia del strike
+    dist_pct = row.get("Dist Strike %", 0) or 0
+    if dist_pct > OPP_SCORE_DIST_PCT_MIN:
+        score += 20
+
+    # 5. Liquidez alta
+    vol = row.get("Volumen", 0) or 0
+    oi = row.get("OI", 0) or 0
+    ba = row.get("Bid-Ask", 0) or 0
+    ba_ratio = ba / max(credit, 0.01)
+    if vol > OPP_SCORE_VOL_MIN and oi > OPP_SCORE_OI_MIN and ba_ratio <= OPP_SCORE_BA_CREDIT_PCT:
+        score += 20
+
+    score = round(min(max(score, 0), 100), 1)
+
+    if score >= 80:
+        label = "Excelente"
+    elif score >= OPP_SCORE_MIN_SHOW:
+        label = "Buena"
+    else:
+        label = "Baja"
+
+    return score, label
+
+
+def opportunity_score_breakdown(row: dict) -> list[dict]:
+    """Desglose detallado del Score de Oportunidad para una fila.
+
+    Devuelve una lista de dicts con criterio, detalle, puntos, máximo, cumple.
+    Útil para mostrar al usuario qué criterios cumplió cada spread.
+    """
+    breakdown: list[dict] = []
+
+    # 1. IV Rank
+    ivr = row.get("IV Rank", 0) or 0
+    p = ivr > OPP_SCORE_IV_RANK_MIN
+    breakdown.append({
+        "criterio": "IV Rank > 40",
+        "detalle": f"IV Rank actual: {ivr:.0f}%",
+        "puntos": 20 if p else 0, "maximo": 20, "cumple": p,
+    })
+
+    # 2. Delta sweet spot
+    delta = abs(row.get("Delta Vendido", 0) or 0)
+    p = OPP_SCORE_DELTA_MIN <= delta <= OPP_SCORE_DELTA_MAX
+    breakdown.append({
+        "criterio": "Delta 0.12 – 0.18 (sweet spot)",
+        "detalle": f"|Δ| = {delta:.3f}",
+        "puntos": 20 if p else 0, "maximo": 20, "cumple": p,
+    })
+
+    # 3. Crédito vs ancho
+    width = abs(
+        (row.get("Strike Vendido", 0) or 0) - (row.get("Strike Comprado", 0) or 0)
+    )
+    credit = row.get("Crédito", 0) or 0
+    ratio = credit / width * 100 if width > 0 else 0
+    p = width > 0 and credit >= OPP_SCORE_CREDIT_WIDTH_PCT * width
+    breakdown.append({
+        "criterio": "Crédito ≥ 35% del ancho",
+        "detalle": f"${credit:.2f} / ${width:.0f} = {ratio:.0f}%",
+        "puntos": 20 if p else 0, "maximo": 20, "cumple": p,
+    })
+
+    # 4. Distancia
+    dist = row.get("Dist Strike %", 0) or 0
+    p = dist > OPP_SCORE_DIST_PCT_MIN
+    breakdown.append({
+        "criterio": "Distancia > 4%",
+        "detalle": f"Distancia: {dist:.1f}%",
+        "puntos": 20 if p else 0, "maximo": 20, "cumple": p,
+    })
+
+    # 5. Liquidez
+    vol = row.get("Volumen", 0) or 0
+    oi = row.get("OI", 0) or 0
+    ba = row.get("Bid-Ask", 0) or 0
+    ba_pct = ba / max(credit, 0.01) * 100
+    cv = vol > OPP_SCORE_VOL_MIN
+    co = oi > OPP_SCORE_OI_MIN
+    cb = (ba_pct / 100) <= OPP_SCORE_BA_CREDIT_PCT
+    p = cv and co and cb
+    breakdown.append({
+        "criterio": "Liquidez (Vol>100, OI>500, B-A≤10%)",
+        "detalle": f"Vol:{vol:,} · OI:{oi:,} · B-A:{ba_pct:.0f}% crédito",
+        "puntos": 20 if p else 0, "maximo": 20, "cumple": p,
+    })
+
+    return breakdown
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -792,9 +929,22 @@ def scan_credit_spreads(
     df["Income Score"] = list(scores)
     df["Calidad"] = list(labels)
 
-    # Ordenar por Income Score > Retorno > POP
+    # ── Score de Oportunidad por cada spread ──────────────────────────
+    opp_scores, opp_labels = zip(*[
+        compute_opportunity_score(row) for row in all_results
+    ])
+    df["Score Oportunidad"] = list(opp_scores)
+    df["Nivel"] = list(opp_labels)
+
+    # Filtrar: solo mostrar score ≥ 60
+    df = df[df["Score Oportunidad"] >= OPP_SCORE_MIN_SHOW].reset_index(drop=True)
+
+    if df.empty:
+        return pd.DataFrame(), ticker_indicators
+
+    # Ordenar por Score Oportunidad > Income Score > Retorno
     df = df.sort_values(
-        ["Income Score", "Retorno %", "POP %"],
+        ["Score Oportunidad", "Income Score", "Retorno %"],
         ascending=[False, False, False],
     ).reset_index(drop=True)
 

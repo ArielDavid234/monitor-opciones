@@ -62,3 +62,14 @@ CS_MIN_DIST_PCT = 3.0                  # Distancia mínima del strike (%)
 CS_MIN_SOLD_OI = 500                   # OI mínimo del strike vendido
 CS_MIN_SOLD_VOL = 100                  # Volumen mínimo del strike vendido
 CS_MAX_BID_ASK_PCT = 0.10              # Bid-Ask Spread ≤ 10% del mid price
+
+# --- Score de Oportunidad (Venta de Prima) ---
+OPP_SCORE_IV_RANK_MIN = 40             # +20 si IV Rank > 40
+OPP_SCORE_DELTA_MIN = 0.12             # +20 si |delta| en [0.12, 0.18]
+OPP_SCORE_DELTA_MAX = 0.18
+OPP_SCORE_CREDIT_WIDTH_PCT = 0.35      # +20 si crédito ≥ 35% del ancho
+OPP_SCORE_DIST_PCT_MIN = 4.0           # +20 si distancia > 4%
+OPP_SCORE_VOL_MIN = 100                # +20 si volumen > 100
+OPP_SCORE_OI_MIN = 500                 # +20 si OI > 500
+OPP_SCORE_BA_CREDIT_PCT = 0.10         # +20 si bid-ask ≤ 10% del crédito
+OPP_SCORE_MIN_SHOW = 60                # No mostrar filas con score < 60

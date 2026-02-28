@@ -16,7 +16,7 @@ from datetime import datetime
 
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
-from core.credit_spread_scanner import scan_credit_spreads
+from core.credit_spread_scanner import scan_credit_spreads, opportunity_score_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,28 @@ function(params) {
     if (params.value === 'Alta probabilidad') return {'color': '#4ade80', 'fontWeight': '700'};
     if (params.value === 'Buena') return {'color': '#fbbf24', 'fontWeight': '600'};
     return {'color': '#f87171', 'fontWeight': '600'};
+}
+""")
+
+_JS_OPP_SCORE_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 80) return {
+        'backgroundColor': '#00ff00', 'color': '#000000',
+        'fontWeight': '700', 'fontSize': '0.95rem'
+    };
+    if (params.value >= 60) return {
+        'backgroundColor': '#ffaa00', 'color': '#000000',
+        'fontWeight': '600'
+    };
+    return {'color': '#94a3b8'};
+}
+""")
+
+_JS_OPP_LABEL_STYLE = JsCode("""
+function(params) {
+    if (params.value === 'Excelente') return {'color': '#00ff00', 'fontWeight': '700'};
+    if (params.value === 'Buena') return {'color': '#ffaa00', 'fontWeight': '600'};
+    return {'color': '#94a3b8'};
 }
 """)
 
@@ -366,6 +388,34 @@ def render(**kwargs) -> None:
             unsafe_allow_html=True,
         )
 
+    # ── Score de Oportunidad — card destacado ─────────────────────────────
+    _best_opp = (
+        df_filtered["Score Oportunidad"].max()
+        if "Score Oportunidad" in df_filtered.columns else 0
+    )
+    _best_opp_label = "Excelente" if _best_opp >= 80 else "Buena"
+    _best_opp_color = "#00ff00" if _best_opp >= 80 else "#ffaa00"
+    st.markdown(
+        f"""
+        <div style="background:linear-gradient(135deg,#0d1117,#1a2332);
+                    border:2px solid {_best_opp_color};border-radius:12px;
+                    padding:12px 20px;margin-bottom:1rem;display:flex;
+                    align-items:center;gap:16px;">
+            <span style="font-size:2rem;">🏆</span>
+            <div>
+                <div style="color:#94a3b8;font-size:0.78rem;">MEJOR SCORE DE OPORTUNIDAD</div>
+                <div style="color:{_best_opp_color};font-size:1.5rem;font-weight:800;">
+                    {_best_opp:.0f}/100
+                    <span style="font-size:0.9rem;font-weight:600;margin-left:8px;">
+                        ({_best_opp_label})
+                    </span>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # ── Métricas rápidas ─────────────────────────────────────────────────
     mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
     with mc1:
@@ -378,14 +428,15 @@ def render(**kwargs) -> None:
         st.metric("DTE Promedio", f"{df_filtered['DTE'].mean():.0f}d")
     with mc5:
         best_score = df_filtered["Income Score"].max() if "Income Score" in df_filtered.columns else 0
-        st.metric("⭐ Mejor Score", f"{best_score:.0f}")
+        st.metric("⭐ Income Score", f"{best_score:.0f}")
     with mc6:
-        avg_score = df_filtered["Income Score"].mean() if "Income Score" in df_filtered.columns else 0
-        st.metric("Ø Score Prom.", f"{avg_score:.0f}")
+        avg_opp = df_filtered["Score Oportunidad"].mean() if "Score Oportunidad" in df_filtered.columns else 0
+        st.metric("Ø Score Prom.", f"{avg_opp:.0f}")
 
     # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
     display_cols = [
-        "Ticker", "Tipo", "Income Score", "Calidad", "Spot",
+        "Ticker", "Tipo", "Score Oportunidad", "Nivel",
+        "Income Score", "Calidad", "Spot",
         "Strike Vendido", "Strike Comprado",
         "DTE", "Delta Vendido", "POP %", "Prob OTM %", "Crédito",
         "Riesgo Máx", "Retorno %", "Dist Strike %", "IV %",
@@ -407,9 +458,15 @@ def render(**kwargs) -> None:
     # Column-specific config
     gb.configure_column("Ticker", pinned="left", width=80)
     gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
+    gb.configure_column("Score Oportunidad", headerName="Score de Oportunidad",
+                        width=155, type=["numericColumn"],
+                        cellStyle=_JS_OPP_SCORE_STYLE, sort="desc",
+                        valueFormatter="x.toFixed(0)")
+    gb.configure_column("Nivel", headerName="Nivel", width=100,
+                        cellStyle=_JS_OPP_LABEL_STYLE)
     gb.configure_column("Income Score", headerName="Income Score", width=115,
                         type=["numericColumn"], cellStyle=_JS_INCOME_SCORE_STYLE,
-                        sort="desc", valueFormatter="x.toFixed(0)")
+                        valueFormatter="x.toFixed(0)")
     gb.configure_column("Calidad", headerName="Calidad", width=130,
                         cellStyle=_JS_CALIDAD_STYLE)
     gb.configure_column("Spot", width=80, type=["numericColumn"],
@@ -433,7 +490,7 @@ def render(**kwargs) -> None:
                         cellStyle=_JS_RISK_STYLE,
                         valueFormatter="'$' + x.toFixed(2)")
     gb.configure_column("Retorno %", width=95, type=["numericColumn"],
-                        cellStyle=_JS_RETORNO_STYLE, sort="desc",
+                        cellStyle=_JS_RETORNO_STYLE,
                         valueFormatter="x.toFixed(1) + '%'")
     gb.configure_column("Dist Strike %", headerName="Dist Strike %", width=105,
                         type=["numericColumn"], cellStyle=_JS_DIST_STYLE,
@@ -454,6 +511,8 @@ def render(**kwargs) -> None:
                         type=["numericColumn"])
     gb.configure_column("Bid-Ask", width=80, type=["numericColumn"],
                         valueFormatter="'$' + x.toFixed(2)")
+
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
 
     grid_options = gb.build()
 
@@ -483,12 +542,16 @@ def render(**kwargs) -> None:
         ".ag-row-hover": {
             "background-color": "#1e293b !important",
         },
+        ".ag-row-selected": {
+            "background-color": "#1e3a5f !important",
+            "border-left": "3px solid #00ff00 !important",
+        },
         ".ag-cell": {
             "border-right": "none !important",
         },
     }
 
-    AgGrid(
+    grid_response = AgGrid(
         df_show,
         gridOptions=grid_options,
         custom_css=_AGGRID_CSS,
@@ -497,6 +560,46 @@ def render(**kwargs) -> None:
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=False,
     )
+
+    # ── Desglose del Score (al hacer clic en una fila) ───────────────────
+    _selected = getattr(grid_response, "selected_rows", None)
+    _sel_row = None
+    if _selected is not None:
+        if isinstance(_selected, pd.DataFrame) and not _selected.empty:
+            _sel_row = _selected.iloc[0].to_dict()
+        elif isinstance(_selected, list) and len(_selected) > 0:
+            _sel_row = dict(_selected[0])
+
+    if _sel_row and "Score Oportunidad" in df_show.columns:
+        _bd = opportunity_score_breakdown(_sel_row)
+        _total = sum(b["puntos"] for b in _bd)
+        _lbl = "Excelente" if _total >= 80 else "Buena"
+        _lbl_c = "#00ff00" if _total >= 80 else "#ffaa00"
+        _tkr = _sel_row.get("Ticker", "")
+        _tipo = _sel_row.get("Tipo", "")
+        _bd_html = (
+            '<div style="background:#0d1117;border:1px solid #1e293b;'
+            'border-radius:12px;padding:16px 20px;margin-top:1rem;">'
+            f'<h4 style="color:#e2e8f0;margin:0 0 12px 0;">'
+            f'🔍 Desglose Score — <b style="color:{_lbl_c};">'
+            f'{_tkr} {_tipo} → {_total}/100 ({_lbl})</b></h4>'
+        )
+        for _b in _bd:
+            _ico = "✅" if _b["cumple"] else "❌"
+            _pc = "#4ade80" if _b["cumple"] else "#f87171"
+            _bd_html += (
+                f'<div style="display:flex;justify-content:space-between;'
+                f'align-items:center;padding:8px 0;'
+                f'border-bottom:1px solid #1e293b;font-size:0.85rem;">'
+                f'<span style="flex:2;">{_ico} '
+                f'<b style="color:#e2e8f0;">{_b["criterio"]}</b></span>'
+                f'<span style="flex:2;color:#94a3b8;">{_b["detalle"]}</span>'
+                f'<span style="width:90px;text-align:right;color:{_pc};'
+                f'font-weight:700;">+{_b["puntos"]}/{_b["maximo"]} pts</span>'
+                f'</div>'
+            )
+        _bd_html += '</div>'
+        st.markdown(_bd_html, unsafe_allow_html=True)
 
     # ── Exportar CSV ─────────────────────────────────────────────────────
     st.markdown("")
