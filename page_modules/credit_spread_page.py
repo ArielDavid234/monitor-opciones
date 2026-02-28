@@ -169,6 +169,28 @@ def render(**kwargs) -> None:
             unsafe_allow_html=True,
         )
 
+    # ── Reglas de Gestión (compacto, siempre visible) ────────────────────
+    with st.expander("📋 Reglas de Gestión (mostrar al usuario)", expanded=False):
+        st.markdown(
+            """
+            <div style="font-size:0.88rem;line-height:2;color:#cbd5e1;">
+              <div style="padding:5px 0;">
+                <span style="color:#22c55e;font-weight:700;">✅ Take Profit:</span>
+                Cerrar al <b style="color:#00ff88;">50%</b> del crédito recibido
+              </div>
+              <div style="padding:5px 0;">
+                <span style="color:#ef4444;font-weight:700;">❌ Stop Loss:</span>
+                Cerrar al <b style="color:#ef4444;">200%</b> del crédito recibido
+              </div>
+              <div style="padding:5px 0;">
+                <span style="color:#fbbf24;font-weight:700;">⏰ Gestión de tiempo:</span>
+                Si quedan <b style="color:#fbbf24;">21 DTE</b>, cerrar si no ha llegado al profit
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     # ── Filtros en el sidebar ────────────────────────────────────────────
     with st.sidebar:
         st.markdown("### ⚙️ Filtros — Venta de Prima")
