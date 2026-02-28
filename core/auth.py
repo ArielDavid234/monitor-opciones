@@ -318,6 +318,11 @@ class SupabaseAuth:
                 st.session_state["_auth_access_token"] = res.session.access_token
                 st.session_state["_auth_refresh_token"] = res.session.refresh_token
                 st.session_state["_auth_remember"] = remember_me
+                if remember_me:
+                    from datetime import datetime, timedelta
+                    st.session_state["_auth_remember_until"] = (
+                        datetime.now() + timedelta(days=1)
+                    ).isoformat()
 
                 # Migrar favoritos globales al usuario si es su primer login
                 self._maybe_migrate_favorites(res.user.id)
@@ -343,7 +348,7 @@ class SupabaseAuth:
         """Intenta restaurar la sesión usando el refresh token almacenado.
 
         Esto permite la funcionalidad "Recordarme" (sesión persistente
-        hasta 30 días, según la configuración de Supabase).
+        por 1 día desde el momento del login).
         """
         if self.is_authenticated():
             return True
@@ -351,6 +356,20 @@ class SupabaseAuth:
         refresh = st.session_state.get("_auth_refresh_token")
         if not refresh or not st.session_state.get("_auth_remember", False):
             return False
+
+        # Verificar que no haya expirado el período de "Recordarme" (1 día)
+        remember_until = st.session_state.get("_auth_remember_until")
+        if remember_until:
+            from datetime import datetime
+            try:
+                expiry = datetime.fromisoformat(remember_until)
+                if datetime.now() > expiry:
+                    logger.info("Recordarme expirado — limpiando sesión")
+                    self._clear_auth_state()
+                    return False
+            except (ValueError, TypeError):
+                self._clear_auth_state()
+                return False
 
         try:
             res = self.client.auth.refresh_session(refresh)
@@ -391,7 +410,7 @@ class SupabaseAuth:
         """Elimina todos los keys de autenticación del session_state."""
         for k in [
             "_auth_user", "_auth_access_token", "_auth_refresh_token",
-            "_auth_remember", "_profile_synced",
+            "_auth_remember", "_auth_remember_until", "_profile_synced",
         ]:
             st.session_state.pop(k, None)
 

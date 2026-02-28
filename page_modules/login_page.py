@@ -135,7 +135,7 @@ def render() -> bool:
                     placeholder="••••••••",
                     key="login_password",
                 )
-                login_remember = st.checkbox("Recordarme (30 días)", key="login_remember")
+                login_remember = st.checkbox("Recordarme (1 día)", key="login_remember")
                 login_submit = st.form_submit_button(
                     "🔐 Iniciar Sesión",
                     use_container_width=True,
