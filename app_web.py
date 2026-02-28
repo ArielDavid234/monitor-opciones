@@ -64,6 +64,7 @@ from page_modules import (  # noqa: E402
     calendar_page,
     admin_users_page,
     credit_spread_page,
+    mi_perfil_page,
 )
 
 # ============================================================================
@@ -127,6 +128,7 @@ with st.sidebar:
         "📅 Calendar",
         "📋 Reports",
         "💰 Venta de Prima",
+        "👤 Mi Perfil",
     ]
     # Agregar opción de admin solo si el usuario es administrador
     try:
@@ -154,13 +156,61 @@ with st.sidebar:
 
     # ── Info de usuario — al fondo del sidebar ───────────────────────────
     st.markdown('<div class="sidebar-user-block">', unsafe_allow_html=True)
+
+    # Avatar clickable → navega a Mi Perfil
+    if st.button(
+        f"{_user_initials}",
+        key="btn_avatar_profile",
+        help="Ver Mi Perfil",
+        use_container_width=False,
+    ):
+        st.session_state["nav_radio"] = "👤 Mi Perfil"
+        st.rerun()
+
+    # Estilo del botón avatar para que luzca como el círculo verde
     st.markdown(
-        f'<div style="text-align:center;padding:0.4rem 0 0.6rem 0;">'
-        f'<div style="width:42px;height:42px;border-radius:50%;'
-        f'background:linear-gradient(135deg,#00ff88,#10b981);'
-        f'display:inline-flex;align-items:center;justify-content:center;'
-        f'font-size:16px;font-weight:700;color:#0f172a;'
-        f'margin-bottom:4px;box-shadow:0 0 12px rgba(0,255,136,0.2);">{_user_initials}</div>'
+        """
+        <style>
+        button[data-testid="stBaseButton-secondary"][kind="secondary"]:has(> div > p:only-child) {
+            /* fallback — style all via key */
+        }
+        div[data-testid="stVerticalBlock"] button[key="btn_avatar_profile"] {
+            border-radius: 50% !important;
+        }
+        /* Style the avatar button */
+        .sidebar-user-block button[data-testid="stBaseButton-secondary"] {
+            width: 48px !important;
+            height: 48px !important;
+            min-height: 48px !important;
+            border-radius: 50% !important;
+            background: linear-gradient(135deg, #00ff88, #10b981) !important;
+            border: none !important;
+            color: #0f172a !important;
+            font-weight: 800 !important;
+            font-size: 16px !important;
+            padding: 0 !important;
+            margin: 0 auto 4px auto !important;
+            display: block !important;
+            box-shadow: 0 0 12px rgba(0,255,136,0.2) !important;
+            cursor: pointer !important;
+            transition: transform 0.15s, box-shadow 0.15s !important;
+        }
+        .sidebar-user-block button[data-testid="stBaseButton-secondary"]:hover {
+            transform: scale(1.1) !important;
+            box-shadow: 0 0 20px rgba(0,255,136,0.4) !important;
+        }
+        .sidebar-user-block button[data-testid="stBaseButton-secondary"] p {
+            color: #0f172a !important;
+            font-weight: 800 !important;
+            font-size: 16px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f'<div style="text-align:center;padding:0 0 0.6rem 0;">'
         f'<div style="color:white;font-weight:600;font-size:0.85rem;">{_current_user["name"]}</div>'
         f'<div style="color:#64748b;font-size:0.72rem;margin-top:1px;">'
         f'{"\U0001f451 Admin" if _current_user.get("role") == "admin" else "\u25cf Pro Plan"}</div>'
@@ -265,7 +315,9 @@ elif pagina == "📋 Reports":
     reports_page.render(ticker_symbol, **_page_kwargs)
 elif pagina == "💰 Venta de Prima":
     credit_spread_page.render(**_page_kwargs)
-elif pagina == "👑 Administrar Usuarios":
+elif pagina == "� Mi Perfil":
+    mi_perfil_page.render(**_page_kwargs)
+elif pagina == "�👑 Administrar Usuarios":
     admin_users_page.render(**_page_kwargs)
 
 # ============================================================================

@@ -481,6 +481,25 @@ class SupabaseAuth:
             logger.warning("Error obteniendo perfil para %s: %s", user_id, exc)
             return None
 
+    def fetch_profile_full(self, user_id: str) -> dict | None:
+        """Obtiene el perfil completo del usuario (incluye created_at).
+
+        Retorna dict con {name, role, is_active, created_at} o None.
+        """
+        try:
+            res = (
+                self.client.table("profiles")
+                .select("name, role, is_active, created_at")
+                .eq("id", user_id)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
+        except Exception as exc:
+            logger.warning("Error obteniendo perfil completo para %s: %s", user_id, exc)
+            return None
+
     def fetch_all_profiles(self) -> list[dict]:
         """Obtiene todos los perfiles (solo para administradores).
 
