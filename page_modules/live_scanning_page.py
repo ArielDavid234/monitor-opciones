@@ -138,7 +138,9 @@ def render(ticker_symbol, **kwargs):
 
     cooldown_segundos = 75
 
-    if scan_btn or auto_trigger or (auto_scan and st.session_state.auto_scan):
+    # Solo escanear si el usuario pulsa el botón o si hay un auto-trigger
+    # (del countdown timer). NO escanear por mero rerun de widgets.
+    if scan_btn or auto_trigger:
         ahora = datetime.now()
 
         if st.session_state.get("last_full_scan") is not None:
@@ -1021,4 +1023,5 @@ def render(ticker_symbol, **kwargs):
             time.sleep(1)
         placeholder.empty()
         progress_bar.empty()
+        st.session_state.trigger_scan = True
         st.rerun()
