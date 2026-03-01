@@ -40,16 +40,15 @@ def _get_signing_serializer() -> URLSafeTimedSerializer:
 
 
 def _get_cookie_controller():
-    """Devuelve el CookieController almacenado en session_state (creado una sola vez).
+    """Devuelve un CookieController fresco en cada render.
 
-    streamlit-cookies-controller escribe en document.cookie del *parent window*
-    (no en un iframe), por lo que las cookies llegan correctamente al servidor
-    en el siguiente request y se pueden leer con st.context.cookies.
+    CookieController guarda las cookies internamente en st.session_state[key].
+    No cacheamos la *instancia* — si lo hiciéramos, en el segundo rerun
+    (cuando el componente envía las cookies reales al servidor) la instancia
+    vieja tendría __cookies={} y no vería la cookie recién recibida.
     """
     from streamlit_cookies_controller import CookieController  # noqa: PLC0415
-    if "_cookie_controller" not in st.session_state:
-        st.session_state["_cookie_controller"] = CookieController(key="_ok_cc")
-    return st.session_state["_cookie_controller"]
+    return CookieController(key="_ok_cc")
 
 # ============================================================================
 #                    RATE LIMITING CONFIG (desactivado — intentos ilimitados)
@@ -105,14 +104,21 @@ class SupabaseAuth:
             pass
 
     def _try_cookie_restore(self) -> bool:
-        """Lee la cookie firmada, verifica firma + edad, y usa el
-        refresh_token para restaurar la sesión de Supabase.
+        """Lee la cookie firmada y restaura la sesión de Supabase.
 
-        Returns True si la sesión se restauró exitosamente.
+        Intenta leer la cookie en dos formas:
+        1. CookieController.get() — lee del cache interno del componente
+           (disponible tras el segundo rerun, cuando el componente envió
+           las cookies del browser al servidor).
+        2. st.context.cookies — lee de los HTTP headers del request
+           (disponible siempre en visitas nuevas).
         """
         try:
-            cookies = st.context.cookies  # dict-like, read-only
-            token = cookies.get(_REMEMBER_COOKIE_NAME)
+            # Intento 1: CookieController (más fiable entre reruns)
+            token = _get_cookie_controller().get(_REMEMBER_COOKIE_NAME)
+            # Intento 2: headers HTTP (más fiable en carga inicial)
+            if not token:
+                token = st.context.cookies.get(_REMEMBER_COOKIE_NAME)
             if not token:
                 return False
 
