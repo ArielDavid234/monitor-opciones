@@ -26,6 +26,7 @@ matplotlib>=3.9,<4
 
 # Auth / Cookies
 itsdangerous>=2.1,<3
+streamlit-cookies-controller>=0.0.4
 
 # Scaling / Cache
 redis>=5.0.0,<6.0.0

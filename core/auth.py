@@ -33,15 +33,23 @@ _REMEMBER_MAX_AGE_SECS = _REMEMBER_MAX_AGE_DAYS * 86_400  # 604 800 s
 
 
 def _get_signing_serializer() -> URLSafeTimedSerializer:
-    """Devuelve un serializer firmado usando la anon_key de Supabase como secreto.
-
-    No necesita un SECRET_KEY separado — la anon_key ya es un secreto
-    disponible en st.secrets y suficiente para firmar cookies.
-    """
+    """Devuelve un serializer firmado usando la anon_key de Supabase como secreto."""
     raw_key = st.secrets["supabase"]["anon_key"]
-    # Hash para tener un key de longitud fija + no exponer la anon_key
     secret = hashlib.sha256(raw_key.encode()).hexdigest()
     return URLSafeTimedSerializer(secret, salt="ok-remember")
+
+
+def _get_cookie_controller():
+    """Devuelve el CookieController almacenado en session_state (creado una sola vez).
+
+    streamlit-cookies-controller escribe en document.cookie del *parent window*
+    (no en un iframe), por lo que las cookies llegan correctamente al servidor
+    en el siguiente request y se pueden leer con st.context.cookies.
+    """
+    from streamlit_cookies_controller import CookieController  # noqa: PLC0415
+    if "_cookie_controller" not in st.session_state:
+        st.session_state["_cookie_controller"] = CookieController(key="_ok_cc")
+    return st.session_state["_cookie_controller"]
 
 # ============================================================================
 #                    RATE LIMITING CONFIG (desactivado — intentos ilimitados)
@@ -76,35 +84,23 @@ class SupabaseAuth:
     # ────────────────────────────────────────────────────────────────────
     @staticmethod
     def _set_remember_cookie(refresh_token: str) -> None:
-        """Firma el refresh_token y lo inyecta como cookie HTTP vía JS.
-
-        La cookie dura 7 días, HttpOnly=false (necesario para JS), SameSite=Lax.
-        """
+        """Firma el refresh_token y lo persiste como cookie del browser."""
         try:
             s = _get_signing_serializer()
             token = s.dumps({"rt": refresh_token})
-            max_age = _REMEMBER_MAX_AGE_SECS
-            js = (
-                f'<script>'
-                f'document.cookie="{_REMEMBER_COOKIE_NAME}={token}; '
-                f'path=/; max-age={max_age}; SameSite=Lax";'
-                f'</script>'
+            _get_cookie_controller().set(
+                _REMEMBER_COOKIE_NAME,
+                token,
+                max_age=_REMEMBER_MAX_AGE_SECS,
             )
-            st.components.v1.html(js, height=0, width=0)
         except Exception as exc:
             logger.warning("Error seteando cookie remember: %s", exc)
 
     @staticmethod
     def _clear_remember_cookie() -> None:
-        """Elimina la cookie de remember del browser vía JS."""
+        """Elimina la cookie de remember del browser."""
         try:
-            js = (
-                f'<script>'
-                f'document.cookie="{_REMEMBER_COOKIE_NAME}=; '
-                f'path=/; max-age=0; SameSite=Lax";'
-                f'</script>'
-            )
-            st.components.v1.html(js, height=0, width=0)
+            _get_cookie_controller().remove(_REMEMBER_COOKIE_NAME)
         except Exception:
             pass
 

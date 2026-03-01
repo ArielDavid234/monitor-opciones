@@ -39,6 +39,15 @@ from ui.shared import inject_all_css, render_sidebar_logo  # noqa: E402
 
 inject_all_css()
 
+# Inicializar CookieController antes de cualquier llamada de auth
+# (debe renderizarse durante el ciclo principal, no dentro de un iframe)
+try:
+    from streamlit_cookies_controller import CookieController as _CC
+    if "_cookie_controller" not in st.session_state:
+        st.session_state["_cookie_controller"] = _CC(key="_ok_cc")
+except Exception:
+    pass
+
 _auth = SupabaseAuth()
 _container = get_container(auth=_auth)
 
