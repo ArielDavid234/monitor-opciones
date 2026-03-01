@@ -192,8 +192,8 @@ def render(ticker_symbol, **kwargs):
                     _cu = _gc().auth.get_current_user()
                     if _cu:
                         _gc().user_service.increment_scan_count(_cu["id"])
-                except Exception:
-                    pass
+                except Exception as _track_err:
+                    logger.warning("Error tracking scan: %s", _track_err)
 
                 precio, _err_precio = obtener_precio_actual(ticker_symbol)
                 if precio is not None:

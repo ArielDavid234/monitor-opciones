@@ -81,12 +81,32 @@ class UserService:
         return UserStats.from_dict(raw) if raw else UserStats()
 
     def increment_scan_count(self, user_id: str) -> None:
-        """Incrementa el contador de escaneos (total + mes actual)."""
+        """Incrementa contadores de scans: hoy + mes + total."""
         try:
-            stats = self.get_stats(user_id)
-            stats.scans_total += 1
-            stats.scans_month += 1
-            self._auth.save_user_data(user_id, "usage_stats", stats.to_dict())
+            raw = self._auth.load_user_data(user_id, "usage_stats") or {}
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            month_key = datetime.utcnow().strftime("%Y-%m")
+
+            # Reset diario
+            if raw.get("scans_today_date") != today:
+                raw["scans_today"] = 0
+                raw["scans_today_date"] = today
+            raw["scans_today"] = raw.get("scans_today", 0) + 1
+
+            # Reset mensual
+            if raw.get("scans_month_key") != month_key:
+                raw["scans_month"] = 0
+                raw["scans_month_key"] = month_key
+            raw["scans_month"] = raw.get("scans_month", 0) + 1
+
+            # Total acumulado (opcional, para historial)
+            raw["scans_total"] = raw.get("scans_total", 0) + 1
+
+            self._auth.save_user_data(user_id, "usage_stats", raw)
+            logger.info(
+                "Scan registrado para %s — hoy: %d, mes: %d, total: %d",
+                user_id, raw["scans_today"], raw["scans_month"], raw["scans_total"],
+            )
         except Exception as exc:
             logger.warning("Error incrementando scan_count: %s", exc)
 
@@ -103,9 +123,10 @@ class UserService:
     def increment_report_count(self, user_id: str) -> None:
         """Incrementa el contador de reportes generados."""
         try:
-            stats = self.get_stats(user_id)
-            stats.reports_generated += 1
-            self._auth.save_user_data(user_id, "usage_stats", stats.to_dict())
+            raw = self._auth.load_user_data(user_id, "usage_stats") or {}
+            raw["reports_generated"] = raw.get("reports_generated", 0) + 1
+            self._auth.save_user_data(user_id, "usage_stats", raw)
+            logger.info("Reporte registrado para %s — total: %d", user_id, raw["reports_generated"])
         except Exception as exc:
             logger.warning("Error incrementando report_count: %s", exc)
 

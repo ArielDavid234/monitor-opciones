@@ -20,8 +20,9 @@ def _track_report_download() -> None:
         _u = _c.auth.get_current_user()
         if _u:
             _c.user_service.increment_report_count(_u["id"])
-    except Exception:
-        pass
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("Error tracking report: %s", _e)
 
 
 def render(ticker_symbol, **kwargs):

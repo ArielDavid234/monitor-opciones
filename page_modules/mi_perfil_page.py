@@ -14,9 +14,14 @@ logger = logging.getLogger(__name__)
 def _load_user_stats(auth, user_id: str) -> dict:
     """Carga estadísticas de uso desde user_data (Supabase)."""
     raw = auth.load_user_data(user_id, "usage_stats")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    month_key = datetime.utcnow().strftime("%Y-%m")
     defaults = {
-        "scans_total": 0,
+        "scans_today": 0,
+        "scans_today_date": None,
         "scans_month": 0,
+        "scans_month_key": None,
+        "scans_total": 0,
         "reports_generated": 0,
         "logins_total": 0,
         "last_login": None,
@@ -24,6 +29,11 @@ def _load_user_stats(auth, user_id: str) -> dict:
     }
     if raw and isinstance(raw, dict):
         defaults.update(raw)
+    # Si el día/mes cambió respecto a lo guardado, resetear el contador local
+    if defaults.get("scans_today_date") != today:
+        defaults["scans_today"] = 0
+    if defaults.get("scans_month_key") != month_key:
+        defaults["scans_month"] = 0
     return defaults
 
 
@@ -285,8 +295,8 @@ def render(**kwargs):
     # ====================================================================
     #  Estadísticas de uso
     # ====================================================================
-    scans_total = stats.get("scans_total", 0)
-    scans_month = stats.get("scans_month", 0)
+    scans_total = stats.get("scans_today", 0)   # hoy
+    scans_month = stats.get("scans_month", 0)    # este mes
     reports_gen = stats.get("reports_generated", 0)
     logins_total = stats.get("logins_total", 0)
     avg_score = stats.get("avg_income_score")
