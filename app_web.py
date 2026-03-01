@@ -39,14 +39,6 @@ from ui.shared import inject_all_css, render_sidebar_logo  # noqa: E402
 
 inject_all_css()
 
-# Inicializar CookieController—renderiza el componente que lee las cookies del
-# browser. En el 1er render devuelve {}; en el 2º rerun ya tiene las cookies reales.
-try:
-    from streamlit_cookies_controller import CookieController as _CC
-    _CC(key="_ok_cc")   # sólo inserta el componente; el estado queda en ss["_ok_cc"]
-except Exception:
-    pass
-
 _auth = SupabaseAuth()
 _container = get_container(auth=_auth)
 

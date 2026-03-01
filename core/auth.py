@@ -38,18 +38,6 @@ def _get_signing_serializer() -> URLSafeTimedSerializer:
     secret = hashlib.sha256(raw_key.encode()).hexdigest()
     return URLSafeTimedSerializer(secret, salt="ok-remember")
 
-
-def _get_cookie_controller():
-    """Devuelve un CookieController fresco en cada render.
-
-    CookieController guarda las cookies internamente en st.session_state[key].
-    No cacheamos la *instancia* — si lo hiciéramos, en el segundo rerun
-    (cuando el componente envía las cookies reales al servidor) la instancia
-    vieja tendría __cookies={} y no vería la cookie recién recibida.
-    """
-    from streamlit_cookies_controller import CookieController  # noqa: PLC0415
-    return CookieController(key="_ok_cc")
-
 # ============================================================================
 #                    RATE LIMITING CONFIG (desactivado — intentos ilimitados)
 # ============================================================================
@@ -83,15 +71,26 @@ class SupabaseAuth:
     # ────────────────────────────────────────────────────────────────────
     @staticmethod
     def _set_remember_cookie(refresh_token: str) -> None:
-        """Firma el refresh_token y lo persiste como cookie del browser."""
+        """Firma el refresh_token y lo inyecta como cookie en el browser.
+
+        Usa window.parent.document.cookie para escribir en el origen del
+        parent window (miéntras el iframe y la app comparten origen en
+        Streamlit Cloud), de modo que la cookie llega al servidor vía
+        HTTP headers en el siguiente request y es leída por st.context.cookies.
+        """
         try:
             s = _get_signing_serializer()
             token = s.dumps({"rt": refresh_token})
-            _get_cookie_controller().set(
-                _REMEMBER_COOKIE_NAME,
-                token,
-                max_age=_REMEMBER_MAX_AGE_SECS,
+            max_age = _REMEMBER_MAX_AGE_SECS
+            js = (
+                f"<script>"
+                f"(function(){{"
+                f"var c='{_REMEMBER_COOKIE_NAME}={token}; path=/; max-age={max_age}; SameSite=Lax';"
+                f"try{{window.parent.document.cookie=c;}}catch(e){{document.cookie=c;}}"
+                f"}})();"
+                f"</script>"
             )
+            st.components.v1.html(js, height=0, width=0)
         except Exception as exc:
             logger.warning("Error seteando cookie remember: %s", exc)
 
@@ -99,26 +98,26 @@ class SupabaseAuth:
     def _clear_remember_cookie() -> None:
         """Elimina la cookie de remember del browser."""
         try:
-            _get_cookie_controller().remove(_REMEMBER_COOKIE_NAME)
+            js = (
+                f"<script>"
+                f"(function(){{"
+                f"var c='{_REMEMBER_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax';"
+                f"try{{window.parent.document.cookie=c;}}catch(e){{document.cookie=c;}}"
+                f"}})();"
+                f"</script>"
+            )
+            st.components.v1.html(js, height=0, width=0)
         except Exception:
             pass
 
     def _try_cookie_restore(self) -> bool:
         """Lee la cookie firmada y restaura la sesión de Supabase.
 
-        Intenta leer la cookie en dos formas:
-        1. CookieController.get() — lee del cache interno del componente
-           (disponible tras el segundo rerun, cuando el componente envió
-           las cookies del browser al servidor).
-        2. st.context.cookies — lee de los HTTP headers del request
-           (disponible siempre en visitas nuevas).
+        st.context.cookies lee los HTTP headers del request — la forma
+        más fiable de leer cookies en Streamlit.
         """
         try:
-            # Intento 1: CookieController (más fiable entre reruns)
-            token = _get_cookie_controller().get(_REMEMBER_COOKIE_NAME)
-            # Intento 2: headers HTTP (más fiable en carga inicial)
-            if not token:
-                token = st.context.cookies.get(_REMEMBER_COOKIE_NAME)
+            token = st.context.cookies.get(_REMEMBER_COOKIE_NAME)
             if not token:
                 return False
 
