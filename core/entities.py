@@ -157,11 +157,10 @@ class User(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     @classmethod
     def from_auth_dict(cls, raw: dict[str, Any]) -> "User":
         """Construye un User desde el dict crudo de auth.get_current_user()."""
-        role_str = raw.get("role", "user")
-        try:
-            role = UserRole(role_str)
-        except ValueError:
-            role = UserRole.USER
+        role_str = str(raw.get("role") or "user").lower()
+        # Lookup seguro: nunca lanza excepción ante valores desconocidos
+        _role_map = {r.value: r for r in UserRole}
+        role = _role_map.get(role_str, UserRole.PRO)
         return cls(
             id=raw.get("id", ""),
             email=raw.get("email", ""),
