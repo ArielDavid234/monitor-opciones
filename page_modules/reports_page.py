@@ -12,6 +12,18 @@ from reports.generators import (
 )
 
 
+def _track_report_download() -> None:
+    """Callback: registra un reporte generado en las estadísticas del usuario."""
+    try:
+        from core.container import get_container
+        _c = get_container()
+        _u = _c.auth.get_current_user()
+        if _u:
+            _c.user_service.increment_report_count(_u["id"])
+    except Exception:
+        pass
+
+
 def render(ticker_symbol, **kwargs):
     st.markdown("### 📋 Reports")
     st.markdown(
@@ -53,6 +65,7 @@ def render(ticker_symbol, **kwargs):
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                     key="dl_scanning",
+                    on_click=_track_report_download,
                     help="Descarga todos los datos escaneados: alertas, clusters, y todas las opciones analizadas.",
                 )
             except Exception as e:
@@ -73,6 +86,7 @@ def render(ticker_symbol, **kwargs):
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                     key="dl_oi",
+                    on_click=_track_report_download,
                     help="Descarga el análisis completo de cambios en Open Interest (OI positivo y negativo).",
                 )
             except Exception as e:
@@ -92,6 +106,7 @@ def render(ticker_symbol, **kwargs):
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                     key="dl_important",
+                    on_click=_track_report_download,
                     help="Descarga el análisis completo de Important Companies: fundamental, técnico, sentimiento y veredicto.",
                 )
             except Exception as e:
@@ -112,6 +127,7 @@ def render(ticker_symbol, **kwargs):
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                     key="dl_analysis",
+                    on_click=_track_report_download,
                     help="Descarga el análisis de sentimiento, soportes y resistencias basado en el Live Scanning.",
                 )
             except Exception as e:
@@ -132,6 +148,7 @@ def render(ticker_symbol, **kwargs):
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True,
                     key="dl_range",
+                    on_click=_track_report_download,
                     help="Descarga el cálculo detallado del rango esperado con explicación e interpretación.",
                 )
             except Exception as e:

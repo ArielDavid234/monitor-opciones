@@ -100,6 +100,15 @@ class UserService:
         except Exception as exc:
             logger.warning("Error registrando login: %s", exc)
 
+    def increment_report_count(self, user_id: str) -> None:
+        """Incrementa el contador de reportes generados."""
+        try:
+            stats = self.get_stats(user_id)
+            stats.reports_generated += 1
+            self._auth.save_user_data(user_id, "usage_stats", stats.to_dict())
+        except Exception as exc:
+            logger.warning("Error incrementando report_count: %s", exc)
+
     # ── Favoritos ──────────────────────────────────────────────────────
 
     def load_favorites(self, user_id: str) -> list[dict]:

@@ -240,10 +240,11 @@ class UserStats(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     logins_total: int = 0
     last_login: Optional[datetime] = None
     avg_income_score: Optional[float] = None
+    registered_at: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serializa para persistencia en Supabase."""
-        return {
+        d = {
             "scans_total": self.scans_total,
             "scans_month": self.scans_month,
             "reports_generated": self.reports_generated,
@@ -251,6 +252,9 @@ class UserStats(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "avg_income_score": self.avg_income_score,
         }
+        if self.registered_at is not None:
+            d["registered_at"] = self.registered_at
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "UserStats":

@@ -186,6 +186,15 @@ def render(ticker_symbol, **kwargs):
                 st.session_state.scan_count += 1
                 st.session_state.last_scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+                # ── Registrar scan en estadísticas de usuario ──────────
+                try:
+                    from core.container import get_container as _gc
+                    _cu = _gc().auth.get_current_user()
+                    if _cu:
+                        _gc().user_service.increment_scan_count(_cu["id"])
+                except Exception:
+                    pass
+
                 precio, _err_precio = obtener_precio_actual(ticker_symbol)
                 if precio is not None:
                     st.session_state.precio_subyacente = precio
