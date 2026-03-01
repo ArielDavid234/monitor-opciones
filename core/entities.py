@@ -239,7 +239,6 @@ class UserStats(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     reports_generated: int = 0
     logins_total: int = 0
     last_login: Optional[datetime] = None
-    avg_income_score: Optional[float] = None
     registered_at: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -250,7 +249,6 @@ class UserStats(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
             "reports_generated": self.reports_generated,
             "logins_total": self.logins_total,
             "last_login": self.last_login.isoformat() if self.last_login else None,
-            "avg_income_score": self.avg_income_score,
         }
         if self.registered_at is not None:
             d["registered_at"] = self.registered_at

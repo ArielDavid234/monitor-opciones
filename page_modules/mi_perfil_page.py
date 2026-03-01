@@ -25,7 +25,6 @@ def _load_user_stats(auth, user_id: str) -> dict:
         "reports_generated": 0,
         "logins_total": 0,
         "last_login": None,
-        "avg_income_score": None,
     }
     if raw and isinstance(raw, dict):
         defaults.update(raw)
@@ -293,8 +292,6 @@ def render(**kwargs):
     # ====================================================================
     scans_total = stats.get("scans_today", 0)   # hoy
     scans_month = stats.get("scans_month", 0)    # este mes
-    avg_score = stats.get("avg_income_score")
-    avg_score_str = f"{avg_score:.0f}" if avg_score else "—"
 
     st.markdown(
         f"""
@@ -322,26 +319,6 @@ def render(**kwargs):
             <div class="stat-label">Watchlist</div>
         </div>
     </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    # ====================================================================
-    #  Puntuación promedio
-    # ====================================================================
-    st.markdown(
-        f"""
-<div class="profile-section">
-    <h3>🏆 Rendimiento</h3>
-    <div class="stat-grid">
-        <div class="stat-card">
-            <div class="stat-icon">💰</div>
-            <div class="stat-number">{avg_score_str}</div>
-            <div class="stat-label">Income Score Prom.</div>
-        </div>
-    </div>
-</div>
 </div>
 """,
         unsafe_allow_html=True,
