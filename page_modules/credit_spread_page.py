@@ -192,10 +192,8 @@ def render(**kwargs) -> None:
             unsafe_allow_html=True,
         )
 
-    # ── Filtros en el sidebar ────────────────────────────────────────────
-    with st.sidebar:
-        st.markdown("### ⚙️ Filtros — Venta de Prima")
-
+    # ── Filtros en la página principal ───────────────────────────────────
+    with st.expander("⚙️ Filtros — Venta de Prima", expanded=True):
         selected_tickers = st.multiselect(
             "🔍 Tickers a escanear",
             options=_ALL_TICKERS,
@@ -280,7 +278,7 @@ def render(**kwargs) -> None:
     # ── Ejecutar scan ────────────────────────────────────────────────────
     if scan_btn:
         if not selected_tickers:
-            st.warning("⚠️ Selecciona al menos un ticker en el sidebar.")
+            st.warning("⚠️ Selecciona al menos un ticker en el panel de filtros.")
             return
 
         progress_bar = st.progress(0.0)
