@@ -239,12 +239,13 @@ def render(**kwargs):
     #  Info de cuenta
     # ====================================================================
     last_login_display = "—"
-    if stats.get("last_login"):
+    _ll_raw = user.get("last_login_at") or stats.get("last_login")
+    if _ll_raw:
         try:
-            ll = datetime.fromisoformat(stats["last_login"])
+            ll = datetime.fromisoformat(_ll_raw.replace("Z", "+00:00"))
             last_login_display = ll.strftime("%d %b %Y, %H:%M UTC")
         except Exception:
-            last_login_display = str(stats["last_login"])[:19]
+            last_login_display = str(_ll_raw)[:19]
 
     st.markdown(
         f"""

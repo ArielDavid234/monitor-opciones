@@ -141,6 +141,8 @@ class SupabaseAuth:
                     "name": profile.get("name", display_name) if profile else display_name,
                     "role": profile.get("role", "user") if profile else "user",
                     "is_active": profile.get("is_active", True) if profile else True,
+                    "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
+                    "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
                 }
                 st.session_state["_auth_access_token"] = res.session.access_token
                 st.session_state["_auth_refresh_token"] = res.session.refresh_token
@@ -308,6 +310,8 @@ class SupabaseAuth:
             "name": profile.get("name", display_name) if profile else display_name,
             "role": profile.get("role", "user") if profile else "user",
             "is_active": profile.get("is_active", True) if profile else True,
+            "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
+            "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
         }
         st.session_state["_auth_access_token"] = res.session.access_token
         st.session_state["_auth_refresh_token"] = res.session.refresh_token
@@ -425,6 +429,8 @@ class SupabaseAuth:
                     "name": profile.get("name", display_name) if profile else display_name,
                     "role": profile.get("role", "user") if profile else "user",
                     "is_active": profile.get("is_active", True) if profile else True,
+                    "last_login_at": datetime.utcnow().isoformat(),
+                    "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
                 }
                 st.session_state["_auth_access_token"] = res.session.access_token
                 st.session_state["_auth_refresh_token"] = res.session.refresh_token
@@ -516,6 +522,8 @@ class SupabaseAuth:
                             "name": profile.get("name", display_name) if profile else display_name,
                             "role": profile.get("role", "user") if profile else "user",
                             "is_active": profile.get("is_active", True) if profile else True,
+                            "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
+                            "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
                         }
                         st.session_state["_auth_access_token"] = res.session.access_token
                         st.session_state["_auth_refresh_token"] = res.session.refresh_token
