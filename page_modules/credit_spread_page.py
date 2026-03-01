@@ -16,7 +16,7 @@ from datetime import datetime
 
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
-from core.credit_spread_scanner import scan_credit_spreads, opportunity_score_breakdown, generate_alerts
+from core.container import get_container
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 
 logger = logging.getLogger(__name__)
@@ -126,6 +126,7 @@ function(params) {
 
 def render(**kwargs) -> None:
     """Renderiza la página de Venta de Prima — Credit Spread Scanner."""
+    _cs_service = get_container().credit_spread_service
 
     # ── Header ───────────────────────────────────────────────────────────
     st.markdown(
@@ -295,13 +296,14 @@ def render(**kwargs) -> None:
             )
 
         with st.spinner("Analizando cadenas de opciones..."):
-            df, ticker_indicators = scan_credit_spreads(
+            df, ticker_indicators = _cs_service.scan(
                 tickers=selected_tickers,
                 min_pop=min_pop_pct / 100.0,
                 max_dte=max_dte,
                 min_credit=min_credit,
-                progress_callback=_progress_cb,
                 strict=strict_mode,
+                account_size=account_size,
+                progress_callback=_progress_cb,
             )
 
         progress_bar.empty()
@@ -313,8 +315,8 @@ def render(**kwargs) -> None:
             "%Y-%m-%d %H:%M:%S"
         )
 
-        # ── Generar alertas (10 reglas) ───────────────────────────────────
-        alerts_df = generate_alerts(df, account_size=account_size)
+        # ── Generar alertas (10 reglas) via service ───────────────────────
+        alerts_df = _cs_service.get_alerts(df, account_size=account_size)
         st.session_state["cs_alerts"] = alerts_df
 
     # ── Mostrar resultados ───────────────────────────────────────────────
@@ -434,13 +436,12 @@ def render(**kwargs) -> None:
                     else:
                         favs.append(fav_entry)
                         st.session_state["favoritos"] = favs
-                        # Sync a Supabase
+                        # Sync a Supabase via service layer
                         try:
-                            from core.auth import SupabaseAuth
-                            _auth = SupabaseAuth()
-                            _u = _auth.get_current_user()
+                            _container = get_container()
+                            _u = _container.auth.get_current_user()
                             if _u:
-                                _auth.save_user_data(_u["id"], "favoritos", favs)
+                                _container.auth.save_user_data(_u["id"], "favoritos", favs)
                         except Exception:
                             pass
                         st.success(
@@ -741,7 +742,7 @@ def render(**kwargs) -> None:
             _sel_row = dict(_selected[0])
 
     if _sel_row and "Score Oportunidad" in df_show.columns:
-        _bd = opportunity_score_breakdown(_sel_row)
+        _bd = _cs_service.score_breakdown(_sel_row)
         _total = sum(b["puntos"] for b in _bd)
         _lbl = "Excelente" if _total >= 80 else "Buena"
         _lbl_c = "#00ff00" if _total >= 80 else "#ffaa00"

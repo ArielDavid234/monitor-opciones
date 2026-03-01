@@ -167,11 +167,11 @@ _PROFILE_CSS = """
 
 def render(**kwargs):
     """Renderiza la página Mi Perfil."""
-    from core.auth import SupabaseAuth
+    from core.container import get_container
 
     st.markdown(_PROFILE_CSS, unsafe_allow_html=True)
 
-    auth = SupabaseAuth()
+    auth = get_container().auth
     user = auth.get_current_user()
     if not user:
         st.warning("No hay sesión activa.")

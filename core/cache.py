@@ -1,53 +1,37 @@
-import os
-import pickle
+# -*- coding: utf-8 -*-
+"""
+core/cache — Shim de compatibilidad.
+
+**DEPRECATED**:  Usar ``infrastructure.caching.CacheManager`` directamente.
+
+Este módulo mantiene las funciones ``get_cached_chain`` y ``cache_chain``
+que usa ``core.scanner`` y ``core.credit_spread_scanner``.  Internamente
+delega al ``CacheManager`` unificado para evitar duplicar la lógica de
+Redis / memory fallback.
+"""
+from __future__ import annotations
+
 import logging
+from typing import Any, Optional
+
+from infrastructure.caching import get_cache
 
 logger = logging.getLogger(__name__)
 
-# Conexión Redis opcional (se lee del secret REDIS_URL de Streamlit Cloud)
-# Si no está configurado o falla, todas las funciones son no-op y el scanner
-# funciona exactamente igual que antes (escaneo síncrono normal).
-_r = None
-
-try:
-    import redis as _redis_lib
-    _redis_url = os.getenv("REDIS_URL")
-    if _redis_url:
-        _r = _redis_lib.from_url(
-            _redis_url,
-            decode_responses=False,
-            socket_connect_timeout=5,
-            socket_timeout=10,
-        )
-        _r.ping()  # verifica conexión real al arrancar
-        logger.info("Redis conectado — caché compartida activa")
-    else:
-        logger.info("REDIS_URL no configurado — caché Redis desactivada (modo local)")
-except Exception as e:
-    _r = None
-    logger.warning("Redis no disponible, caché desactivada: %s", e)
+_cache = get_cache()
 
 
-def get_cached_chain(ticker: str, expiration: str):
-    """Devuelve el chain cacheado en Redis o None si no existe / Redis no disponible."""
-    if _r is None:
-        return None
-    try:
-        key = f"chain:{ticker}:{expiration}"
-        data = _r.get(key)
-        if data:
-            return pickle.loads(data)
-    except Exception as e:
-        logger.debug("Redis get error: %s", e)
-    return None
+def get_cached_chain(ticker: str, expiration: str) -> Optional[Any]:
+    """Devuelve el chain cacheado o None si no existe / expiró.
+
+    Delegación directa al CacheManager singleton.
+    """
+    return _cache.get(f"chain:{ticker}:{expiration}")
 
 
-def cache_chain(ticker: str, expiration: str, chain_df, ttl_seconds: int = 720):
-    """Guarda el chain en Redis por 12 minutos. No hace nada si Redis no disponible."""
-    if _r is None:
-        return
-    try:
-        key = f"chain:{ticker}:{expiration}"
-        _r.setex(key, ttl_seconds, pickle.dumps(chain_df))
-    except Exception as e:
-        logger.debug("Redis set error: %s", e)
+def cache_chain(ticker: str, expiration: str, chain_df: Any, ttl_seconds: int = 720) -> None:
+    """Guarda el chain en caché. No hace nada si no hay backend disponible.
+
+    Delegación directa al CacheManager singleton.
+    """
+    _cache.set(f"chain:{ticker}:{expiration}", chain_df, ttl=ttl_seconds)

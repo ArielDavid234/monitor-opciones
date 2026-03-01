@@ -1,8 +1,24 @@
-# core — Lógica de negocio del monitor de opciones
+# -*- coding: utf-8 -*-
+"""
+core — Capa de dominio y aplicación.
 
-from .smart_money import calculate_sm_flow_score, calculate_institutional_flow_score
+Contiene:
+  - ``entities``    — modelos Pydantic (User, CreditSpread, ScanResult, …)
+  - ``protocols``   — interfaces/contratos (AuthProvider, CacheProvider, …)
+  - ``services/``   — lógica de negocio (CreditSpreadService, ScanService, …)
+  - ``repositories/`` — abstracciones de acceso a datos
+  - ``container``   — inyección de dependencias
 
-__all__ = [
-    "calculate_sm_flow_score",
-    "calculate_institutional_flow_score",
-]
+Regla de oro: **nada en este paquete depende de Streamlit ni de
+infraestructura concreta**.  Las únicas excepciones autorizadas son
+``auth.py`` (que usa ``st.secrets`` por pragmatismo) y ``scan_service.py``
+(que usa ``st.session_state`` para estado de UI transiente).
+"""
+
+# Importar sólo lo necesario para que el paquete esté listo.
+# Los consumidores importan directamente desde los submódulos:
+#   from core.entities import User
+#   from core.protocols import AuthProvider
+#   from core.container import get_container
+
+__all__: list[str] = []

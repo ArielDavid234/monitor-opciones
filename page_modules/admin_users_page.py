@@ -10,13 +10,13 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 
-from core.auth import SupabaseAuth
+from core.container import get_container
 
 
 def render(**kwargs) -> None:
     """Renderiza la página de administración de usuarios."""
 
-    auth = SupabaseAuth()
+    auth = get_container().auth
 
     # ── Gate de admin ────────────────────────────────────────────────────
     if not auth.is_admin():

@@ -1,16 +1,30 @@
 # -*- coding: utf-8 -*-
 """
 Monitor de Opciones — Punto de entrada para Streamlit Cloud.
-Orquesta la UI importando lógica desde config/, core/, ui/ y page_modules/.
+
+Orquestador mínimo:
+  1. Configura la página (debe ser la primera llamada a st)
+  2. Aplica CSS global
+  3. Verifica/restaura autenticación
+  4. Inicializa session_state
+  5. Construye el sidebar (layout + user block)
+  6. Renderiza la página activa
+
+Toda la lógica de negocio vive en core/services/.
+Toda la lógica de presentación vive en presentation/.
+Infraestructura (Supabase, Redis, yfinance) vive en infrastructure/.
+Configuración global vive en config/.
+
+Arquitectura: config → core → infrastructure → presentation → app_web.py
 """
 import streamlit as st
 
 # ============================================================================
-#                    PAGE CONFIG  (debe ir ANTES de cualquier widget)
+#                    PAGE CONFIG  (primera llamada st — obligatorio)
 # ============================================================================
 st.set_page_config(
     page_title="OPTIONSKING Analytics",
-    page_icon="👑",
+    page_icon="\U0001f451",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -19,222 +33,92 @@ st.set_page_config(
 #                    AUTH GATE — bloquea TODO si no hay sesión
 # ============================================================================
 from core.auth import SupabaseAuth  # noqa: E402
+from core.container import get_container  # noqa: E402
 from page_modules import login_page  # noqa: E402
-from ui.shared import inject_all_css, render_sidebar_logo, render_sidebar_avatar, render_footer  # noqa: E402
+from ui.shared import inject_all_css, render_sidebar_logo  # noqa: E402
 
 inject_all_css()
 
 _auth = SupabaseAuth()
+_container = get_container(auth=_auth)
 
-# ── Callback de confirmación por email ───────────────────────────────────
-# Si el usuario viene de clicar el enlace de confirmación, intentar
-# autenticarlo automáticamente (PKCE / implicit tokens en query params).
 if _auth.handle_email_callback():
-    pass  # Ya autenticado — continúa al dashboard
+    pass  # autenticado via PKCE — continúa
 
 if not _auth.is_authenticated():
-    # Intentar restaurar sesión persistente ("Recordarme")
     if not _auth.try_restore_session():
         login_page.render()
-        st.stop()  # No renderizar nada más
+        st.stop()
 
-# ── A partir de aquí, el usuario ESTÁ autenticado ────────────────────────
-_current_user = _auth.get_current_user()  # {id, email, name}
+# ── A partir de aquí el usuario ESTÁ autenticado ─────────────────────────
+from core.entities import User  # noqa: E402
+from presentation.components import render_sidebar_user_block  # noqa: E402
+from presentation.layouts import render_main_header, build_sidebar_nav  # noqa: E402
 
-# ── Splash de bienvenida (full-screen, una sola vez tras login) ───────────
+_raw_user = _auth.get_current_user()
+_current_user = User.from_auth_dict(_raw_user)
+
+_user_svc = _container.user_service
+_scan_svc = _container.scan_service
+
+# ── Splash de bienvenida (una sola vez tras login) ────────────────────────
 if st.session_state.pop("_show_welcome_splash", False):
     from page_modules.login_page import show_welcome_splash  # noqa: E402
-    show_welcome_splash(_current_user)
-    # Después del splash, rerun para cargar el dashboard limpio
+    show_welcome_splash(_raw_user)
 
-from core.scanner import limpiar_cache_ticker  # noqa: E402
+# ============================================================================
+#                    IMPORTS DE PÁGINAS + SESSION STATE
+# ============================================================================
 from utils.state import initialize_session_state  # noqa: E402
-
-# --- Pages ---
 from page_modules import (  # noqa: E402
-    live_scanning_page,
-    open_interest_page,
-    data_analysis_page,
-    range_page,
-    favorites_page,
-    watchlist_page,
-    important_companies_page,
-    news_page,
-    reports_page,
-    calendar_page,
-    admin_users_page,
-    credit_spread_page,
-    mi_perfil_page,
+    live_scanning_page, open_interest_page, data_analysis_page,
+    range_page, favorites_page, watchlist_page, important_companies_page,
+    news_page, reports_page, calendar_page, admin_users_page,
+    credit_spread_page, mi_perfil_page,
 )
 
-# ============================================================================
-#                    CSS + SESSION STATE
-# ============================================================================
-initialize_session_state()  # Inicializa TODOS los defaults incluyendo umbrales y navegación
+initialize_session_state()
 
-# ── Sincronizar favoritos de Supabase → session_state (una vez por sesión) ──
+# ── Sincronizar favoritos/watchlist desde Supabase (una vez por sesión) ──
 if not st.session_state.get("_favs_synced"):
-    cloud_favs = _auth.load_user_data(_current_user["id"], "favoritos")
-    if cloud_favs and isinstance(cloud_favs, list):
-        st.session_state.favoritos = cloud_favs
-    cloud_wl = _auth.load_user_data(_current_user["id"], "watchlist")
-    if cloud_wl and isinstance(cloud_wl, list):
-        st.session_state.watchlist = cloud_wl
+    _favs = _user_svc.load_favorites(_current_user.id)
+    _wl = _user_svc.load_watchlist(_current_user.id)
+    if _favs:
+        st.session_state.favoritos = _favs
+    if _wl:
+        st.session_state.watchlist = _wl
     st.session_state["_favs_synced"] = True
 
 # ============================================================================
 #                    SIDEBAR
 # ============================================================================
-# Precalcular initials antes del bloque sidebar
-_user_initials = "".join(
-    w[0].upper() for w in (_current_user["name"] or "U").split()[:2]
-)
-
 with st.sidebar:
     render_sidebar_logo()
-
-    # ── CSS: flex column para empujar usuario al fondo ───────────────────
-    st.markdown(
-        """
-        <style>
-        section[data-testid="stSidebar"] > div:first-child {
-            display: flex !important;
-            flex-direction: column !important;
-            height: 100vh !important;
-            padding-bottom: 0 !important;
-        }
-        .sidebar-nav-area { flex: 1 1 auto; }
-        .sidebar-user-block {
-            padding: 0.6rem 0 0.8rem 0;
-            border-top: 1px solid #1e293b;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ── Navegación ───────────────────────────────────────────────────────
-    st.markdown('<div class="sidebar-nav-area">', unsafe_allow_html=True)
-
-    _NAV_OPTIONS = [
-        "🔍 Live Scanning",
-        "📊 Open Interest",
-        "📈 Data Analysis",
-        "📐 Range",
-        "⭐ Favorites",
-        "📌 Watchlist",
-        "🏢 Important Companies",
-        "📰 News",
-        "📅 Calendar",
-        "📋 Reports",
-        "💰 Venta de Prima",
-    ]
-    # Agregar opción de admin solo si el usuario es administrador
-    try:
-        _is_admin = _auth.is_admin()
-    except Exception:
-        _is_admin = False
-    if _is_admin:
-        _NAV_OPTIONS.append("👑 Administrar Usuarios")
-    # Handle page redirect from Watchlist / other pages
-    _redir = st.session_state.get("_redirect", {})
-    _redirect_page = _redir.get("page")
-    _pending_nav = st.session_state.pop("_nav_pending", None)
-    _nav_target = _pending_nav or _redirect_page
-
-    # Pages outside the radio (e.g. Mi Perfil) are stored as an override.
-    # When the user clicks the radio, on_change clears the override.
-    def _clear_page_override():
-        st.session_state.pop("_page_override", None)
-
-    _radio_kw: dict = {}
-    if _nav_target == "👤 Mi Perfil":
-        # Route to Mi Perfil without touching the radio
-        st.session_state["_page_override"] = "👤 Mi Perfil"
-    elif _nav_target and _nav_target in _NAV_OPTIONS:
-        # Clear any Mi Perfil override and jump to the requested radio option
-        st.session_state.pop("_page_override", None)
-        st.session_state.pop("nav_radio", None)
-        _radio_kw["index"] = _NAV_OPTIONS.index(_nav_target)
-
-    pagina = st.radio(
-        "Navegación",
-        _NAV_OPTIONS,
-        label_visibility="collapsed",
-        key="nav_radio",
-        on_change=_clear_page_override,
-        **_radio_kw,
-    )
-    # Effective page: override wins (Mi Perfil button), otherwise radio value
-    _effective_page = st.session_state.get("_page_override") or pagina
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Info de usuario — al fondo del sidebar ───────────────────────────
-    st.markdown('<div class="sidebar-user-block">', unsafe_allow_html=True)
-    _role_label = "\U0001f451 Admin" if _current_user.get("role") == "admin" else "\u25cf Pro Plan"
-    # Avatar HTML circle (siempre circular, centrado — sin CSS fighting)
-    st.markdown(
-        f"""
-        <div style="text-align:center;padding:0.5rem 0 0.3rem 0;">
-            <div style="width:46px;height:46px;border-radius:50%;
-                        background:linear-gradient(135deg,#00ff88,#10b981);
-                        display:inline-flex;align-items:center;justify-content:center;
-                        font-size:17px;font-weight:800;color:#0f172a;
-                        box-shadow:0 0 14px rgba(0,255,136,0.25);
-                        margin-bottom:5px;">
-                {_user_initials}
-            </div><br>
-            <span style="color:white;font-weight:600;font-size:0.85rem;">{_current_user["name"]}</span><br>
-            <span style="color:#64748b;font-size:0.72rem;">{_role_label}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.button("👤 Mi Perfil", use_container_width=True, key="btn_go_profile"):
-        st.session_state["_nav_pending"] = "👤 Mi Perfil"
-        st.rerun()
-    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout"):
-        _auth.logout()
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    _effective_page = build_sidebar_nav(_current_user)
+    render_sidebar_user_block(_current_user, _auth)
 
 st.session_state.current_page = _effective_page
 
 # ============================================================================
 #                    HEADER + TICKER INPUT
 # ============================================================================
-
-# Handle redirect from Watchlist / other pages
 _redir = st.session_state.get("_redirect", {})
-_redirect_ticker = st.query_params.get("t", "")  # carry ticker via query_params
+_redirect_ticker = st.query_params.get("t", "")
 if _redirect_ticker:
-    # consume it immediately so it doesn't persist in the URL
     del st.query_params["t"]
+
 _default_ticker = _redirect_ticker or st.session_state.get("ticker_anterior", "") or "SPY"
-# Clear page redirect flag
+
 if _redir.get("page") or _redirect_ticker:
     st.session_state["_redirect"] = {"page": None, "ticker": None}
     if _redirect_ticker:
         st.session_state.ticker_anterior = _redirect_ticker
 
-# Placeholder ticker for header before input is rendered
 _ticker_preview = _redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"
-st.markdown(
-    f"""
-<div class="scanner-header">
-    <h1>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics</h1>
-    <p class="subtitle">
-        Escáner institucional de actividad inusual en opciones — <b style="color: #00ff88;">{_ticker_preview}</b>
-    </p>
-    <span class="badge">● LIVE • Análisis Avanzado</span>
-</div>
-""",
-    unsafe_allow_html=True,
-)
+render_main_header(_ticker_preview)
 
 ticker_symbol = st.text_input(
-    "🔍 Símbolo del Ticker",
+    "\U0001f50d Símbolo del Ticker",
     value=_default_ticker,
     max_chars=10,
     help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
@@ -242,62 +126,38 @@ ticker_symbol = st.text_input(
     label_visibility="collapsed",
 ).strip().upper()
 
-# Detectar cambio de ticker → auto-escanear
+# Detectar cambio de ticker → limpiar estado y re-escanear
 if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
-    st.session_state.ticker_anterior = ticker_symbol
-    st.session_state.alertas_actuales = []
-    st.session_state.datos_completos = []
-    st.session_state.datos_anteriores = []
-    st.session_state.oi_cambios = None
-    st.session_state.barchart_data = None
-    st.session_state.barchart_error = None
-    st.session_state.clusters_detectados = []
-    st.session_state.rango_resultado = None
-    st.session_state.rango_error = None
-    st.session_state.scan_error = None
-    st.session_state.fechas_escaneadas = []
-    limpiar_cache_ticker(ticker_symbol)
-    st.session_state.trigger_scan = True
+    _scan_svc.reset_for_ticker(ticker_symbol)
     st.rerun()
 
 # ============================================================================
 #                    PAGE DISPATCH
 # ============================================================================
-_page_kwargs = dict(
-    umbral_vol=st.session_state.umbral_vol,
-    umbral_oi=st.session_state.umbral_oi,
-    umbral_prima=st.session_state.umbral_prima,
-    umbral_delta=st.session_state.umbral_delta,
-)
+_page_kwargs = _scan_svc.get_thresholds()
 
-if _effective_page == "🔍 Live Scanning":
-    live_scanning_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📊 Open Interest":
-    open_interest_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📈 Data Analysis":
-    data_analysis_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📐 Range":
-    range_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "⭐ Favorites":
-    favorites_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📌 Watchlist":
-    watchlist_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "🏢 Important Companies":
-    important_companies_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📰 News":
-    news_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📅 Calendar":
-    calendar_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "📋 Reports":
-    reports_page.render(ticker_symbol, **_page_kwargs)
-elif _effective_page == "💰 Venta de Prima":
-    credit_spread_page.render(**_page_kwargs)
-elif _effective_page == "👤 Mi Perfil":
-    mi_perfil_page.render(**_page_kwargs)
-elif _effective_page == "👑 Administrar Usuarios":
-    admin_users_page.render(**_page_kwargs)
+_PAGE_MAP: dict[str, object] = {
+    "\U0001f50d Live Scanning":       lambda: live_scanning_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4ca Open Interest":       lambda: open_interest_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4c8 Data Analysis":       lambda: data_analysis_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4d0 Range":               lambda: range_page.render(ticker_symbol, **_page_kwargs),
+    "\u2b50 Favorites":               lambda: favorites_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4cc Watchlist":           lambda: watchlist_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f3e2 Important Companies": lambda: important_companies_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4f0 News":                lambda: news_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4c5 Calendar":            lambda: calendar_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4cb Reports":             lambda: reports_page.render(ticker_symbol, **_page_kwargs),
+    "\U0001f4b0 Venta de Prima":      lambda: credit_spread_page.render(**_page_kwargs),
+    "\U0001f464 Mi Perfil":           lambda: mi_perfil_page.render(**_page_kwargs),
+    "\U0001f451 Administrar Usuarios": lambda: admin_users_page.render(**_page_kwargs),
+}
+
+if _render_fn := _PAGE_MAP.get(_effective_page):
+    _render_fn()
 
 # ============================================================================
 #                    FOOTER
 # ============================================================================
+from ui.shared import render_footer  # noqa: E402
 render_footer()
+

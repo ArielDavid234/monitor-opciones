@@ -7,7 +7,7 @@ import streamlit as st
 
 from config.constants import (
     DEFAULT_MIN_VOLUME, DEFAULT_MIN_OI, DEFAULT_MIN_PRIMA,
-    DEFAULT_TARGET_DELTA,
+    DEFAULT_TARGET_DELTA, DEFAULT_TICKER,
 )
 from utils.favorites import _cargar_favoritos, _cargar_watchlist
 
@@ -26,7 +26,7 @@ _DEFAULTS = {
     "fechas_escaneadas": [],
     "auto_scan": False,
     "clusters_detectados": [],
-    "ticker_anterior": "SPY",
+    "ticker_anterior": DEFAULT_TICKER,
     "trigger_scan": False,
     "todas_las_fechas": [],
     "rango_resultado": None,
@@ -61,6 +61,16 @@ _DEFAULTS = {
     "emergentes_resultados": None,
     # Redirect container (mutable dict — avoids widget-key conflicts)
     "_redirect": {"page": None, "ticker": None},
+    # Credit Spread scanner (efímeros, se llenan al escanear)
+    "cs_results": None,
+    "cs_alerts": None,
+    "cs_scan_time": None,
+    "cs_ticker_indicators": {},
+    # Admin page
+    "admin_metric_filter": "Todos",
+    # Flags internos de sincronización
+    "_favs_synced": False,
+    "_show_welcome_splash": False,
 }
 
 

@@ -3,6 +3,9 @@ Constantes globales del Monitor de Opciones.
 Centraliza todos los valores numéricos y umbrales del proyecto.
 """
 
+# --- App defaults ---
+DEFAULT_TICKER = "SPY"             # Ticker por defecto al iniciar la app
+
 # --- Tasas y parámetros financieros ---
 RISK_FREE_RATE = 0.045             # Tasa libre de riesgo (~Treasury yield 4.5%)
 DEFAULT_TARGET_DELTA = 0.16        # Delta objetivo (≈ 1σ)
@@ -28,6 +31,7 @@ RSS_MAX_DESC_LEN = 300             # Longitud máxima de descripción
 SCAN_SLEEP_RANGE = (1.0, 2.0)      # Pausa entre llamadas API (balanceado velocidad/rate-limit)
 ANALYSIS_SLEEP_RANGE = (0.5, 1.5)  # Pausa entre análisis de proyecciones
 AUTO_REFRESH_INTERVAL = 600        # Intervalo auto-refresco en segundos (10 min)
+SCAN_COOLDOWN_SECONDS = 60         # Tiempo mínimo entre escaneos completos
 
 # --- Límites de escaneo ---
 MAX_EXPIRATION_DATES = 12          # Máximo de fechas de vencimiento a escanear (cubre la mayoría de tickers)
