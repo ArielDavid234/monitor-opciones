@@ -135,7 +135,7 @@ class User(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     id: str
     email: str
     name: str
-    role: UserRole = UserRole.PRO
+    role: str = "pro"
     is_active: bool = True
     created_at: Optional[datetime] = None
 
@@ -147,25 +147,21 @@ class User(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     @property
     def is_admin(self) -> bool:
         """True si el usuario es administrador."""
-        return self.role == UserRole.ADMIN
+        return str(self.role).lower() == "admin"
 
     @property
     def role_label(self) -> str:
         """Etiqueta legible del rol para mostrar en sidebar."""
-        return "\U0001f451 Admin" if self.is_admin else "\u25cf Pro Plan"
+        return "👑 Admin" if self.is_admin else "● Pro Plan"
 
     @classmethod
     def from_auth_dict(cls, raw: dict[str, Any]) -> "User":
         """Construye un User desde el dict crudo de auth.get_current_user()."""
-        role_str = str(raw.get("role") or "user").lower()
-        # Lookup seguro: nunca lanza excepción ante valores desconocidos
-        _role_map = {r.value: r for r in UserRole}
-        role = _role_map.get(role_str, UserRole.PRO)
         return cls(
             id=raw.get("id", ""),
             email=raw.get("email", ""),
             name=raw.get("name", raw.get("email", "Usuario")),
-            role=role,
+            role=str(raw.get("role") or "user").lower(),
             is_active=raw.get("is_active", True),
         )
 
