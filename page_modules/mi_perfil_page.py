@@ -185,6 +185,7 @@ def render(**kwargs):
     # ── Obtener datos adicionales del perfil ─────────────────────────────
     profile_extra = auth.fetch_profile_full(user_id)
     created_at_str = "—"
+    # Intentar desde la tabla profiles
     if profile_extra and profile_extra.get("created_at"):
         try:
             dt = datetime.fromisoformat(
@@ -194,8 +195,16 @@ def render(**kwargs):
         except Exception:
             created_at_str = str(profile_extra["created_at"])[:19]
 
-    # ── Estadísticas de uso ──────────────────────────────────────────────
+    # ── Estadísticas de uso ────────────────────────────────────────
     stats = _load_user_stats(auth, user_id)
+
+    # Fallback: usar registered_at guardado en usage_stats durante el login
+    if created_at_str == "—" and stats.get("registered_at"):
+        try:
+            dt = datetime.fromisoformat(stats["registered_at"].replace("Z", "+00:00"))
+            created_at_str = dt.strftime("%d %b %Y, %H:%M")
+        except Exception:
+            created_at_str = str(stats["registered_at"])[:19]
     n_favs = len(st.session_state.get("favoritos", []))
     n_watchlist = len(st.session_state.get("watchlist", []))
 

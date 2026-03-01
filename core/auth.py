@@ -439,6 +439,22 @@ class SupabaseAuth:
                 # Migrar favoritos globales al usuario si es su primer login
                 self._maybe_migrate_favorites(res.user.id)
 
+                # Registrar last_login y fecha de registro en usage_stats
+                try:
+                    uid = res.user.id
+                    raw_stats = self.load_user_data(uid, "usage_stats") or {}
+                    raw_stats["last_login"] = datetime.utcnow().isoformat()
+                    raw_stats["logins_total"] = raw_stats.get("logins_total", 0) + 1
+                    # Guardar fecha de registro de Supabase Auth (sólo la primera vez)
+                    if not raw_stats.get("registered_at") and res.user.created_at:
+                        reg = res.user.created_at
+                        raw_stats["registered_at"] = (
+                            reg.isoformat() if hasattr(reg, "isoformat") else str(reg)
+                        )
+                    self.save_user_data(uid, "usage_stats", raw_stats)
+                except Exception as _e:
+                    logger.debug("Error guardando stats en login: %s", _e)
+
                 return True, f"Bienvenido, {st.session_state['_auth_user']['name']}!"
 
             return False, "Credenciales incorrectas."
