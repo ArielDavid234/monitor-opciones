@@ -9,6 +9,8 @@ cuando el usuario no está autenticado.
 from __future__ import annotations
 
 import time
+from typing import Optional
+
 import streamlit as st
 
 from core.auth import SupabaseAuth
@@ -87,7 +89,7 @@ def _render_logo_html() -> str:
 # ============================================================================
 #                    RENDER PRINCIPAL
 # ============================================================================
-def render(auth: SupabaseAuth | None = None) -> bool:
+def render(auth: Optional["SupabaseAuth"] = None) -> bool:
     """Renderiza la pantalla de login/registro.
 
     Args:
