@@ -54,6 +54,7 @@ class UserRole(str, Enum):
     ADMIN = "admin"
     PRO = "pro"
     FREE = "free"
+    USER = "user"  # rol genérico almacenado por _ensure_profile
 
 
 class QualityLabel(str, Enum):
@@ -156,11 +157,16 @@ class User(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     @classmethod
     def from_auth_dict(cls, raw: dict[str, Any]) -> "User":
         """Construye un User desde el dict crudo de auth.get_current_user()."""
+        role_str = raw.get("role", "user")
+        try:
+            role = UserRole(role_str)
+        except ValueError:
+            role = UserRole.USER
         return cls(
             id=raw.get("id", ""),
             email=raw.get("email", ""),
             name=raw.get("name", raw.get("email", "Usuario")),
-            role=UserRole(raw.get("role", "pro")),
+            role=role,
             is_active=raw.get("is_active", True),
         )
 
