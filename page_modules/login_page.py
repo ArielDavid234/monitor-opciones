@@ -87,15 +87,19 @@ def _render_logo_html() -> str:
 # ============================================================================
 #                    RENDER PRINCIPAL
 # ============================================================================
-def render() -> bool:
+def render(auth: SupabaseAuth | None = None) -> bool:
     """Renderiza la pantalla de login/registro.
+
+    Args:
+        auth: instancia compartida de SupabaseAuth. Si None, crea una nueva.
 
     Returns True si el usuario quedó autenticado (para que app_web.py
     sepa que puede continuar). False = seguir mostrando login.
     """
-    auth = SupabaseAuth()
+    if auth is None:
+        auth = SupabaseAuth()
 
-    # ── Intentar restaurar sesión ("Recordarme") ─────────────────────────
+    # ── Intentar restaurar sesión ───────────────────────────────────
     if auth.try_restore_session():
         return True
     if auth.is_authenticated():

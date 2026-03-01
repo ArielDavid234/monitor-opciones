@@ -3,8 +3,8 @@
 ServiceContainer — Inyección de dependencias centralizada.
 
 Implementa un contenedor simple de servicios que resuelve dependencias
-sin frameworks pesados.  Se instancia una sola vez al inicio de la app
-y se pasa a las páginas / componentes que lo necesiten.
+sin frameworks pesados.  Se instancia una vez por sesión de usuario
+(almacenado en st.session_state) para evitar contaminación entre sesiones.
 
 Principio: la capa de presentación nunca instancia servicios directamente.
            Siempre los obtiene del contenedor.
@@ -125,33 +125,34 @@ class ServiceContainer:
         self._credit_spread_service = None
 
 
-# ── Singleton global ─────────────────────────────────────────────────────
-
-_container: Optional[ServiceContainer] = None
+# ── Per-session container (via st.session_state) ─────────────────────────
 
 
 def get_container(auth: Optional[Any] = None) -> ServiceContainer:
-    """Devuelve el contenedor singleton de servicios.
+    """Devuelve el contenedor de servicios de la sesión actual.
 
-    Crea el contenedor en la primera llamada.  Llamadas posteriores
-    devuelven la misma instancia.
+    Cada sesión de Streamlit (cada pestaña/usuario) obtiene su propia
+    instancia, evitando contaminación cruzada entre usuarios.
 
     Args:
-        auth: SupabaseAuth opcional.  Solo se usa en la primera invocación.
+        auth: SupabaseAuth opcional.  Solo se usa si el contenedor aún
+              no existe en session_state.
     """
-    global _container
-    if _container is None:
-        _container = ServiceContainer(auth=auth)
-        logger.debug("ServiceContainer inicializado")
-    return _container
+    import streamlit as st
+
+    if "_service_container" not in st.session_state:
+        st.session_state["_service_container"] = ServiceContainer(auth=auth)
+        logger.debug("ServiceContainer inicializado (per-session)")
+    return st.session_state["_service_container"]
 
 
 def reset_container() -> None:
-    """Destruye el contenedor singleton (útil para tests)."""
-    global _container
-    if _container is not None:
-        _container.reset()
-    _container = None
+    """Destruye el contenedor de la sesión actual (útil para tests/logout)."""
+    import streamlit as st
+
+    container = st.session_state.pop("_service_container", None)
+    if container is not None:
+        container.reset()
 
 
 __all__ = ["ServiceContainer", "get_container", "reset_container"]

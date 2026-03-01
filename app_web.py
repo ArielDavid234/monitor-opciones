@@ -47,7 +47,7 @@ if _auth.handle_email_callback():
 
 if not _auth.is_authenticated():
     if not _auth.try_restore_session():
-        login_page.render()
+        login_page.render(auth=_auth)
         st.stop()
 
 # ── A partir de aquí el usuario ESTÁ autenticado ─────────────────────────

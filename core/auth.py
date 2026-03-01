@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from datetime import datetime
 from typing import Any
 
@@ -22,12 +21,6 @@ from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-#                    RATE LIMITING CONFIG (desactivado — intentos ilimitados)
-# ============================================================================
-# _MAX_LOGIN_ATTEMPTS = 3
-# _RATE_LIMIT_WINDOW = 300
-
 
 def _get_supabase_client() -> Client:
     """Crea (o reutiliza) el cliente Supabase desde st.secrets.
@@ -35,9 +28,14 @@ def _get_supabase_client() -> Client:
     Se almacena en session_state para no recrearlo en cada rerun.
     """
     if "_sb_client" not in st.session_state:
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["anon_key"]
-        st.session_state["_sb_client"] = create_client(url, key)
+        try:
+            url = st.secrets["supabase"]["url"]
+            key = st.secrets["supabase"]["anon_key"]
+            st.session_state["_sb_client"] = create_client(url, key)
+        except Exception as exc:
+            logger.error("Error creando cliente Supabase: %s", exc)
+            st.error("⚠️ Error al conectar con el servicio de autenticación. Recarga la página.")
+            st.stop()
     return st.session_state["_sb_client"]
 
 
@@ -51,52 +49,8 @@ class SupabaseAuth:
         self.client: Client = _get_supabase_client()
 
     # ────────────────────────────────────────────────────────────────────
-    #  Rate Limiting (por email, en session_state)
+    #  Rate Limiting (desactivado — intentos ilimitados)
     # ────────────────────────────────────────────────────────────────────
-    @staticmethod
-    def _check_rate_limit(email: str) -> tuple[bool, int]:
-        """Retorna (bloqueado, segundos_restantes)."""
-        key = "_login_attempts"
-        if key not in st.session_state:
-            st.session_state[key] = {}
-        bucket: dict = st.session_state[key]
-        now = time.time()
-
-        record = bucket.get(email)
-        if record is None:
-            return False, 0
-
-        attempts, first_ts = record
-        elapsed = now - first_ts
-        if elapsed > _RATE_LIMIT_WINDOW:
-            # Ventana expirada → reiniciar
-            del bucket[email]
-            return False, 0
-
-        if attempts >= _MAX_LOGIN_ATTEMPTS:
-            remaining = int(_RATE_LIMIT_WINDOW - elapsed) + 1
-            return True, remaining
-
-        return False, 0
-
-    @staticmethod
-    def _record_attempt(email: str) -> None:
-        """Registra un intento fallido de login."""
-        key = "_login_attempts"
-        if key not in st.session_state:
-            st.session_state[key] = {}
-        bucket: dict = st.session_state[key]
-        now = time.time()
-
-        record = bucket.get(email)
-        if record is None:
-            bucket[email] = (1, now)
-        else:
-            attempts, first_ts = record
-            if now - first_ts > _RATE_LIMIT_WINDOW:
-                bucket[email] = (1, now)
-            else:
-                bucket[email] = (attempts + 1, first_ts)
 
     @staticmethod
     def _clear_attempts(email: str) -> None:
@@ -411,7 +365,7 @@ class SupabaseAuth:
         """Elimina todos los keys de autenticación del session_state."""
         for k in [
             "_auth_user", "_auth_access_token", "_auth_refresh_token",
-            "_profile_synced",
+            "_profile_synced", "_service_container", "_favs_synced",
         ]:
             st.session_state.pop(k, None)
 
