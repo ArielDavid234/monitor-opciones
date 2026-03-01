@@ -2,7 +2,7 @@
 """
 SupabaseAuth — Sistema de autenticación para OptionsKing Analytics.
 
-Maneja registro, login, logout, sesiones persistentes ("Recordarme"),
+Maneja registro, login, logout, sesiones persistentes,
 rate-limiting de intentos y almacenamiento de datos por usuario
 (favoritos, watchlists, configuración).
 
@@ -11,32 +11,16 @@ o de .streamlit/secrets.toml (desarrollo local).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import streamlit as st
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
-
-# ============================================================================
-#                    COOKIE CONFIG  ("Recuérdame" — 7 días)
-# ============================================================================
-_REMEMBER_COOKIE_NAME = "ok_remember"  # cookie name in the browser
-_REMEMBER_MAX_AGE_DAYS = 7
-_REMEMBER_MAX_AGE_SECS = _REMEMBER_MAX_AGE_DAYS * 86_400  # 604 800 s
-
-
-def _get_signing_serializer() -> URLSafeTimedSerializer:
-    """Devuelve un serializer firmado usando la anon_key de Supabase como secreto."""
-    raw_key = st.secrets["supabase"]["anon_key"]
-    secret = hashlib.sha256(raw_key.encode()).hexdigest()
-    return URLSafeTimedSerializer(secret, salt="ok-remember")
 
 # ============================================================================
 #                    RATE LIMITING CONFIG (desactivado — intentos ilimitados)
@@ -65,104 +49,6 @@ class SupabaseAuth:
 
     def __init__(self) -> None:
         self.client: Client = _get_supabase_client()
-
-    # ────────────────────────────────────────────────────────────────────
-    #  Cookie helpers  ("Recuérdame" — 7 días persistente en browser)
-    # ────────────────────────────────────────────────────────────────────
-    @staticmethod
-    def _set_remember_cookie(refresh_token: str) -> None:
-        """Firma el refresh_token y lo inyecta como cookie en el browser.
-
-        Usa window.parent.document.cookie para escribir en el origen del
-        parent window (miéntras el iframe y la app comparten origen en
-        Streamlit Cloud), de modo que la cookie llega al servidor vía
-        HTTP headers en el siguiente request y es leída por st.context.cookies.
-        """
-        try:
-            s = _get_signing_serializer()
-            token = s.dumps({"rt": refresh_token})
-            max_age = _REMEMBER_MAX_AGE_SECS
-            js = (
-                f"<script>"
-                f"(function(){{"
-                f"var c='{_REMEMBER_COOKIE_NAME}={token}; path=/; max-age={max_age}; SameSite=Lax';"
-                f"try{{window.parent.document.cookie=c;}}catch(e){{document.cookie=c;}}"
-                f"}})();"
-                f"</script>"
-            )
-            st.components.v1.html(js, height=0, width=0)
-        except Exception as exc:
-            logger.warning("Error seteando cookie remember: %s", exc)
-
-    @staticmethod
-    def _clear_remember_cookie() -> None:
-        """Elimina la cookie de remember del browser."""
-        try:
-            js = (
-                f"<script>"
-                f"(function(){{"
-                f"var c='{_REMEMBER_COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax';"
-                f"try{{window.parent.document.cookie=c;}}catch(e){{document.cookie=c;}}"
-                f"}})();"
-                f"</script>"
-            )
-            st.components.v1.html(js, height=0, width=0)
-        except Exception:
-            pass
-
-    def _try_cookie_restore(self) -> bool:
-        """Lee la cookie firmada y restaura la sesión de Supabase.
-
-        st.context.cookies lee los HTTP headers del request — la forma
-        más fiable de leer cookies en Streamlit.
-        """
-        try:
-            token = st.context.cookies.get(_REMEMBER_COOKIE_NAME)
-            if not token:
-                return False
-
-            s = _get_signing_serializer()
-            data = s.loads(token, max_age=_REMEMBER_MAX_AGE_SECS)
-            refresh_token = data.get("rt")
-            if not refresh_token:
-                self._clear_remember_cookie()
-                return False
-
-            # Intentar refresh con Supabase
-            res = self.client.auth.refresh_session(refresh_token)
-            if res.user and res.session:
-                display_name = (
-                    res.user.user_metadata.get("display_name")
-                    or res.user.email.split("@")[0]
-                )
-                profile = self._ensure_profile(res.user.id, display_name)
-                st.session_state["_auth_user"] = {
-                    "id": res.user.id,
-                    "email": res.user.email,
-                    "name": profile.get("name", display_name) if profile else display_name,
-                    "role": profile.get("role", "user") if profile else "user",
-                    "is_active": profile.get("is_active", True) if profile else True,
-                    "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
-                    "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
-                }
-                st.session_state["_auth_access_token"] = res.session.access_token
-                st.session_state["_auth_refresh_token"] = res.session.refresh_token
-                st.session_state["_auth_remember"] = True
-                # Renovar la cookie con el nuevo refresh_token
-                SupabaseAuth._set_remember_cookie(res.session.refresh_token)
-                logger.info("Sesión restaurada desde cookie para %s", res.user.email)
-                return True
-
-        except SignatureExpired:
-            logger.info("Cookie remember expirada — limpiando")
-            self._clear_remember_cookie()
-        except BadSignature:
-            logger.warning("Cookie remember con firma inválida — limpiando")
-            self._clear_remember_cookie()
-        except Exception as exc:
-            logger.warning("Error restaurando sesión desde cookie: %s", exc)
-
-        return False
 
     # ────────────────────────────────────────────────────────────────────
     #  Rate Limiting (por email, en session_state)
@@ -316,7 +202,6 @@ class SupabaseAuth:
         }
         st.session_state["_auth_access_token"] = res.session.access_token
         st.session_state["_auth_refresh_token"] = res.session.refresh_token
-        st.session_state["_auth_remember"] = True
 
     # ────────────────────────────────────────────────────────────────────
     #  Registro
@@ -396,12 +281,11 @@ class SupabaseAuth:
         self,
         email: str,
         password: str,
-        remember_me: bool = False,
     ) -> tuple[bool, str]:
         """Autentica al usuario.
 
-        Si remember_me=True, almacena el refresh_token en session_state
-        para restaurar la sesión (hasta 30 días, según config de Supabase).
+        Siempre almacena el refresh_token en session_state para
+        restaurar la sesión mientras el tab siga abierto.
 
         Returns (ok, mensaje_amigable).
         """
@@ -435,13 +319,6 @@ class SupabaseAuth:
                 }
                 st.session_state["_auth_access_token"] = res.session.access_token
                 st.session_state["_auth_refresh_token"] = res.session.refresh_token
-                st.session_state["_auth_remember"] = remember_me
-                if remember_me:
-                    st.session_state["_auth_remember_until"] = (
-                        datetime.now() + timedelta(days=_REMEMBER_MAX_AGE_DAYS)
-                    ).isoformat()
-                    # Setear cookie firmada en el browser (7 días)
-                    self._set_remember_cookie(res.session.refresh_token)
 
                 # Migrar favoritos globales al usuario si es su primer login
                 self._maybe_migrate_favorites(res.user.id)
@@ -480,71 +357,53 @@ class SupabaseAuth:
     #  Restaurar sesión (refresh token)
     # ────────────────────────────────────────────────────────────────────
     def try_restore_session(self) -> bool:
-        """Intenta restaurar la sesión usando el refresh token almacenado
-        en session_state O en la cookie firmada del browser.
+        """Intenta restaurar la sesión usando el refresh token en session_state.
 
-        Orden de prioridad:
+        Orden:
           1. Ya autenticado en session_state → True
-          2. refresh_token en session_state (misma pestaña) → refresh
-          3. Cookie firmada en el browser (cierre/reapertura) → refresh
+          2. refresh_token en session_state → refresh con Supabase
         """
         if self.is_authenticated():
             return True
 
-        # ── Intento 1: refresh_token en session_state ────────────────────
         refresh = st.session_state.get("_auth_refresh_token")
-        if refresh and st.session_state.get("_auth_remember", False):
-            # Verificar que no haya expirado el período de "Recordarme"
-            remember_until = st.session_state.get("_auth_remember_until")
-            if remember_until:
-                try:
-                    expiry = datetime.fromisoformat(remember_until)
-                    if datetime.now() > expiry:
-                        logger.info("Recordarme expirado — limpiando sesión")
-                        self._clear_auth_state()
-                        # fall through to cookie attempt
-                        refresh = None
-                except (ValueError, TypeError):
-                    self._clear_auth_state()
-                    refresh = None
+        if not refresh:
+            return False
 
-            if refresh:
-                try:
-                    res = self.client.auth.refresh_session(refresh)
-                    if res.user and res.session:
-                        display_name = (
-                            res.user.user_metadata.get("display_name")
-                            or res.user.email.split("@")[0]
-                        )
-                        profile = self._ensure_profile(res.user.id, display_name)
-                        st.session_state["_auth_user"] = {
-                            "id": res.user.id,
-                            "email": res.user.email,
-                            "name": profile.get("name", display_name) if profile else display_name,
-                            "role": profile.get("role", "user") if profile else "user",
-                            "is_active": profile.get("is_active", True) if profile else True,
-                            "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
-                            "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
-                        }
-                        st.session_state["_auth_access_token"] = res.session.access_token
-                        st.session_state["_auth_refresh_token"] = res.session.refresh_token
-                        return True
-                except Exception:
-                    self._clear_auth_state()
+        try:
+            res = self.client.auth.refresh_session(refresh)
+            if res.user and res.session:
+                display_name = (
+                    res.user.user_metadata.get("display_name")
+                    or res.user.email.split("@")[0]
+                )
+                profile = self._ensure_profile(res.user.id, display_name)
+                st.session_state["_auth_user"] = {
+                    "id": res.user.id,
+                    "email": res.user.email,
+                    "name": profile.get("name", display_name) if profile else display_name,
+                    "role": profile.get("role", "user") if profile else "user",
+                    "is_active": profile.get("is_active", True) if profile else True,
+                    "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
+                    "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
+                }
+                st.session_state["_auth_access_token"] = res.session.access_token
+                st.session_state["_auth_refresh_token"] = res.session.refresh_token
+                return True
+        except Exception:
+            self._clear_auth_state()
 
-        # ── Intento 2: cookie firmada del browser ────────────────────────
-        return self._try_cookie_restore()
+        return False
 
     # ────────────────────────────────────────────────────────────────────
     #  Logout
     # ────────────────────────────────────────────────────────────────────
     def logout(self) -> None:
-        """Cierra sesión y limpia todo el estado de autenticación + cookie."""
+        """Cierra sesión y limpia todo el estado de autenticación."""
         try:
             self.client.auth.sign_out()
         except Exception:
-            pass  # Ya estaba deslogueado o token expirado
-        self._clear_remember_cookie()
+            pass
         self._clear_auth_state()
 
     @staticmethod
@@ -552,7 +411,7 @@ class SupabaseAuth:
         """Elimina todos los keys de autenticación del session_state."""
         for k in [
             "_auth_user", "_auth_access_token", "_auth_refresh_token",
-            "_auth_remember", "_auth_remember_until", "_profile_synced",
+            "_profile_synced",
         ]:
             st.session_state.pop(k, None)
 

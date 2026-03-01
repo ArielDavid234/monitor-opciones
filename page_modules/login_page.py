@@ -135,7 +135,6 @@ def render() -> bool:
                     placeholder="••••••••",
                     key="login_password",
                 )
-                login_remember = st.checkbox("Recordarme (7 días)", key="login_remember")
                 login_submit = st.form_submit_button(
                     "🔐 Iniciar Sesión",
                     use_container_width=True,
@@ -143,7 +142,7 @@ def render() -> bool:
                 )
 
             if login_submit:
-                ok, msg = auth.login(login_email, login_password, login_remember)
+                ok, msg = auth.login(login_email, login_password)
                 if ok:
                     st.session_state["_show_welcome_splash"] = True
                     st.rerun()
