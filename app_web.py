@@ -128,7 +128,6 @@ with st.sidebar:
         "📅 Calendar",
         "📋 Reports",
         "💰 Venta de Prima",
-        "👤 Mi Perfil",
     ]
     # Agregar opción de admin solo si el usuario es administrador
     try:
@@ -143,10 +142,18 @@ with st.sidebar:
     _pending_nav = st.session_state.pop("_nav_pending", None)
     _nav_target = _pending_nav or _redirect_page
 
-    # When we need to override the radio programmatically, clear the
-    # widget-key first so that the `index` param takes effect on this run.
+    # Pages outside the radio (e.g. Mi Perfil) are stored as an override.
+    # When the user clicks the radio, on_change clears the override.
+    def _clear_page_override():
+        st.session_state.pop("_page_override", None)
+
     _radio_kw: dict = {}
-    if _nav_target and _nav_target in _NAV_OPTIONS:
+    if _nav_target == "👤 Mi Perfil":
+        # Route to Mi Perfil without touching the radio
+        st.session_state["_page_override"] = "👤 Mi Perfil"
+    elif _nav_target and _nav_target in _NAV_OPTIONS:
+        # Clear any Mi Perfil override and jump to the requested radio option
+        st.session_state.pop("_page_override", None)
         st.session_state.pop("nav_radio", None)
         _radio_kw["index"] = _NAV_OPTIONS.index(_nav_target)
 
@@ -155,8 +162,11 @@ with st.sidebar:
         _NAV_OPTIONS,
         label_visibility="collapsed",
         key="nav_radio",
+        on_change=_clear_page_override,
         **_radio_kw,
     )
+    # Effective page: override wins (Mi Perfil button), otherwise radio value
+    _effective_page = st.session_state.get("_page_override") or pagina
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -189,7 +199,7 @@ with st.sidebar:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.session_state.current_page = pagina
+st.session_state.current_page = _effective_page
 
 # ============================================================================
 #                    HEADER + TICKER INPUT
@@ -260,31 +270,31 @@ _page_kwargs = dict(
     umbral_delta=st.session_state.umbral_delta,
 )
 
-if pagina == "🔍 Live Scanning":
+if _effective_page == "🔍 Live Scanning":
     live_scanning_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📊 Open Interest":
+elif _effective_page == "📊 Open Interest":
     open_interest_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📈 Data Analysis":
+elif _effective_page == "📈 Data Analysis":
     data_analysis_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📐 Range":
+elif _effective_page == "📐 Range":
     range_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "⭐ Favorites":
+elif _effective_page == "⭐ Favorites":
     favorites_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📌 Watchlist":
+elif _effective_page == "📌 Watchlist":
     watchlist_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "🏢 Important Companies":
+elif _effective_page == "🏢 Important Companies":
     important_companies_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📰 News":
+elif _effective_page == "📰 News":
     news_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📅 Calendar":
+elif _effective_page == "📅 Calendar":
     calendar_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "📋 Reports":
+elif _effective_page == "📋 Reports":
     reports_page.render(ticker_symbol, **_page_kwargs)
-elif pagina == "💰 Venta de Prima":
+elif _effective_page == "💰 Venta de Prima":
     credit_spread_page.render(**_page_kwargs)
-elif pagina == "👤 Mi Perfil":
+elif _effective_page == "👤 Mi Perfil":
     mi_perfil_page.render(**_page_kwargs)
-elif pagina == "👑 Administrar Usuarios":
+elif _effective_page == "👑 Administrar Usuarios":
     admin_users_page.render(**_page_kwargs)
 
 # ============================================================================
