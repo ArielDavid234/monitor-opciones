@@ -221,10 +221,6 @@ def render(**kwargs):
     # ── Initials ─────────────────────────────────────────────────────────
     initials = "".join(w[0].upper() for w in (user_name or "U").split()[:2])
 
-    # ── Tema persitido ───────────────────────────────────────────────────
-    saved_theme = auth.load_user_data(user_id, "theme_preference")
-    if saved_theme is None:
-        saved_theme = "dark"
 
     # ====================================================================
     #  Hero — Avatar + Info básica
@@ -297,7 +293,6 @@ def render(**kwargs):
     # ====================================================================
     scans_total = stats.get("scans_today", 0)   # hoy
     scans_month = stats.get("scans_month", 0)    # este mes
-    reports_gen = stats.get("reports_generated", 0)
     logins_total = stats.get("logins_total", 0)
     avg_score = stats.get("avg_income_score")
     avg_score_str = f"{avg_score:.0f}" if avg_score else "—"
@@ -316,11 +311,6 @@ def render(**kwargs):
             <div class="stat-icon">📅</div>
             <div class="stat-number">{scans_month}</div>
             <div class="stat-label">Scans Este Mes</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">📋</div>
-            <div class="stat-number">{reports_gen}</div>
-            <div class="stat-label">Reportes Generados</div>
         </div>
         <div class="stat-card">
             <div class="stat-icon">⭐</div>
@@ -410,34 +400,4 @@ def render(**kwargs):
                 else:
                     st.error(msg)
 
-    # ── Tema ─────────────────────────────────────────────────────────────
-    st.markdown("")
-    tcol1, tcol2 = st.columns([1, 3])
-    with tcol1:
-        theme_options = ["dark", "light"]
-        theme_labels = {"dark": "🌙 Modo Oscuro", "light": "☀️ Modo Claro"}
-        current_idx = theme_options.index(saved_theme) if saved_theme in theme_options else 0
-        selected_theme = st.selectbox(
-            "🎨 Tema de la aplicación",
-            options=theme_options,
-            format_func=lambda x: theme_labels[x],
-            index=current_idx,
-            key="profile_theme_select",
-        )
-        if selected_theme != saved_theme:
-            auth.save_user_data(user_id, "theme_preference", selected_theme)
-            st.success(f"Tema cambiado a **{theme_labels[selected_theme]}**")
-            st.rerun()
 
-    # ── Cerrar sesión ────────────────────────────────────────────────────
-    st.markdown("---")
-    _, ccol, _ = st.columns([1, 1, 1])
-    with ccol:
-        if st.button(
-            "🚪 Cerrar Sesión",
-            use_container_width=True,
-            type="primary",
-            key="btn_logout_profile",
-        ):
-            auth.logout()
-            st.rerun()
