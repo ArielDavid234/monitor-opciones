@@ -140,20 +140,22 @@ with st.sidebar:
     # Handle page redirect from Watchlist / other pages
     _redir = st.session_state.get("_redirect", {})
     _redirect_page = _redir.get("page")
-    # Force radio to show the redirect page by pre-writing the widget key
-    # BEFORE the widget is created (Streamlit allows this for unrendered widgets)
-    if _redirect_page and _redirect_page in _NAV_OPTIONS:
-        st.session_state["nav_radio"] = _redirect_page
-    # Avatar / pending navigation — must be set BEFORE the radio renders
     _pending_nav = st.session_state.pop("_nav_pending", None)
-    if _pending_nav and _pending_nav in _NAV_OPTIONS:
-        st.session_state["nav_radio"] = _pending_nav
+    _nav_target = _pending_nav or _redirect_page
+
+    # When we need to override the radio programmatically, clear the
+    # widget-key first so that the `index` param takes effect on this run.
+    _radio_kw: dict = {}
+    if _nav_target and _nav_target in _NAV_OPTIONS:
+        st.session_state.pop("nav_radio", None)
+        _radio_kw["index"] = _NAV_OPTIONS.index(_nav_target)
 
     pagina = st.radio(
         "Navegación",
         _NAV_OPTIONS,
         label_visibility="collapsed",
         key="nav_radio",
+        **_radio_kw,
     )
 
     st.markdown('</div>', unsafe_allow_html=True)
