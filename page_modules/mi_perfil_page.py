@@ -293,7 +293,6 @@ def render(**kwargs):
     # ====================================================================
     scans_total = stats.get("scans_today", 0)   # hoy
     scans_month = stats.get("scans_month", 0)    # este mes
-    logins_total = stats.get("logins_total", 0)
     avg_score = stats.get("avg_income_score")
     avg_score_str = f"{avg_score:.0f}" if avg_score else "—"
 
@@ -321,11 +320,6 @@ def render(**kwargs):
             <div class="stat-icon">📌</div>
             <div class="stat-number">{n_watchlist}</div>
             <div class="stat-label">Watchlist</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">🔑</div>
-            <div class="stat-number">{logins_total}</div>
-            <div class="stat-label">Logins Totales</div>
         </div>
     </div>
 </div>
