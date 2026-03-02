@@ -586,3 +586,159 @@ def render_anomaly_scatter(
     )
 
     return fig
+
+
+# ============================================================================
+#               IV FORECAST CHART  (predicción de volatilidad)
+# ============================================================================
+
+def render_iv_forecast_chart(
+    df_historical: pd.DataFrame,
+    forecast: dict,
+    ticker: str,
+) -> Optional[go.Figure]:
+    """Gráfico de línea IV histórica + forecast con banda de confianza.
+
+    Muestra la evolución de IV proxy (hv_20d × 0.6 + vix × 0.4) y
+    proyecta la predicción del modelo de regresión lineal a N días.
+
+    Args:
+        df_historical: DataFrame de get_historical_iv() con [date, iv_mean, hv_20d, vix_close].
+        forecast: dict retornado por predict_implied_volatility().
+        ticker: Símbolo para el título.
+
+    Returns:
+        go.Figure o None si datos insuficientes.
+    """
+    if df_historical.empty or "error" in forecast:
+        return None
+
+    fig = go.Figure()
+
+    dates = pd.to_datetime(df_historical["date"])
+    iv_vals = df_historical["iv_mean"]
+
+    # ── IV histórica (línea principal) ───────────────────────────
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=iv_vals,
+        mode="lines",
+        name="IV Proxy (HV+VIX)",
+        line=dict(color="#00ff88", width=2),
+        hovertemplate="Fecha: %{x|%Y-%m-%d}<br>IV: %{y:.1f}%<extra></extra>",
+    ))
+
+    # ── HV 20d (línea secundaria más tenue) ──────────────────────
+    if "hv_20d" in df_historical.columns:
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=df_historical["hv_20d"],
+            mode="lines",
+            name="HV 20d",
+            line=dict(color="#64748b", width=1, dash="dot"),
+            hovertemplate="HV 20d: %{y:.1f}%<extra></extra>",
+        ))
+
+    # ── VIX overlay ──────────────────────────────────────────────
+    if "vix_close" in df_historical.columns:
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=df_historical["vix_close"],
+            mode="lines",
+            name="VIX",
+            line=dict(color="#f59e0b", width=1, dash="dashdot"),
+            opacity=0.6,
+            hovertemplate="VIX: %{y:.1f}<extra></extra>",
+        ))
+
+    # ── Forecast: línea punteada desde último dato → predicción ──
+    last_date = dates.iloc[-1]
+    forecast_days = forecast.get("forecast_days", 5)
+    forecast_date = last_date + pd.Timedelta(days=forecast_days)
+    current_iv = forecast["current_iv"]
+    predicted_iv = forecast["predicted_iv"]
+    iv_low, iv_high = forecast["forecast_range"]
+
+    # Línea de forecast
+    direction = forecast.get("direction", "stable")
+    fc_color = (
+        "#10b981" if direction == "down" else
+        "#ef4444" if direction == "up" else
+        "#f59e0b"
+    )
+
+    fig.add_trace(go.Scatter(
+        x=[last_date, forecast_date],
+        y=[current_iv, predicted_iv],
+        mode="lines+markers",
+        name=f"Forecast {forecast_days}d",
+        line=dict(color=fc_color, width=3, dash="dash"),
+        marker=dict(size=[6, 12], color=fc_color, symbol=["circle", "diamond"]),
+        hovertemplate=(
+            "Fecha: %{x|%Y-%m-%d}<br>"
+            "IV: %{y:.1f}%<extra></extra>"
+        ),
+    ))
+
+    # Banda de confianza (marcadores ±1σ)
+    fig.add_trace(go.Scatter(
+        x=[forecast_date, forecast_date],
+        y=[iv_low, iv_high],
+        mode="markers+text",
+        name="Rango ±1σ",
+        marker=dict(size=10, color=[fc_color, fc_color], symbol=["triangle-down", "triangle-up"]),
+        text=[f"{iv_low:.1f}%", f"{iv_high:.1f}%"],
+        textposition=["bottom center", "top center"],
+        textfont=dict(size=10, color="#94a3b8"),
+        hovertemplate="Rango: %{y:.1f}%<extra></extra>",
+    ))
+
+    # Rectángulo de banda entre iv_low e iv_high
+    fig.add_shape(
+        type="rect",
+        x0=last_date, x1=forecast_date,
+        y0=iv_low, y1=iv_high,
+        fillcolor=fc_color,
+        opacity=0.08,
+        line=dict(width=0),
+    )
+
+    # ── Layout ───────────────────────────────────────────────────
+    r2 = forecast.get("r2_score", 0)
+    r2_color = "#10b981" if r2 >= 0.5 else "#f59e0b" if r2 >= 0.2 else "#ef4444"
+    r2_label = "bueno" if r2 >= 0.5 else "moderado" if r2 >= 0.2 else "bajo"
+
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"Forecast IV — {ticker} "
+                f"(R²={r2:.3f} <span style='color:{r2_color}'>{r2_label}</span>)"
+            ),
+            font=dict(size=14, color="white"),
+        ),
+        **_DARK_LAYOUT,
+        height=420,
+        margin=dict(l=60, r=20, t=50, b=50),
+        xaxis=dict(
+            title="Fecha",
+            color="#94a3b8",
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.08)",
+        ),
+        yaxis=dict(
+            title="Volatilidad (%)",
+            color="#94a3b8",
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.08)",
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=10, color="#94a3b8"),
+        ),
+    )
+
+    return fig

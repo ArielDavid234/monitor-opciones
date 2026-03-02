@@ -2,8 +2,11 @@
 Análisis de proyecciones fundamentales y técnicas de empresas a 10 años.
 Combina análisis fundamental (valor intrínseco) y técnico (precio/volumen)
 para identificar oportunidades de compra o venta.
+
+Incluye predicción básica de volatilidad implícita (IV) con regresión lineal.
 """
 import logging
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -11,6 +14,153 @@ from config.constants import SCORE_THRESHOLD_ALTA, SCORE_THRESHOLD_MEDIA
 from core.scanner import crear_sesion_nueva
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+#        PREDICCIÓN DE IV  (regresión lineal — explicable)
+# ============================================================================
+
+def predict_implied_volatility(
+    df_historical: pd.DataFrame,
+    forecast_days: int = 5,
+) -> dict:
+    """Predice IV futura usando regresión lineal sobre datos históricos.
+
+    Modelo simple y transparente: usa features observables del mercado
+    (HV, VIX, volumen, precio) para estimar hacia dónde se dirige la IV.
+
+    El objetivo es dar al usuario una referencia cuantitativa para decidir
+    si la volatilidad está subiendo (primas caras → vender vol) o bajando
+    (primas baratas → comprar vol).
+
+    Features:
+      - hv_20d      : volatilidad histórica 20d (momentum de vol)
+      - vix_close   : VIX (miedo de mercado / proxy IV SPX)
+      - volume      : volumen del subyacente (liquidez / interés)
+      - close_price : precio del subyacente (correlación inversa con IV)
+
+    Args:
+        df_historical: DataFrame de get_historical_iv() con columnas
+                       [date, close_price, volume, hv_20d, vix_close, iv_mean].
+        forecast_days: Días hacia adelante para la predicción (default 5).
+
+    Returns:
+        dict con:
+          predicted_iv   : IV predicha (%)
+          forecast_days  : días de forecast
+          forecast_range : [iv_baja, iv_alta] — banda ± 1 std error
+          r2_score       : R² del modelo en test set
+          model_features : lista de features usadas
+          coefficients   : dict feature→coeficiente (para transparencia)
+          current_iv     : IV actual (último dato)
+          interpretation : texto explicativo para el usuario
+          direction      : "up" | "down" | "stable"
+        O dict con clave "error" si datos insuficientes.
+    """
+    try:
+        from sklearn.linear_model import LinearRegression
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import r2_score
+    except ImportError:
+        return {"error": "scikit-learn no instalado — predicción IV no disponible"}
+
+    # ── Validación de datos ──────────────────────────────────────
+    required_cols = {"hv_20d", "vix_close", "volume", "close_price", "iv_mean"}
+    if not isinstance(df_historical, pd.DataFrame) or df_historical.empty:
+        return {"error": "DataFrame vacío"}
+
+    missing = required_cols - set(df_historical.columns)
+    if missing:
+        return {"error": f"Columnas faltantes: {missing}"}
+
+    df = df_historical.dropna(subset=list(required_cols)).copy()
+    if len(df) < 30:
+        return {"error": f"Datos insuficientes ({len(df)} filas, mínimo 30)"}
+
+    # ── Features y target ────────────────────────────────────────
+    features = ["hv_20d", "vix_close", "volume", "close_price"]
+    X = df[features].values
+    y = df["iv_mean"].values
+
+    # ── Train/Test split ─────────────────────────────────────────
+    test_size = max(0.2, 10 / len(X))  # mínimo 10 muestras en test
+    test_size = min(test_size, 0.4)     # máximo 40%
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=42,
+    )
+
+    # ── Entrenar modelo ──────────────────────────────────────────
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    y_pred_test = model.predict(X_test)
+    r2 = r2_score(y_test, y_pred_test)
+
+    # ── Forecast: extrapolar desde las últimas features ──────────
+    last_row = df[features].iloc[-1].values.reshape(1, -1)
+    predicted_iv = float(model.predict(last_row)[0])
+
+    # Banda de confianza: ± 1 desviación estándar del error
+    residuals = y_test - y_pred_test
+    pred_std = float(np.std(residuals))
+    iv_low = predicted_iv - pred_std
+    iv_high = predicted_iv + pred_std
+
+    # ── IV actual y dirección ────────────────────────────────────
+    current_iv = float(df["iv_mean"].iloc[-1])
+    delta_iv = predicted_iv - current_iv
+
+    if delta_iv > 1.0:
+        direction = "up"
+    elif delta_iv < -1.0:
+        direction = "down"
+    else:
+        direction = "stable"
+
+    # ── Interpretación financiera ────────────────────────────────
+    if direction == "up":
+        interp = (
+            f"📈 IV predicha **{predicted_iv:.1f}%** (actual {current_iv:.1f}%) "
+            f"→ Volatilidad **SUBIENDO** (+{delta_iv:.1f}pp). "
+            f"Primas se encarecen — considerar **vender volatilidad** "
+            f"(credit spreads, iron condors, covered calls)."
+        )
+    elif direction == "down":
+        interp = (
+            f"📉 IV predicha **{predicted_iv:.1f}%** (actual {current_iv:.1f}%) "
+            f"→ Volatilidad **BAJANDO** ({delta_iv:.1f}pp). "
+            f"Primas se abaratan — considerar **comprar volatilidad** "
+            f"(long straddles, debit spreads, protective puts)."
+        )
+    else:
+        interp = (
+            f"↔️ IV predicha **{predicted_iv:.1f}%** (actual {current_iv:.1f}%) "
+            f"→ Volatilidad **ESTABLE** ({delta_iv:+.1f}pp). "
+            f"Sin edge claro en volatilidad — evaluar dirección del subyacente."
+        )
+
+    # ── Coeficientes (transparencia) ─────────────────────────────
+    coefs = {feat: round(float(c), 6) for feat, c in zip(features, model.coef_)}
+
+    return {
+        "predicted_iv": round(predicted_iv, 2),
+        "forecast_days": forecast_days,
+        "forecast_range": [round(iv_low, 2), round(iv_high, 2)],
+        "r2_score": round(r2, 3),
+        "model_features": features,
+        "coefficients": coefs,
+        "current_iv": round(current_iv, 2),
+        "delta_iv": round(delta_iv, 2),
+        "direction": direction,
+        "interpretation": interp,
+        "n_samples": len(df),
+        "pred_std": round(pred_std, 2),
+    }
+
+
+# ============================================================================
+#        PROYECCIONES FUNDAMENTALES (existente)
+# ============================================================================
 
 
 def analizar_proyeccion_empresa(symbol, info_empresa=None):

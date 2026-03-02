@@ -709,3 +709,75 @@ def render(ticker_symbol, **kwargs):
         st.caption("IsolationForest analiza patrones de volumen, prima, IV y OI para detectar actividad fuera de lo normal.")
     else:
         st.info("Sin suficientes datos para detección de anomalías (mínimo 30 registros). Si sklearn no está instalado, se omite.")
+
+    st.markdown("---")
+
+    # ── Predicción de Volatilidad Implícita (IV Forecast) ─────────
+    st.markdown("#### 🔮 Predicción de Volatilidad Implícita (Regresión Lineal)")
+    _ivf_cache_key = f"_iv_forecast_{ticker_symbol}_{st.session_state.get('scan_count', 0)}"
+
+    if st.session_state.get(_ivf_cache_key) is None:
+        try:
+            from core.iv_rank import get_historical_iv
+            from core.projections import predict_implied_volatility
+
+            df_iv_hist = get_historical_iv(ticker_symbol, period="1y")
+            if df_iv_hist.empty:
+                st.session_state[_ivf_cache_key] = {"error": "Sin datos históricos suficientes"}
+            else:
+                forecast_result = predict_implied_volatility(df_iv_hist, forecast_days=5)
+                st.session_state[_ivf_cache_key] = forecast_result
+                st.session_state[f"{_ivf_cache_key}_hist"] = df_iv_hist
+        except Exception as e:
+            logger.warning(f"Error IV Forecast: {e}")
+            st.session_state[_ivf_cache_key] = {"error": f"Error: {e}"}
+
+    iv_forecast = st.session_state.get(_ivf_cache_key, {})
+    df_iv_hist = st.session_state.get(f"{_ivf_cache_key}_hist", pd.DataFrame())
+
+    if "error" not in iv_forecast:
+        # Interpretación con formato
+        st.markdown(iv_forecast["interpretation"])
+
+        # Gráfico
+        from ui.charts import render_iv_forecast_chart
+        fig_ivf = render_iv_forecast_chart(df_iv_hist, iv_forecast, ticker_symbol)
+        if fig_ivf:
+            st.plotly_chart(fig_ivf, use_container_width=True, key="iv_forecast_chart")
+
+        # Métricas del modelo (transparencia)
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        with col_f1:
+            st.metric("IV Predicha", f"{iv_forecast['predicted_iv']:.1f}%",
+                       delta=f"{iv_forecast['delta_iv']:+.1f}pp")
+        with col_f2:
+            st.metric("IV Actual", f"{iv_forecast['current_iv']:.1f}%")
+        with col_f3:
+            st.metric("R² Modelo", f"{iv_forecast['r2_score']:.3f}")
+        with col_f4:
+            st.metric("Rango ±1σ",
+                       f"{iv_forecast['forecast_range'][0]:.1f}% — {iv_forecast['forecast_range'][1]:.1f}%")
+
+        # Detalle del modelo (expandible)
+        with st.expander("📊 Detalles del modelo (transparencia)"):
+            st.markdown(f"""
+**Modelo:** Regresión Lineal (scikit-learn)
+**Muestras:** {iv_forecast.get('n_samples', 'N/A')} días históricos
+**Forecast:** {iv_forecast['forecast_days']} días
+**Features usadas:** `{', '.join(iv_forecast['model_features'])}`
+**Error estándar (σ):** ±{iv_forecast.get('pred_std', 0):.2f}%
+
+**Coeficientes del modelo:**
+""")
+            coefs = iv_forecast.get("coefficients", {})
+            for feat, coef in coefs.items():
+                arrow = "↑" if coef > 0 else "↓"
+                st.markdown(f"- **{feat}**: `{coef:+.6f}` {arrow}")
+
+            st.caption(
+                "⚠️ Modelo orientativo — no es recomendación financiera. "
+                "La IV real depende de eventos macro, earnings, y flujos institucionales "
+                "que un modelo lineal no captura. Usar como referencia complementaria."
+            )
+    else:
+        st.warning(f"📊 IV Forecast: {iv_forecast.get('error', 'Error desconocido')}")

@@ -153,3 +153,81 @@ def iv_rank_label(iv_rank: float) -> tuple:
         return ("MEDIO", "#f59e0b")
     else:
         return ("BAJO", "#10b981")
+
+
+# ============================================================================
+#        DATOS HISTÓRICOS DE IV  (para predicción de volatilidad)
+# ============================================================================
+
+def get_historical_iv(
+    symbol: str,
+    period: str = "1y",
+    hv_window: int = 20,
+) -> pd.DataFrame:
+    """Obtiene un DataFrame con métricas históricas de volatilidad para un ticker.
+
+    Combina datos de precios del subyacente con VIX como proxy del miedo
+    de mercado. La HV rolling se usa como proxy de IV histórica (yfinance
+    no provee series históricas de IV; sólo IV puntual de la cadena actual).
+
+    Columnas del DataFrame retornado:
+      - date       : fecha (datetime)
+      - close_price: precio de cierre del subyacente
+      - volume     : volumen del subyacente
+      - hv_20d     : volatilidad histórica anualizada rolling 20d (%)
+      - vix_close  : cierre del VIX (proxy de IV de mercado)
+      - iv_mean    : proxy de IV (promedio ponderado: 60% HV + 40% VIX normalizado)
+
+    Args:
+        symbol: Ticker (e.g. "AAPL", "SPY").
+        period: Periodo histórico ("6mo", "1y", "2y").
+        hv_window: Ventana rolling para HV (default 20 días hábiles).
+
+    Returns:
+        pd.DataFrame con las columnas descritas, o DataFrame vacío si falla.
+    """
+    try:
+        session, _ = crear_sesion_nueva()
+        ticker = yf.Ticker(symbol, session=session)
+
+        # Histórico del subyacente
+        hist = ticker.history(period=period)
+        if hist.empty or len(hist) < hv_window + 5:
+            logger.warning(f"{symbol}: historial insuficiente para IV histórica")
+            return pd.DataFrame()
+
+        # HV rolling anualizada
+        log_ret = np.log(hist["Close"] / hist["Close"].shift(1))
+        hv_series = log_ret.rolling(hv_window).std() * np.sqrt(252) * 100
+
+        # VIX como proxy de IV de mercado
+        try:
+            vix = yf.Ticker("^VIX", session=session)
+            vix_hist = vix.history(period=period)
+            vix_close = vix_hist["Close"].reindex(hist.index, method="ffill")
+        except Exception:
+            logger.debug(f"{symbol}: No se pudo obtener VIX, usando HV como fallback")
+            vix_close = hv_series  # fallback: usar HV como proxy de VIX
+
+        # Construir DataFrame
+        df = pd.DataFrame({
+            "date": hist.index,
+            "close_price": hist["Close"].values,
+            "volume": hist["Volume"].values,
+            "hv_20d": hv_series.values,
+            "vix_close": vix_close.values,
+        })
+
+        # iv_mean: proxy ponderado (60% HV + 40% VIX-normalizado)
+        # El VIX ya está en % anualizado; HV también → promedio ponderado directo
+        df["iv_mean"] = df["hv_20d"] * 0.6 + df["vix_close"] * 0.4
+
+        # Limpiar NaN de las primeras filas (rolling window)
+        df = df.dropna(subset=["hv_20d", "iv_mean"]).reset_index(drop=True)
+
+        logger.info(f"{symbol}: {len(df)} días de IV histórica obtenidos")
+        return df
+
+    except Exception as e:
+        logger.error(f"{symbol}: Error obteniendo IV histórica: {e}")
+        return pd.DataFrame()
