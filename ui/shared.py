@@ -54,12 +54,14 @@ _CUSTOM_CSS = """
 
 
 def inject_all_css():
-    """Inyecta todo el CSS (custom + avanzado) y fuerza dark mode."""
+    """Inyecta todo el CSS (custom + avanzado), viewport meta y fuerza dark mode."""
     st.markdown(_CUSTOM_CSS + CSS_STYLES, unsafe_allow_html=True)
     st.markdown(
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0, '
+        'maximum-scale=5.0, user-scalable=yes">'
+        '<meta name="color-scheme" content="dark">'
         '<script>document.documentElement.setAttribute("data-theme","dark");'
-        'document.documentElement.style.colorScheme="dark";</script>'
-        '<meta name="color-scheme" content="dark">',
+        'document.documentElement.style.colorScheme="dark";</script>',
         unsafe_allow_html=True,
     )
 

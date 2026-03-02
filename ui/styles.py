@@ -1268,105 +1268,6 @@ CSS_STYLES = """
     ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.15); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.25); }
 
-    /* ====== RESPONSIVE ====== */
-    .stMain, section[data-testid="stMain"],
-    [data-testid="stAppViewBlockContainer"],
-    .stMainBlockContainer {
-        transition: margin-left 0.3s ease, width 0.3s ease !important;
-        max-width: 100% !important;
-    }
-    @media (max-width: 1024px) {
-        .scanner-header h1 { font-size: 1.5rem !important; }
-        .scanner-header .subtitle { font-size: 0.82rem; }
-        div[data-testid="stMetric"] { padding: 14px 16px; }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1.4rem !important; }
-        .empresa-card { padding: 16px 18px; }
-        .empresa-ticker { font-size: 1.2rem; }
-        .empresa-metric { min-width: 100px; padding: 8px 12px; }
-        .rango-stat { min-width: 100px; padding: 10px 14px; }
-        .rango-stat-value { font-size: 1rem; }
-        .news-stat-card { padding: 10px 12px; }
-        .news-stat-number { font-size: 1rem; }
-        .gauge-wrap { width: 180px; height: 110px; }
-        .gauge-svg { width: 180px; height: 110px; }
-        .gauge-value { font-size: 2.2rem; }
-    }
-    @media (max-width: 768px) {
-        .stMainBlockContainer, .block-container,
-        [data-testid="stAppViewBlockContainer"] {
-            padding-left: 6px !important; padding-right: 6px !important;
-        }
-        .scanner-header { padding: 14px !important; border-radius: var(--radius-md) !important; }
-        .scanner-header h1 { font-size: 1.2rem !important; }
-        .scanner-header .subtitle { font-size: 0.75rem; }
-        .scanner-header .badge { font-size: 0.58rem; padding: 3px 10px; }
-        [data-testid="column"] { min-width: 45% !important; }
-        div[data-testid="stMetric"] { padding: 12px 14px; border-radius: var(--radius-sm); }
-        div[data-testid="stMetric"] label { font-size: 0.65rem !important; }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1.2rem !important; }
-        .status-bar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 0.70rem; }
-        .stTabs [data-baseweb="tab-list"] { gap: 2px; padding: 3px; border-radius: var(--radius-sm); overflow-x: auto; scrollbar-width: none; }
-        .stTabs [data-baseweb="tab"]::-webkit-scrollbar { display: none; }
-        .stTabs [data-baseweb="tab"] { padding: 8px 10px; font-size: 0.70rem; min-width: fit-content; }
-        .alerta-top, .alerta-principal, .alerta-prima, .alerta-cluster { padding: 12px 14px; font-size: 0.75rem; }
-        .alerta-top::after { font-size: 0.52rem; padding: 2px 8px; top: 6px; right: 6px; }
-        .razon-alerta { font-size: 0.65rem; }
-        .cluster-detail { font-size: 0.68rem; }
-        .leyenda-colores { padding: 10px 14px !important; }
-        .leyenda-item { font-size: 0.68rem !important; }
-        .empresa-card { padding: 14px 16px; }
-        .empresa-ticker { font-size: 1.1rem; }
-        .empresa-desc { font-size: 0.70rem; padding: 8px 12px; }
-        .empresa-metrics { flex-direction: column; gap: 6px; }
-        .empresa-metric { min-width: unset; width: 100%; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; }
-        .empresa-header { flex-direction: column; gap: 6px; }
-        .news-card { padding: 12px 14px; }
-        .news-title { font-size: 0.80rem; }
-        .news-desc { font-size: 0.70rem; }
-        .news-meta { flex-wrap: wrap; gap: 6px; }
-        .news-stats { flex-wrap: wrap; gap: 8px; }
-        .news-stat-card { flex: 1 1 45%; min-width: 110px; }
-        .rango-stat { min-width: unset; width: 100%; margin: 3px 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; }
-        .rango-stat-value { font-size: 0.95rem; }
-        .watchlist-info { font-size: 0.72rem; padding: 12px 16px; }
-        .stButton > button { width: 100% !important; font-size: 0.78rem !important; }
-        .stExpander { border-radius: var(--radius-sm) !important; }
-        .info-card { padding: 14px 16px; }
-        .gauge-container { padding: 20px 16px; }
-        .gauge-wrap { width: 160px; height: 100px; }
-        .gauge-svg { width: 160px; height: 100px; }
-        .gauge-value { font-size: 2rem; }
-    }
-    @media (max-width: 480px) {
-        .stMainBlockContainer, .block-container,
-        [data-testid="stAppViewBlockContainer"] {
-            padding-left: 4px !important; padding-right: 4px !important;
-        }
-        .scanner-header h1 { font-size: 1rem !important; }
-        [data-testid="column"] { min-width: 100% !important; }
-        div[data-testid="stMetric"] { padding: 10px 12px; }
-        div[data-testid="stMetric"] label { font-size: 0.60rem !important; }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1rem !important; }
-        .stTabs [data-baseweb="tab-list"] { flex-wrap: nowrap; }
-        .stTabs [data-baseweb="tab"] { padding: 6px 8px; font-size: 0.62rem; }
-        .alerta-top::after { display: none; }
-        .empresa-ticker { font-size: 0.95rem; }
-        .empresa-score { font-size: 0.58rem; padding: 3px 8px; }
-        .news-stat-card { flex: 1 1 100%; }
-        .rango-barra-container { height: 40px; }
-        .rango-precio-actual { font-size: 0.60rem; padding: 2px 6px; }
-    }
-    @media (max-height: 500px) and (orientation: landscape) {
-        .scanner-header { padding: 8px 14px !important; }
-        .scanner-header h1 { font-size: 1.1rem !important; margin: 0 !important; }
-        div[data-testid="stMetric"] { padding: 8px 12px; }
-    }
-    @media print {
-        [data-testid="stSidebar"] { display: none !important; }
-        .stMain { margin-left: 0 !important; width: 100% !important; }
-        .stButton, .stTabs [data-baseweb="tab-list"] { display: none !important; }
-    }
-
     /* ====== TWO-COLUMN DASHBOARD LAYOUT ====== */
     [data-testid="stColumns"] {
         gap: 18px;
@@ -1420,48 +1321,108 @@ CSS_STYLES = """
         color: var(--neon-green) !important;
     }
 
-    /* ====== MOBILE RESPONSIVE ====== */
-    @media screen and (max-width: 768px) {
-        /* Metric cards: stack vertically */
+    /* ====== RESPONSIVE BASE ====== */
+    .stMain, section[data-testid="stMain"],
+    [data-testid="stAppViewBlockContainer"],
+    .stMainBlockContainer {
+        transition: margin-left 0.3s ease, width 0.3s ease !important;
+        max-width: 100% !important;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       TABLET  (≤ 1024px)
+       ────────────────────────────────────────────────────────────── */
+    @media (max-width: 1024px) {
+        .scanner-header h1 { font-size: 1.5rem !important; }
+        .scanner-header .subtitle { font-size: 0.82rem; }
+        div[data-testid="stMetric"] { padding: 14px 16px; }
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1.4rem !important; }
+        .empresa-card { padding: 16px 18px; }
+        .empresa-ticker { font-size: 1.2rem; }
+        .empresa-metric { min-width: 100px; padding: 8px 12px; }
+        .empresa-metrics { grid-template-columns: repeat(3, 1fr) !important; }
+        .rango-stat { min-width: 100px; padding: 10px 14px; }
+        .rango-stat-value { font-size: 1rem; }
+        .news-stat-card { padding: 10px 12px; }
+        .news-stat-number { font-size: 1rem; }
+        .gauge-wrap { width: 180px; height: 110px; }
+        .gauge-svg { width: 180px; height: 110px; }
+        .gauge-value { font-size: 2.2rem; }
+
+        /* Metric cards: 3-col on tablet */
         .ok-metric-row {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 8px !important;
+            flex-wrap: wrap !important;
         }
         .ok-metric-card {
-            min-width: 100% !important;
-            padding: 12px 14px !important;
+            flex: 1 1 calc(33% - 10px) !important;
+            min-width: 140px !important;
         }
-        .ok-metric-value {
-            font-size: 1.3rem !important;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       MOBILE  (≤ 768px)
+       Comprehensive mobile layout: every component adapts.
+       ────────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+
+        /* ── Global: prevent horizontal scroll ─────────────────────── */
+        html, body,
+        [data-testid="stAppViewContainer"],
+        .stApp {
+            overflow-x: hidden !important;
         }
-        .ok-metric-title {
-            font-size: 0.7rem !important;
+        .stApp {
+            padding: 0 !important;
+        }
+        .stMainBlockContainer, .block-container,
+        [data-testid="stAppViewBlockContainer"] {
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+            max-width: 100% !important;
         }
 
-        /* Tables: horizontal scroll */
-        .ok-table-scroll {
-            overflow-x: auto !important;
-            -webkit-overflow-scrolling: touch;
+        /* ── Typography: readable on small screens ─────────────────── */
+        h1 { font-size: 1.25rem !important; }
+        h2 { font-size: 1.1rem !important; }
+        h3 { font-size: 1rem !important; }
+        h4 { font-size: 0.92rem !important; }
+        .stMarkdown p, .stMarkdown li {
+            font-size: 0.88rem !important;
+            line-height: 1.55 !important;
         }
-        .ok-tbl {
-            min-width: 600px !important;
+        .stCaption, [data-testid="stCaptionContainer"] {
             font-size: 0.72rem !important;
-        }
-        .ok-tbl th, .ok-tbl td {
-            padding: 6px 8px !important;
-            white-space: nowrap !important;
+            line-height: 1.45 !important;
         }
 
-        /* Sidebar collapse */
-        [data-testid="stSidebar"] {
-            min-width: 0 !important;
+        /* ── Sidebar: narrower, smooth collapse ────────────────────── */
+        section[data-testid="stSidebar"] {
+            width: 85vw !important;
+            min-width: 260px !important;
+            max-width: 320px !important;
         }
-        [data-testid="stSidebar"][aria-expanded="false"] {
-            margin-left: -300px !important;
+        section[data-testid="stSidebar"][aria-expanded="false"] {
+            margin-left: -320px !important;
+        }
+        .ok-logo { padding: 16px 12px 12px 12px; }
+        .ok-logo-text { font-size: 0.95rem; }
+        .ok-nav-item { padding: 10px 12px; font-size: 0.82rem; }
+        section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label {
+            padding: 10px 12px !important;
+            font-size: 0.84rem !important;
         }
 
-        /* Columns: stack on mobile */
+        /* ── Header ────────────────────────────────────────────────── */
+        .scanner-header {
+            padding: 14px 16px !important;
+            border-radius: var(--radius-md) !important;
+            margin-bottom: 14px;
+        }
+        .scanner-header h1 { font-size: 1.2rem !important; }
+        .scanner-header .subtitle { font-size: 0.75rem; }
+        .scanner-header .badge { font-size: 0.58rem; padding: 3px 10px; }
+
+        /* ── Columns: stack vertically ─────────────────────────────── */
         [data-testid="stColumns"] {
             flex-direction: column !important;
             gap: 8px !important;
@@ -1469,67 +1430,251 @@ CSS_STYLES = """
         [data-testid="stColumn"] {
             width: 100% !important;
             flex: 1 1 100% !important;
+            min-width: 100% !important;
         }
 
-        /* Plotly charts: reduce height */
-        .js-plotly-plot {
-            max-height: 350px !important;
+        /* ── Buttons: full-width, touch-friendly (min 44px tap) ──── */
+        .stButton > button {
+            width: 100% !important;
+            min-height: 44px !important;
+            padding: 10px 16px !important;
+            font-size: 0.82rem !important;
         }
 
-        /* Company cards: full width */
-        .empresa-card {
-            padding: 14px !important;
+        /* ── Inputs: touch-friendly sizes ──────────────────────────── */
+        [data-baseweb="select"] > div,
+        [data-baseweb="input"] > div {
+            min-height: 44px !important;
         }
-        .empresa-metrics {
-            grid-template-columns: 1fr 1fr !important;
+        .stSlider [data-baseweb="slider"] [role="slider"] {
+            width: 24px !important;
+            height: 24px !important;
+        }
+        .stSlider {
+            padding: 0.5rem 0 !important;
+        }
+        [data-testid="stNumberInput"] input {
+            min-height: 44px !important;
+            font-size: 1rem !important;
+        }
+        [data-testid="stTextInput"] input {
+            min-height: 44px !important;
+            font-size: 1rem !important;
+        }
+
+        /* ── Metric cards: 2-col grid, compact ─────────────────────── */
+        .ok-metric-row {
+            grid-template-columns: repeat(2, 1fr) !important;
             gap: 8px !important;
         }
-
-        /* Badges: smaller */
-        .ok-badge {
-            font-size: 0.62rem !important;
-            padding: 2px 6px !important;
+        .ok-metric-card {
+            min-width: 0 !important;
+            padding: 12px 14px !important;
+            min-height: 80px !important;
         }
+        .ok-metric-value { font-size: 1.3rem !important; }
+        .ok-metric-title { font-size: 0.68rem !important; }
+        .ok-metric-delta { font-size: 0.72rem !important; }
+
+        /* ── st.metric: compact ────────────────────────────────────── */
+        div[data-testid="stMetric"] {
+            padding: 12px 14px;
+            border-radius: var(--radius-sm);
+        }
+        div[data-testid="stMetric"] label { font-size: 0.65rem !important; }
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+
+        /* ── Tabs: scroll horizontally, touch pads ─────────────────── */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px;
+            padding: 3px;
+            border-radius: var(--radius-sm);
+            overflow-x: auto;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+        }
+        .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 12px;
+            font-size: 0.72rem;
+            min-width: fit-content;
+            min-height: 40px;
+        }
+
+        /* ── Plotly charts: full width, auto height ────────────────── */
+        .js-plotly-plot,
+        .js-plotly-plot .plotly,
+        .js-plotly-plot .plot-container {
+            width: 100% !important;
+            max-width: 100vw !important;
+        }
+        .js-plotly-plot {
+            min-height: 280px !important;
+        }
+        /* Plotly modebar: hide on touch (use pinch-zoom instead) */
+        .js-plotly-plot .modebar { display: none !important; }
+
+        /* ── Alerts: compact ───────────────────────────────────────── */
+        .alerta-top, .alerta-principal, .alerta-prima, .alerta-cluster {
+            padding: 12px 14px;
+            font-size: 0.78rem;
+        }
+        .alerta-top::after { font-size: 0.52rem; padding: 2px 8px; top: 6px; right: 6px; }
+        .razon-alerta { font-size: 0.65rem; }
+        .cluster-detail { font-size: 0.68rem; }
+        .leyenda-colores { padding: 10px 14px !important; }
+        .leyenda-item { font-size: 0.68rem !important; }
+
+        /* ── Tables: horizontal touch-scroll ───────────────────────── */
+        .ok-table-wrap { border-radius: 10px; }
+        .ok-table-scroll {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .ok-tbl {
+            min-width: 580px !important;
+            font-size: 0.72rem !important;
+        }
+        .ok-tbl th, .ok-tbl td {
+            padding: 7px 8px !important;
+            white-space: nowrap !important;
+        }
+        .ok-table-header { padding: 10px 14px; }
+        .ok-table-title { font-size: 0.78rem; }
+        .ok-table-badge { font-size: 0.58rem; }
+
+        /* ── Badges: smaller tap targets ───────────────────────────── */
+        .ok-badge { font-size: 0.64rem !important; padding: 2px 6px !important; }
+
+        /* ── Status bar ──────────────────────────────────────────── */
+        .status-bar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 0.70rem; }
+
+        /* ── Empresa cards: stacked metrics ────────────────────────── */
+        .empresa-card { padding: 14px 16px; }
+        .empresa-ticker { font-size: 1.1rem; }
+        .empresa-desc { font-size: 0.70rem; padding: 8px 12px; }
+        .empresa-header { flex-direction: column; gap: 6px; }
+        .empresa-metrics {
+            flex-direction: column; gap: 6px;
+        }
+        .empresa-metric {
+            min-width: unset; width: 100%;
+            padding: 8px 12px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        /* ── News: compact cards ───────────────────────────────────── */
+        .news-card { padding: 12px 14px; }
+        .news-title { font-size: 0.82rem; }
+        .news-desc { font-size: 0.72rem; }
+        .news-meta { flex-wrap: wrap; gap: 6px; }
+        .news-stats { flex-wrap: wrap; gap: 8px; }
+        .news-stat-card { flex: 1 1 45%; min-width: 110px; }
+
+        /* ── Range: full-width stats ───────────────────────────────── */
+        .rango-stat {
+            min-width: unset; width: 100%; margin: 3px 0;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 14px;
+        }
+        .rango-stat-value { font-size: 0.95rem; }
+        .rango-barra-container { height: 44px; }
+
+        /* ── Gauges: SVG + Plotly ──────────────────────────────────── */
+        .gauge-container { padding: 18px 14px; max-width: 100%; }
+        .gauge-wrap { width: 160px; height: 100px; }
+        .gauge-svg { width: 160px; height: 100px; }
+        .gauge-value { font-size: 2rem; }
+        .gauge-footer { flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+        /* ── Sentiment breakdown: compact ──────────────────────────── */
+        .sp0 { padding: 12px !important; }
+        .sr { flex-wrap: wrap !important; gap: 4px !important; }
+        .sa { flex: 0 0 70px; font-size: 0.78rem; }
+        .sp { flex: 0 0 50px; font-size: 0.68rem; }
+
+        /* ── Misc ──────────────────────────────────────────────────── */
+        .watchlist-info { font-size: 0.72rem; padding: 12px 16px; }
+        .stExpander { border-radius: var(--radius-sm) !important; }
+        .info-card { padding: 14px 16px; }
+        hr { margin: 10px 0 !important; }
+        .footer-pro { padding: 12px 0 6px 0; font-size: 0.65rem; }
+        .footer-pro .footer-badge { font-size: 0.56rem; margin: 0 2px; }
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       SMALL PHONE  (≤ 480px)
+       ────────────────────────────────────────────────────────────── */
+    @media (max-width: 480px) {
+        .stMainBlockContainer, .block-container,
+        [data-testid="stAppViewBlockContainer"] {
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+        }
+        .scanner-header h1 { font-size: 1rem !important; }
+        .scanner-header { padding: 10px 12px !important; margin-bottom: 10px; }
+
+        /* Stack metric cards to single column */
+        .ok-metric-row {
+            grid-template-columns: 1fr !important;
+        }
+        .ok-metric-value { font-size: 1.2rem !important; }
+
+        /* st.metric */
+        div[data-testid="stMetric"] { padding: 10px 12px; }
+        div[data-testid="stMetric"] label { font-size: 0.60rem !important; }
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] { font-size: 1rem !important; }
 
         /* Tabs */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 4px !important;
-        }
-        .stTabs [data-baseweb="tab"] {
-            font-size: 0.72rem !important;
-            padding: 6px 10px !important;
-        }
+        .stTabs [data-baseweb="tab-list"] { flex-wrap: nowrap; }
+        .stTabs [data-baseweb="tab"] { padding: 8px 8px; font-size: 0.65rem; }
 
-        /* Header */
-        .ok-header-title {
-            font-size: 1.1rem !important;
-        }
-        .ok-header-subtitle {
-            font-size: 0.7rem !important;
-        }
+        /* Alerts */
+        .alerta-top::after { display: none; }
 
-        /* Sentiment panel */
-        .sp0 {
-            padding: 10px !important;
-        }
-        .sr {
-            flex-wrap: wrap !important;
-            gap: 4px !important;
+        /* Empresa cards */
+        .empresa-ticker { font-size: 0.95rem; }
+        .empresa-score { font-size: 0.58rem; padding: 3px 8px; }
+
+        /* News */
+        .news-stat-card { flex: 1 1 100%; }
+
+        /* Range */
+        .rango-barra-container { height: 38px; }
+        .rango-precio-actual { font-size: 0.60rem; padding: 2px 6px; }
+
+        /* Gauges */
+        .gauge-container { padding: 14px 10px; }
+        .gauge-wrap { width: 140px; height: 90px; }
+        .gauge-svg { width: 140px; height: 90px; }
+        .gauge-value { font-size: 1.7rem; }
+        .gauge-label { font-size: 0.72rem; }
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            width: 90vw !important;
+            max-width: 300px !important;
         }
     }
 
-    /* Tablet breakpoint */
-    @media screen and (max-width: 1024px) and (min-width: 769px) {
-        .ok-metric-row {
-            flex-wrap: wrap !important;
-        }
-        .ok-metric-card {
-            flex: 1 1 calc(33% - 8px) !important;
-            min-width: 140px !important;
-        }
-        .empresa-metrics {
-            grid-template-columns: repeat(3, 1fr) !important;
-        }
+    /* ──────────────────────────────────────────────────────────────────
+       LANDSCAPE MOBILE  (short height)
+       ────────────────────────────────────────────────────────────── */
+    @media (max-height: 500px) and (orientation: landscape) {
+        .scanner-header { padding: 8px 14px !important; }
+        .scanner-header h1 { font-size: 1.1rem !important; margin: 0 !important; }
+        div[data-testid="stMetric"] { padding: 8px 12px; }
+        .ok-metric-card { padding: 8px 10px !important; min-height: 60px !important; }
+        .gauge-container { padding: 12px 10px; }
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       PRINT
+       ────────────────────────────────────────────────────────────── */
+    @media print {
+        [data-testid="stSidebar"] { display: none !important; }
+        .stMain { margin-left: 0 !important; width: 100% !important; }
+        .stButton, .stTabs [data-baseweb="tab-list"] { display: none !important; }
     }
 </style>
 """
