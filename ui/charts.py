@@ -742,3 +742,254 @@ def render_iv_forecast_chart(
     )
 
     return fig
+
+
+# ============================================================================
+#         MC OPTION PRICING — Fan chart + Payoff histogram
+# ============================================================================
+
+def render_mc_option_paths(
+    mc_result: dict,
+    ticker: str = "",
+    max_paths_shown: int = 150,
+) -> Optional[go.Figure]:
+    """Fan chart de paths del subyacente con strike line para opción MC.
+
+    Muestra trayectorias GBM simuladas, banda de confianza P5-P95/P25-P75,
+    línea de strike, media, y break-even.
+
+    Args:
+        mc_result: dict de monte_carlo_option_pricing().
+        ticker: Símbolo para título.
+        max_paths_shown: Trayectorias individuales a dibujar.
+
+    Returns:
+        go.Figure o None si error.
+    """
+    if "error" in mc_result:
+        return None
+
+    paths = mc_result["paths_sample"]
+    mean_path = mc_result["mean_path"]
+    params = mc_result["params"]
+    n_steps = paths.shape[1] - 1
+    t = list(range(n_steps + 1))
+    otype = params["option_type"]
+
+    fig = go.Figure()
+
+    # ── Bandas de confianza ──────────────────────────────────────
+    p5 = np.percentile(paths, 5, axis=0)
+    p95 = np.percentile(paths, 95, axis=0)
+    p25 = np.percentile(paths, 25, axis=0)
+    p75 = np.percentile(paths, 75, axis=0)
+
+    # Banda 90%
+    fig.add_trace(go.Scatter(
+        x=t, y=p95.tolist(), mode="lines", line=dict(width=0), showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=t, y=p5.tolist(), mode="lines", line=dict(width=0),
+        fill="tonexty", fillcolor="rgba(59,130,246,0.08)", name="IC 90%",
+    ))
+
+    # Banda 50%
+    fig.add_trace(go.Scatter(
+        x=t, y=p75.tolist(), mode="lines", line=dict(width=0), showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=t, y=p25.tolist(), mode="lines", line=dict(width=0),
+        fill="tonexty", fillcolor="rgba(59,130,246,0.2)", name="IC 50%",
+    ))
+
+    # ── Trayectorias individuales ────────────────────────────────
+    n_show = min(max_paths_shown, paths.shape[0])
+    for i in range(n_show):
+        fig.add_trace(go.Scatter(
+            x=t, y=paths[i].tolist(), mode="lines",
+            line=dict(width=0.3, color="rgba(148,163,184,0.12)"),
+            showlegend=False, hoverinfo="skip",
+        ))
+
+    # ── Media ────────────────────────────────────────────────────
+    fig.add_trace(go.Scatter(
+        x=t, y=mean_path.tolist(), mode="lines",
+        line=dict(color="#00ff88", width=2),
+        name=f"Media: ${mc_result['mean_path'][-1]:,.2f}",
+    ))
+
+    # ── Strike line ──────────────────────────────────────────────
+    fig.add_hline(
+        y=params["K"], line=dict(color="#ef4444", width=2, dash="dash"),
+        annotation_text=f"Strike ${params['K']:,.1f}",
+        annotation_font=dict(color="#ef4444", size=11),
+    )
+
+    # ── Break-even line ──────────────────────────────────────────
+    fig.add_hline(
+        y=mc_result["breakeven"],
+        line=dict(color="#f59e0b", width=1.5, dash="dot"),
+        annotation_text=f"B/E ${mc_result['breakeven']:,.2f}",
+        annotation_font=dict(color="#f59e0b", size=10),
+        annotation_position="bottom right",
+    )
+
+    # ── Spot line ────────────────────────────────────────────────
+    fig.add_hline(
+        y=params["S0"],
+        line=dict(color="#64748b", width=1, dash="dashdot"),
+        annotation_text=f"Spot ${params['S0']:,.2f}",
+        annotation_font=dict(color="#64748b", size=10),
+        annotation_position="top left",
+    )
+
+    tipo_label = "CALL" if otype == "call" else "PUT"
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"🎲 MC {tipo_label} ${params['K']:,.0f} — {ticker} "
+                f"({params['n_sims']:,} sims, σ={params['sigma']*100:.1f}%)"
+            ),
+            font=dict(size=14, color="white"),
+        ),
+        **_DARK_LAYOUT,
+        height=450,
+        margin=dict(l=60, r=20, t=50, b=40),
+        xaxis=dict(
+            title="Paso temporal",
+            color="#94a3b8",
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.08)",
+        ),
+        yaxis=dict(
+            title="Precio Subyacente ($)",
+            color="#94a3b8",
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.08)",
+        ),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            xanchor="right", x=1,
+            font=dict(size=10, color="#94a3b8"),
+        ),
+    )
+
+    return fig
+
+
+def render_mc_payoff_histogram(
+    mc_result: dict,
+    ticker: str = "",
+) -> Optional[go.Figure]:
+    """Histograma de payoffs al vencimiento de la simulación MC.
+
+    Muestra la distribución completa de resultados posibles,
+    con líneas verticales en la media, mediana, y percentiles clave.
+    Los payoffs = 0 (OTM) se agrupan en el primer bin para visualizar
+    claramente la probabilidad de pérdida total.
+
+    Args:
+        mc_result: dict de monte_carlo_option_pricing().
+        ticker: Símbolo.
+
+    Returns:
+        go.Figure o None.
+    """
+    if "error" in mc_result:
+        return None
+
+    payoffs = mc_result["payoffs"]
+    params = mc_result["params"]
+    otype = params["option_type"]
+    tipo_label = "CALL" if otype == "call" else "PUT"
+
+    # Separar ITM vs OTM para color distinto
+    itm_payoffs = payoffs[payoffs > 0]
+    otm_count = int(np.sum(payoffs == 0))
+
+    fig = go.Figure()
+
+    # Histograma principal (solo ITM payoffs)
+    if len(itm_payoffs) > 0:
+        fig.add_trace(go.Histogram(
+            x=itm_payoffs,
+            nbinsx=50,
+            name=f"ITM ({mc_result['itm_probability']:.0f}%)",
+            marker_color="#10b981",
+            opacity=0.85,
+            hovertemplate="Payoff: $%{x:.2f}<br>Frecuencia: %{y}<extra></extra>",
+        ))
+
+    # Barra OTM (payoff = 0)
+    if otm_count > 0:
+        otm_pct = 100 - mc_result["itm_probability"]
+        fig.add_trace(go.Bar(
+            x=[0], y=[otm_count],
+            name=f"OTM / $0 ({otm_pct:.0f}%)",
+            marker_color="#ef4444",
+            opacity=0.85,
+            width=max(0.5, float(np.max(payoffs)) * 0.015) if np.max(payoffs) > 0 else 0.5,
+            hovertemplate=f"Payoff: $0 (OTM)<br>Paths: {otm_count:,}<extra></extra>",
+        ))
+
+    # ── Líneas de referencia ─────────────────────────────────────
+    mean_po = mc_result["expected_payoff"]
+    median_po = mc_result["median_payoff"]
+
+    fig.add_vline(
+        x=mean_po, line=dict(color="#00ff88", width=2, dash="dash"),
+        annotation_text=f"Media ${mean_po:.2f}",
+        annotation_font=dict(color="#00ff88", size=10),
+        annotation_position="top right",
+    )
+
+    if median_po > 0:
+        fig.add_vline(
+            x=median_po, line=dict(color="#3b82f6", width=1.5, dash="dot"),
+            annotation_text=f"Mediana ${median_po:.2f}",
+            annotation_font=dict(color="#3b82f6", size=10),
+            annotation_position="top left",
+        )
+
+    # P95 payoff
+    p95 = mc_result["payoff_percentiles"]["p95"]
+    if p95 > 0:
+        fig.add_vline(
+            x=p95, line=dict(color="#f59e0b", width=1, dash="dashdot"),
+            annotation_text=f"P95 ${p95:.2f}",
+            annotation_font=dict(color="#f59e0b", size=9),
+            annotation_position="top right",
+        )
+
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"📊 Distribución Payoffs — {tipo_label} ${params['K']:,.0f} {ticker} "
+                f"(MC ${mc_result['mc_price']:.2f})"
+            ),
+            font=dict(size=14, color="white"),
+        ),
+        **_DARK_LAYOUT,
+        height=380,
+        margin=dict(l=60, r=20, t=50, b=50),
+        xaxis=dict(
+            title="Payoff al Vencimiento ($)",
+            color="#94a3b8",
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.08)",
+        ),
+        yaxis=dict(
+            title="Frecuencia (paths)",
+            color="#94a3b8",
+            showgrid=True,
+            gridcolor="rgba(148,163,184,0.08)",
+        ),
+        barmode="overlay",
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            xanchor="right", x=1,
+            font=dict(size=10, color="#94a3b8"),
+        ),
+    )
+
+    return fig

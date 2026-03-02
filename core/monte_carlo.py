@@ -135,6 +135,177 @@ def _empty_result(spot: float, iv: float, days: int) -> dict:
     }
 
 
+# ============================================================================
+#        MONTE CARLO — VALORACIÓN DE OPCIONES CON RIESGO AJUSTADO
+# ============================================================================
+
+def monte_carlo_option_pricing(
+    S0: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    option_type: str = "call",
+    n_sims: int = 10_000,
+    n_steps: int = 252,
+    seed: int = 42,
+) -> dict:
+    """Monte Carlo para precio y riesgo ajustado de opción europea.
+
+    Simula N trayectorias del subyacente usando GBM risk-neutral
+    (drift = r) y calcula el payoff descontado de la opción.
+
+    **Uso financiero:**
+    - mc_price: valor teórico de la opción según MC (comparar con prima de mercado).
+    - itm_probability: % de escenarios donde la opción termina ITM.
+    - expected_payoff: payoff promedio sin descontar — si > prima pagada → edge positivo.
+    - payoff_distribution: histograma para evaluar asimetría del riesgo.
+    - max_drawdown_pct: peor caída del subyacente en cualquier path (riesgo extremo).
+
+    Args:
+        S0: Precio spot actual del subyacente.
+        K: Strike de la opción.
+        T: Tiempo al vencimiento en años (e.g. 30/365 = 0.082).
+        r: Tasa libre de riesgo anualizada (e.g. 0.045).
+        sigma: Volatilidad implícita anualizada en decimal (e.g. 0.25 = 25%).
+        option_type: "call" o "put".
+        n_sims: Número de simulaciones (default 10,000).
+        n_steps: Pasos temporales (default 252 = días de trading por año).
+        seed: Semilla para reproducibilidad.
+
+    Returns:
+        dict con métricas, payoffs, paths, parámetros e interpretación.
+    """
+    # ── Validación ───────────────────────────────────────────────
+    otype = option_type.strip().lower()
+    if otype not in ("call", "put"):
+        return {"error": f"option_type inválido: '{option_type}'. Usa 'call' o 'put'."}
+
+    if S0 <= 0 or K <= 0 or T <= 0:
+        return {"error": f"Parámetros inválidos: S0={S0}, K={K}, T={T}"}
+
+    if sigma <= 0:
+        sigma = 0.20  # fallback conservador
+        logger.warning(f"sigma ≤ 0, usando fallback 20%")
+
+    # ── Simulación GBM (risk-neutral: drift = r) ────────────────
+    rng = np.random.default_rng(seed)
+    dt = T / n_steps
+
+    Z = rng.standard_normal((n_sims, n_steps))
+    log_returns = (r - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * Z
+
+    log_paths = np.zeros((n_sims, n_steps + 1))
+    log_paths[:, 0] = np.log(S0)
+    log_paths[:, 1:] = np.log(S0) + np.cumsum(log_returns, axis=1)
+    paths = np.exp(log_paths)
+
+    final_prices = paths[:, -1]
+
+    # ── Payoffs al vencimiento ───────────────────────────────────
+    if otype == "call":
+        payoffs = np.maximum(final_prices - K, 0)
+    else:
+        payoffs = np.maximum(K - final_prices, 0)
+
+    # ── Precio MC (payoff medio descontado) ──────────────────────
+    discount = np.exp(-r * T)
+    mc_price = float(discount * np.mean(payoffs))
+
+    # ── Métricas de riesgo ───────────────────────────────────────
+    itm_mask = payoffs > 0
+    itm_prob = float(np.mean(itm_mask) * 100)
+    expected_payoff = float(np.mean(payoffs))
+    median_payoff = float(np.median(payoffs))
+    std_payoff = float(np.std(payoffs))
+
+    # Percentiles del payoff
+    payoff_pctls = {
+        "p5": float(np.percentile(payoffs, 5)),
+        "p25": float(np.percentile(payoffs, 25)),
+        "p50": float(np.percentile(payoffs, 50)),
+        "p75": float(np.percentile(payoffs, 75)),
+        "p95": float(np.percentile(payoffs, 95)),
+    }
+
+    # Max drawdown del subyacente (peor caída intra-path)
+    running_max = np.maximum.accumulate(paths, axis=1)
+    drawdowns = (paths - running_max) / running_max
+    max_dd = float(np.min(drawdowns)) * 100  # en %
+
+    # Valor en riesgo (VaR) del payoff
+    var_95 = float(np.percentile(payoffs, 5))  # P5 = VaR 95%
+    cvar_95 = float(np.mean(payoffs[payoffs <= var_95])) if np.any(payoffs <= var_95) else 0.0
+
+    # Break-even: precio del subyacente donde payoff = prima MC
+    if otype == "call":
+        breakeven = K + mc_price
+    else:
+        breakeven = K - mc_price
+
+    # ── Interpretación financiera ────────────────────────────────
+    moneyness = ((S0 - K) / K * 100) if otype == "call" else ((K - S0) / K * 100)
+
+    if itm_prob >= 60:
+        prob_label = "**alta probabilidad ITM**"
+        prob_advice = "Escenario favorable para comprar"
+    elif itm_prob >= 40:
+        prob_label = "**probabilidad moderada ITM**"
+        prob_advice = "Riesgo/beneficio equilibrado"
+    else:
+        prob_label = "**baja probabilidad ITM**"
+        prob_advice = "Alto riesgo — prima probablemente se pierde"
+
+    tipo_label = "CALL" if otype == "call" else "PUT"
+    interpretation = (
+        f"🎲 **{tipo_label} ${K:,.1f}** — Precio MC: **${mc_price:.2f}** | "
+        f"Prob ITM: **{itm_prob:.1f}%** ({prob_label})\n\n"
+        f"Payoff esperado: ${expected_payoff:.2f} ± ${std_payoff:.2f} | "
+        f"Break-even: ${breakeven:,.2f}\n\n"
+        f"💡 {prob_advice}. "
+    )
+
+    if mc_price > 0 and expected_payoff / mc_price > 1.5:
+        interpretation += "Edge positivo: payoff esperado supera la prima teórica."
+    elif itm_prob < 30:
+        interpretation += "Considerar vender esta opción en lugar de comprarla (cobrar prima)."
+
+    # ── Sample de paths para visualización ───────────────────────
+    n_sample = min(200, n_sims)
+    sample_idx = np.linspace(0, n_sims - 1, n_sample, dtype=int)
+
+    result = {
+        "mc_price": round(mc_price, 2),
+        "itm_probability": round(itm_prob, 1),
+        "expected_payoff": round(expected_payoff, 2),
+        "median_payoff": round(median_payoff, 2),
+        "std_payoff": round(std_payoff, 2),
+        "payoff_percentiles": {k: round(v, 2) for k, v in payoff_pctls.items()},
+        "max_drawdown_pct": round(max_dd, 2),
+        "var_95": round(var_95, 2),
+        "cvar_95": round(cvar_95, 2),
+        "breakeven": round(breakeven, 2),
+        "payoffs": payoffs,
+        "paths_sample": paths[sample_idx],
+        "mean_path": paths.mean(axis=0),
+        "final_prices": final_prices,
+        "params": {
+            "S0": S0, "K": K, "T": T, "r": r, "sigma": sigma,
+            "option_type": otype, "n_sims": n_sims, "n_steps": n_steps,
+        },
+        "interpretation": interpretation,
+    }
+
+    logger.info(
+        f"MC Option: {otype.upper()} K=${K:.1f}, S0=${S0:.2f}, "
+        f"σ={sigma*100:.1f}%, T={T:.3f}y → "
+        f"Price=${mc_price:.2f}, P(ITM)={itm_prob:.1f}%, "
+        f"E[payoff]=${expected_payoff:.2f}"
+    )
+
+    return result
+
+
 def calcular_expected_move_mc(
     spot_price: float,
     iv: float,

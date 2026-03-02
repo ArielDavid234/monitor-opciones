@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Página: 📈 Data Analysis — Sentimiento, soportes/resistencias, distribución, IV Rank, Monte Carlo, Anomaly Detection."""
 import logging
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -628,6 +629,150 @@ def render(ticker_symbol, **kwargs):
                 ]), unsafe_allow_html=True)
         else:
             st.info("⏳ Ejecuta un escaneo para activar Monte Carlo.")
+
+    st.markdown("---")
+
+    # ================================================================
+    # MC OPTION PRICING — Valoración de opciones con riesgo ajustado
+    # ================================================================
+    st.markdown("#### 🎲 Valoración MC de Opciones (Riesgo Ajustado)")
+    st.caption(
+        "Simula miles de trayectorias del subyacente para estimar el precio teórico "
+        "de una opción, la probabilidad de terminar ITM, y la distribución de payoffs."
+    )
+
+    # Controles del usuario
+    _mc_opt_col1, _mc_opt_col2, _mc_opt_col3, _mc_opt_col4 = st.columns(4)
+
+    # Obtener strikes disponibles del scan
+    _strikes_disponibles = sorted(df_analisis["Strike"].unique()) if "Strike" in df_analisis.columns else []
+    _spot = precio_mc or 0
+
+    with _mc_opt_col1:
+        mc_opt_type = st.selectbox(
+            "Tipo de opción", ["CALL", "PUT"], index=0, key="mc_opt_type",
+        )
+
+    with _mc_opt_col2:
+        # Default: strike ATM más cercano
+        if _strikes_disponibles and _spot > 0:
+            _atm_idx = int(np.argmin([abs(s - _spot) for s in _strikes_disponibles]))
+            mc_strike = st.selectbox(
+                "Strike", _strikes_disponibles, index=_atm_idx, key="mc_opt_strike",
+                format_func=lambda x: f"${x:,.1f}",
+            )
+        else:
+            mc_strike = st.number_input(
+                "Strike ($)", value=_spot or 100.0, min_value=1.0,
+                step=1.0, key="mc_opt_strike_input",
+            )
+
+    with _mc_opt_col3:
+        mc_n_sims = st.select_slider(
+            "Simulaciones",
+            options=[1_000, 5_000, 10_000, 25_000, 50_000],
+            value=10_000, key="mc_opt_nsims",
+        )
+
+    with _mc_opt_col4:
+        mc_days = st.slider(
+            "Días al vencimiento", min_value=5, max_value=180,
+            value=30, step=5, key="mc_opt_days",
+        )
+
+    # Ejecutar simulación
+    if _spot > 0 and mc_strike > 0:
+        # Obtener IV para la simulación
+        _mc_iv = 0.25
+        if iv_data and iv_data["iv_actual"] > 0:
+            _mc_iv = iv_data["iv_actual"] / 100
+        elif "IV" in df_analisis.columns:
+            _med = df_analisis["IV"].median()
+            if _med > 0:
+                _mc_iv = _med / 100
+
+        _mc_opt_key = (
+            f"_mc_opt_{ticker_symbol}_{mc_opt_type}_{mc_strike}_{mc_days}"
+            f"_{mc_n_sims}_{st.session_state.get('scan_count', 0)}"
+        )
+
+        if st.session_state.get(_mc_opt_key) is None:
+            try:
+                from core.monte_carlo import monte_carlo_option_pricing
+                from config.constants import RISK_FREE_RATE
+
+                mc_opt_result = monte_carlo_option_pricing(
+                    S0=_spot,
+                    K=float(mc_strike),
+                    T=mc_days / 365,
+                    r=RISK_FREE_RATE,
+                    sigma=_mc_iv,
+                    option_type=mc_opt_type.lower(),
+                    n_sims=mc_n_sims,
+                    n_steps=mc_days,
+                )
+                st.session_state[_mc_opt_key] = mc_opt_result
+            except Exception as e:
+                logger.warning(f"Error MC Option Pricing: {e}")
+                st.session_state[_mc_opt_key] = {"error": str(e)}
+
+        mc_opt = st.session_state.get(_mc_opt_key, {})
+
+        if "error" not in mc_opt:
+            # Interpretación
+            st.markdown(mc_opt["interpretation"])
+
+            # Métricas principales
+            st.markdown(render_metric_row([
+                render_metric_card("Precio MC", f"${mc_opt['mc_price']:.2f}",
+                                   color_override="#00ff88"),
+                render_metric_card("P(ITM)", f"{mc_opt['itm_probability']:.1f}%",
+                                   color_override="#10b981" if mc_opt["itm_probability"] >= 50 else "#ef4444"),
+                render_metric_card("Payoff Esperado", f"${mc_opt['expected_payoff']:.2f}"),
+                render_metric_card("Break-Even", f"${mc_opt['breakeven']:,.2f}"),
+            ]), unsafe_allow_html=True)
+
+            # Charts
+            from ui.charts import render_mc_option_paths, render_mc_payoff_histogram
+
+            col_mc1, col_mc2 = st.columns(2)
+            with col_mc1:
+                fig_paths = render_mc_option_paths(mc_opt, ticker_symbol)
+                if fig_paths:
+                    st.plotly_chart(fig_paths, use_container_width=True, key="mc_opt_paths")
+
+            with col_mc2:
+                fig_payoff = render_mc_payoff_histogram(mc_opt, ticker_symbol)
+                if fig_payoff:
+                    st.plotly_chart(fig_payoff, use_container_width=True, key="mc_opt_payoff")
+
+            # Métricas de riesgo expandibles
+            with st.expander("📊 Métricas de riesgo detalladas"):
+                _r1, _r2, _r3 = st.columns(3)
+                with _r1:
+                    st.metric("Mediana Payoff", f"${mc_opt['median_payoff']:.2f}")
+                    st.metric("Std Payoff", f"${mc_opt['std_payoff']:.2f}")
+                with _r2:
+                    st.metric("VaR 95%", f"${mc_opt['var_95']:.2f}")
+                    st.metric("CVaR 95%", f"${mc_opt['cvar_95']:.2f}")
+                with _r3:
+                    st.metric("Max Drawdown", f"{mc_opt['max_drawdown_pct']:.1f}%")
+                    st.metric("P95 Payoff", f"${mc_opt['payoff_percentiles']['p95']:.2f}")
+
+                st.markdown(f"""
+**Parámetros usados:**
+- Spot: ${mc_opt['params']['S0']:,.2f} | Strike: ${mc_opt['params']['K']:,.1f}
+- σ (IV): {mc_opt['params']['sigma']*100:.1f}% | r: {mc_opt['params']['r']*100:.2f}%
+- T: {mc_opt['params']['T']:.4f} años ({mc_days} días) | Sims: {mc_opt['params']['n_sims']:,}
+""")
+                st.caption(
+                    "⚠️ MC pricing es orientativo — asume distribución log-normal y "
+                    "sin saltos. No incluye costos de transacción ni spread bid/ask."
+                )
+        else:
+            st.warning(f"MC Option: {mc_opt.get('error', 'Error desconocido')}")
+    else:
+        st.info("⏳ Ejecuta un escaneo para activar la valoración MC de opciones.")
 
     st.markdown("---")
 
