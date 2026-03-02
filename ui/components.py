@@ -1246,7 +1246,6 @@ def render_bias_gauge(
             number={
                 "font": {"size": 42, "color": bar_color},
                 "valueformat": ".2f",
-                "suffix": f"  {interpretation}",
             },
             delta={
                 "reference": 1.0,
@@ -1286,13 +1285,20 @@ def render_bias_gauge(
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="white", family="Inter, sans-serif"),
             height=height,
-            margin=dict(l=25, r=25, t=55, b=15),
+            margin=dict(l=25, r=25, t=55, b=5),
         )
 
         st.plotly_chart(
             fig,
             use_container_width=True,
             key=f"bias_gauge{key_suffix}",
+        )
+
+        # Interpretación debajo del gráfico
+        st.markdown(
+            f'<div style="text-align:center;font-size:1.1rem;font-weight:700;'
+            f'color:{bar_color};margin:-8px 0 4px 0;">{interpretation}</div>',
+            unsafe_allow_html=True,
         )
 
         # Caption explicativo con datos crudos
