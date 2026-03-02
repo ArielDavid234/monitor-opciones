@@ -159,6 +159,137 @@ def predict_implied_volatility(
 
 
 # ============================================================================
+#        ENRICHMENT — Datos fundamentales vía Alpha Vantage
+# ============================================================================
+
+def enrich_with_fundamentals(ticker: str) -> dict:
+    """Enriquece el análisis de un ticker con datos de Alpha Vantage.
+
+    Combina datos de la API externa (earnings surprise, short interest,
+    PEG actualizado, ROE, márgenes) con interpretaciones financieras
+    que ayudan a contextualizar la actividad de opciones.
+
+    **Uso financiero:**
+    - Earnings surprise positivo + IV alta → probable contracción de IV post-earnings
+    - Short interest > 10% + calls subiendo → posible short squeeze
+    - PEG < 1 → empresa infravalorada vs su crecimiento
+    - ROE alto + margen de beneficio alto → empresa de calidad (protective puts baratos)
+
+    Args:
+        ticker: Símbolo del activo (e.g. "AAPL").
+
+    Returns:
+        dict con fundamentals enriquecidos + interpretación, o dict con "error".
+    """
+    try:
+        from infrastructure.api_integrations import get_alpha_vantage_fundamentals
+    except ImportError as e:
+        return {"error": f"Módulo api_integrations no disponible: {e}"}
+
+    raw = get_alpha_vantage_fundamentals(ticker)
+
+    if "error" in raw:
+        return raw
+
+    # ── Interpretaciones financieras ─────────────────────────────
+    signals = []
+    score_adjustment = 0  # ajuste al score de proyección
+
+    # PEG
+    peg = raw.get("peg_ratio")
+    if peg is not None and peg > 0:
+        if peg < 1.0:
+            signals.append(f"📗 PEG **{peg:.2f}** → Infravalorada vs crecimiento (oportunidad)")
+            score_adjustment += 8
+        elif peg < 1.5:
+            signals.append(f"📗 PEG **{peg:.2f}** → Valuación razonable")
+            score_adjustment += 3
+        elif peg < 2.5:
+            signals.append(f"📙 PEG **{peg:.2f}** → Moderadamente cara")
+        else:
+            signals.append(f"📕 PEG **{peg:.2f}** → Sobrevalorada — precaución")
+            score_adjustment -= 5
+
+    # Earnings surprise
+    surprise = raw.get("last_surprise_pct")
+    beat_streak = raw.get("earnings_beat_streak", 0)
+    if surprise is not None:
+        if surprise > 10:
+            signals.append(
+                f"📈 Earnings surprise **+{surprise:.1f}%** "
+                f"({'racha de ' + str(beat_streak) + ' beats' if beat_streak > 1 else 'último quarter'})"
+                f" → Momentum positivo"
+            )
+            score_adjustment += 5
+        elif surprise > 0:
+            signals.append(f"📈 Earnings surprise **+{surprise:.1f}%** → Beat moderado")
+            score_adjustment += 2
+        elif surprise < -5:
+            signals.append(f"📉 Earnings surprise **{surprise:.1f}%** → Miss significativo — riesgo")
+            score_adjustment -= 5
+        else:
+            signals.append(f"📉 Earnings surprise **{surprise:.1f}%** → Ligero miss")
+            score_adjustment -= 2
+
+    # Short interest
+    short_pct = raw.get("short_interest_pct", 0)
+    if short_pct > 20:
+        signals.append(f"🔴 Short Interest **{short_pct:.1f}%** → Muy alto — posible squeeze o caída")
+        score_adjustment -= 3
+    elif short_pct > 10:
+        signals.append(f"🟡 Short Interest **{short_pct:.1f}%** → Alto — vigilar cobertura corta")
+    elif short_pct > 5:
+        signals.append(f"🟡 Short Interest **{short_pct:.1f}%** → Moderado")
+    elif short_pct > 0:
+        signals.append(f"🟢 Short Interest **{short_pct:.1f}%** → Bajo — sentimiento positivo")
+        score_adjustment += 2
+
+    # ROE
+    roe = raw.get("roe")
+    if roe is not None and roe > 0:
+        if roe > 25:
+            signals.append(f"💪 ROE **{roe:.1f}%** → Retorno excepcional sobre capital")
+            score_adjustment += 3
+        elif roe > 15:
+            signals.append(f"📗 ROE **{roe:.1f}%** → Retorno sólido")
+        elif roe > 0:
+            signals.append(f"📙 ROE **{roe:.1f}%** → Retorno modesto")
+
+    # Profit margin
+    pm = raw.get("profit_margin")
+    if pm is not None and pm > 0:
+        if pm > 20:
+            signals.append(f"💰 Margen neto **{pm:.1f}%** → Alta rentabilidad")
+        elif pm > 10:
+            signals.append(f"📗 Margen neto **{pm:.1f}%** → Saludable")
+
+    # Dividendo
+    div_yield = raw.get("dividend_yield")
+    if div_yield is not None and div_yield > 0:
+        signals.append(f"💵 Dividendo **{div_yield:.2f}%** anual")
+
+    # ── Summary interpretation ───────────────────────────────────
+    if score_adjustment > 5:
+        overall = "🟢 **Fundamentales favorables** — refuerzan tesis alcista en opciones"
+    elif score_adjustment > 0:
+        overall = "🟡 **Fundamentales neutros-positivos** — sin señales de alarma"
+    elif score_adjustment > -5:
+        overall = "🟡 **Fundamentales mixtos** — evaluar con cautela"
+    else:
+        overall = "🔴 **Fundamentales débiles** — riesgo elevado en operaciones con opciones"
+
+    enriched = {
+        **raw,
+        "signals": signals,
+        "score_adjustment": score_adjustment,
+        "overall_interpretation": overall,
+    }
+
+    logger.info(f"{ticker}: Enrichment OK — {len(signals)} señales, adj={score_adjustment:+d}")
+    return enriched
+
+
+# ============================================================================
 #        PROYECCIONES FUNDAMENTALES (existente)
 # ============================================================================
 

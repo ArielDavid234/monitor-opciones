@@ -12,7 +12,7 @@ from utils.formatters import (
 )
 from ui.components import (
     render_pro_table, render_metric_card, render_metric_row,
-    _sentiment_badge, _type_badge,
+    _sentiment_badge, _type_badge, render_fundamentals_card,
 )
 from ui.charts import (
     render_pcr_gauge, render_iv_gauge, render_oi_heatmap,
@@ -926,3 +926,27 @@ def render(ticker_symbol, **kwargs):
             )
     else:
         st.warning(f"📊 IV Forecast: {iv_forecast.get('error', 'Error desconocido')}")
+
+    st.markdown("---")
+
+    # ================================================================
+    # DATOS FUNDAMENTALES — Alpha Vantage enrichment
+    # ================================================================
+    st.markdown("#### 📊 Datos Fundamentales (Alpha Vantage)")
+    st.caption(
+        "Valuación, rentabilidad, earnings surprise y short interest — "
+        "contextualiza opciones con fundamentos reales de la empresa."
+    )
+
+    _fund_cache_key = f"_fundamentals_{ticker_symbol}_{st.session_state.get('scan_count', 0)}"
+    if st.session_state.get(_fund_cache_key) is None:
+        try:
+            from core.projections import enrich_with_fundamentals
+            fund_data = enrich_with_fundamentals(ticker_symbol)
+            st.session_state[_fund_cache_key] = fund_data
+        except Exception as e:
+            logger.warning(f"Error fundamentals: {e}")
+            st.session_state[_fund_cache_key] = {"error": f"Error: {e}"}
+
+    fund_data = st.session_state.get(_fund_cache_key, {})
+    render_fundamentals_card(fund_data, ticker_symbol)

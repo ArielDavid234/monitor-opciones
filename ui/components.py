@@ -1307,3 +1307,145 @@ def render_bias_gauge(
     except Exception as exc:
         logger.error("Error renderizando bias gauge: %s", exc, exc_info=True)
         st.error(f"Error al generar el gauge de sesgo: {exc}")
+
+
+# ============================================================================
+#        FUNDAMENTALS CARD — Alpha Vantage enrichment
+# ============================================================================
+
+def render_fundamentals_card(data: dict, ticker: str) -> None:
+    """Tarjeta HTML de datos fundamentales enriquecidos (Alpha Vantage).
+
+    Muestra métricas clave de valuación, rentabilidad, earnings history,
+    y señales interpretadas que ayudan a contextualizar las opciones.
+
+    Args:
+        data: dict de enrich_with_fundamentals(). Si contiene "error" muestra warning.
+        ticker: Símbolo para título.
+    """
+    if "error" in data:
+        st.warning(f"📊 Fundamentales: {data['error']}")
+        return
+
+    name = data.get("name", ticker)
+    source = data.get("source", "Alpha Vantage")
+
+    # ── Señales interpretadas ────────────────────────────────────
+    overall = data.get("overall_interpretation", "")
+    signals = data.get("signals", [])
+
+    if overall:
+        st.markdown(overall)
+
+    # ── Métricas en grid ─────────────────────────────────────────
+    def _fmt_val(val, fmt=".2f", prefix="", suffix=""):
+        """Formatea un valor para mostrar, o N/A si es None/0."""
+        if val is None or val == 0:
+            return "N/A"
+        return f"{prefix}{val:{fmt}}{suffix}"
+
+    def _fmt_money(val):
+        if val is None or val == 0:
+            return "N/A"
+        if val >= 1e12:
+            return f"${val/1e12:.1f}T"
+        if val >= 1e9:
+            return f"${val/1e9:.1f}B"
+        if val >= 1e6:
+            return f"${val/1e6:.0f}M"
+        return f"${val:,.0f}"
+
+    # Row 1: Valuación
+    peg_val = data.get("peg_ratio")
+    pe_fwd = data.get("pe_forward")
+    ev_ebitda = data.get("ev_to_ebitda")
+    rev_ttm = data.get("revenue_ttm", 0)
+
+    peg_color = (
+        "#10b981" if peg_val and 0 < peg_val < 1.5 else
+        "#f59e0b" if peg_val and peg_val < 2.5 else
+        "#ef4444" if peg_val and peg_val >= 2.5 else
+        "#64748b"
+    )
+
+    cards_row1 = [
+        render_metric_card("PEG Ratio", _fmt_val(peg_val), color_override=peg_color),
+        render_metric_card("P/E Forward", _fmt_val(pe_fwd)),
+        render_metric_card("EV/EBITDA", _fmt_val(ev_ebitda)),
+        render_metric_card("Revenue TTM", _fmt_money(rev_ttm)),
+    ]
+    st.markdown(render_metric_row(cards_row1), unsafe_allow_html=True)
+
+    # Row 2: Rentabilidad + Mercado
+    pm = data.get("profit_margin")
+    roe = data.get("roe")
+    short_pct = data.get("short_interest_pct", 0)
+    eps = data.get("eps_ttm")
+
+    short_color = (
+        "#ef4444" if short_pct > 15 else
+        "#f59e0b" if short_pct > 5 else
+        "#10b981"
+    )
+
+    cards_row2 = [
+        render_metric_card("Margen Neto", _fmt_val(pm, suffix="%")),
+        render_metric_card("ROE", _fmt_val(roe, suffix="%")),
+        render_metric_card("Short Interest", _fmt_val(short_pct, suffix="%"), color_override=short_color),
+        render_metric_card("EPS TTM", _fmt_val(eps, prefix="$")),
+    ]
+    st.markdown(render_metric_row(cards_row2), unsafe_allow_html=True)
+
+    # ── Señales / bullets ────────────────────────────────────────
+    if signals:
+        signals_html = "".join(f"<li>{s}</li>" for s in signals)
+        st.markdown(
+            f'<ul style="margin:8px 0;padding-left:20px;color:#cbd5e1;'
+            f'font-size:0.88rem;line-height:1.7;">{signals_html}</ul>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Earnings History (expandible) ────────────────────────────
+    quarterly = data.get("quarterly_earnings", [])
+    if quarterly:
+        beat_streak = data.get("earnings_beat_streak", 0)
+        streak_txt = f" — 🔥 Racha: {beat_streak} beats consecutivos" if beat_streak > 1 else ""
+
+        with st.expander(f"📊 Historial de Earnings ({len(quarterly)} quarters){streak_txt}"):
+            rows_html = ""
+            for q in quarterly:
+                surp = q.get("surprise_pct", 0)
+                if surp > 0:
+                    badge = f'<span style="color:#10b981;font-weight:700;">+{surp:.1f}% ✓</span>'
+                elif surp < 0:
+                    badge = f'<span style="color:#ef4444;font-weight:700;">{surp:.1f}% ✗</span>'
+                else:
+                    badge = '<span style="color:#64748b;">0.0%</span>'
+
+                rows_html += (
+                    f'<tr>'
+                    f'<td style="padding:6px 10px;">{q.get("date", "N/A")}</td>'
+                    f'<td style="padding:6px 10px;text-align:right;">${q.get("estimated_eps", 0):.2f}</td>'
+                    f'<td style="padding:6px 10px;text-align:right;">${q.get("reported_eps", 0):.2f}</td>'
+                    f'<td style="padding:6px 10px;text-align:right;">{badge}</td>'
+                    f'</tr>'
+                )
+
+            st.markdown(f"""
+<table class="ok-tbl" style="width:100%;font-size:0.85rem;">
+<thead><tr>
+<th style="padding:8px 10px;text-align:left;">Fecha</th>
+<th style="padding:8px 10px;text-align:right;">EPS Est.</th>
+<th style="padding:8px 10px;text-align:right;">EPS Rep.</th>
+<th style="padding:8px 10px;text-align:right;">Surprise</th>
+</tr></thead>
+<tbody>{rows_html}</tbody>
+</table>
+""", unsafe_allow_html=True)
+
+    # ── Footer / Source ──────────────────────────────────────────
+    st.caption(
+        f"Fuente: {source} | Última actualización de earnings: "
+        f"{data.get('last_earnings_date', 'N/A')} | "
+        f"Combina con OI, IV y flujo para decisiones contextualizadas"
+    )
