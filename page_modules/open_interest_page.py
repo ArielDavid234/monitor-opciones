@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Página: 📊 Open Interest — Top Cambios OI de Barchart + OI Heatmap."""
+"""Página: 📊 Open Interest — Top Cambios OI de Barchart + OI Heatmap interactivo."""
 import streamlit as st
 import pandas as pd
 
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart
-from ui.components import render_metric_card, render_metric_row
-from ui.charts import render_oi_heatmap
+from ui.components import render_metric_card, render_metric_row, render_oi_heatmap
+from core.scanner import get_oi_matrix
 
 
 def render(ticker_symbol, **kwargs):
@@ -207,30 +207,58 @@ def render(ticker_symbol, **kwargs):
                 st.info("Sin contratos con OI Chg negativo.")
 
         # ================================================================
-        #  OI HEATMAP — Strike × Vencimiento
+        #  OI HEATMAP INTERACTIVO — Strike × Vencimiento (px.imshow)
         # ================================================================
         if st.session_state.datos_completos:
             st.markdown("---")
-            st.markdown("#### 🗺️ Heatmap de Open Interest — Strike × Vencimiento")
-            hm_col_oi1, hm_col_oi2 = st.columns(2)
+            st.markdown("#### \U0001f50d Heatmap Interactivo de Open Interest")
+            st.caption(
+                "Detecta clusters de OI institucional, niveles de soporte/resistencia "
+                "gamma y pin risk por expiración. Hover sobre cada celda para ver "
+                "Volumen y Delta."
+            )
+
+            hm_col_oi1, hm_col_oi2, hm_col_oi3 = st.columns([1, 1, 2])
             with hm_col_oi1:
                 hm_tipo_oi = st.radio(
                     "Tipo", ["ALL", "CALL", "PUT"],
                     horizontal=True, key="oi_hm_tipo", index=0,
                 )
             with hm_col_oi2:
-                hm_value_oi = st.radio(
-                    "Métrica", ["OI", "Volumen"],
-                    horizontal=True, key="oi_hm_value", index=0,
+                # Filtro por expiración
+                _exps = sorted({d["Vencimiento"] for d in st.session_state.datos_completos
+                                if "Vencimiento" in d})
+                _exp_options = ["Todas"] + _exps
+                hm_exp_sel = st.selectbox(
+                    "Expiración", _exp_options, key="oi_hm_exp", index=0,
                 )
-            fig_hm_oi = render_oi_heatmap(
+            with hm_col_oi3:
+                min_oi = st.slider(
+                    "Umbral mínimo OI", 0, 50_000, 1_000, step=500,
+                    key="oi_hm_min",
+                    help="Filtra contratos con OI menor a este valor para eliminar ruido retail.",
+                )
+
+            # Obtener datos filtrados via get_oi_matrix
+            _exp_filter = None if hm_exp_sel == "Todas" else hm_exp_sel
+            _oi_matrix, _oi_df = get_oi_matrix(
                 st.session_state.datos_completos,
-                tipo=hm_tipo_oi,
-                value_col=hm_value_oi,
+                expiration_filter=_exp_filter,
+                min_oi=min_oi,
             )
-            if fig_hm_oi:
-                st.plotly_chart(fig_hm_oi, use_container_width=True, key="oi_page_heatmap")
-                st.caption("Concentración de OI por Strike y Vencimiento — identifica dónde se acumula interés institucional")
+
+            if not _oi_df.empty:
+                render_oi_heatmap(
+                    _oi_df,
+                    min_oi_threshold=min_oi,
+                    tipo_filter=hm_tipo_oi,
+                    key_suffix="_oi_page",
+                )
+                st.caption(
+                    "Verde = alto OI (liquidez, imán de precio) · "
+                    "Rojo = bajo OI (sin resistencia) · "
+                    "Hover: OI + Volumen + Delta por celda"
+                )
             else:
                 st.info("Sin datos suficientes del escaneo para generar el heatmap.")
 

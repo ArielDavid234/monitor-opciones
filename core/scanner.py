@@ -670,6 +670,82 @@ def ejecutar_escaneo(
     return alertas, datos, None, perfil, fechas_procesadas
 
 
+def get_oi_matrix(
+    datos: list[dict],
+    expiration_filter: str | None = None,
+    min_oi: int = 0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Construye la matriz OI (Strike × Expiración) para heatmap interactivo.
+
+    Opera sobre los datos ya descargados por ``ejecutar_escaneo`` (almacenados
+    en ``st.session_state.datos_completos``), sin hacer peticiones HTTP extra.
+
+    Cómo ayuda a decisiones de inversión
+    ------------------------------------
+    * **Clusters de OI** → niveles donde creadores de mercado tienen
+      exposición gamma significativa.  Funcionan como imanes de precio.
+    * **Expiración dominante** → identifica dónde vence la mayor parte
+      de la exposición institucional (pin risk).
+    * **Filtro min_oi** → elimina ruido retail y deja solo niveles
+      con liquidez real.
+
+    Args:
+        datos: Lista de dicts del escaneo.
+        expiration_filter: Filtrar por un vencimiento específico (``None`` = todos).
+        min_oi: Umbral mínimo de OI a incluir (contratos con OI < min_oi se descartan).
+
+    Returns:
+        ``(oi_matrix, df_filtered)``
+
+        * ``oi_matrix``   — ``pd.DataFrame`` pivotado (filas = Vencimiento,
+          columnas = Strike, valores = OI sumado).
+        * ``df_filtered`` — ``pd.DataFrame`` plano filtrado con todas las
+          columnas originales (útil para hover data: Volumen, Delta, IV …).
+
+    Example (pytest)::
+
+        >>> datos = [
+        ...     {"Vencimiento": "2026-03-20", "Strike": 590, "OI": 5000,
+        ...      "Volumen": 300, "Delta": 0.55, "Tipo": "CALL", "IV": 18.2,
+        ...      "Prima_Volumen": 150000, "Ask": 5.2, "Bid": 5.0, "Ultimo": 5.1, "Lado": "Ask"},
+        ...     {"Vencimiento": "2026-03-20", "Strike": 600, "OI": 800,
+        ...      "Volumen": 50, "Delta": -0.30, "Tipo": "PUT", "IV": 22.1,
+        ...      "Prima_Volumen": 25000, "Ask": 3.1, "Bid": 2.9, "Ultimo": 3.0, "Lado": "Bid"},
+        ... ]
+        >>> matrix, df_f = get_oi_matrix(datos, min_oi=1000)
+        >>> assert matrix.shape == (1, 1)          # solo el strike 590 pasa el filtro
+        >>> assert df_f.shape[0] == 1
+    """
+    if not datos:
+        return pd.DataFrame(), pd.DataFrame()
+
+    df = pd.DataFrame(datos)
+
+    # Normalizar nombre de prima
+    if "Prima_Volumen" in df.columns and "Prima_Vol" not in df.columns:
+        df = df.rename(columns={"Prima_Volumen": "Prima_Vol"})
+
+    # Filtro por expiración
+    if expiration_filter:
+        df = df[df["Vencimiento"] == expiration_filter]
+
+    # Filtro por OI mínimo
+    if min_oi > 0 and "OI" in df.columns:
+        df = df[df["OI"] >= min_oi]
+
+    if df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    oi_matrix = df.pivot_table(
+        values="OI",
+        index="Vencimiento",
+        columns="Strike",
+        aggfunc="sum",
+    ).fillna(0)
+
+    return oi_matrix, df
+
+
 def guardar_alerta_csv(carpeta, ticker_sym, alerta):
     """Guarda una alerta individual en el archivo CSV diario."""
     try:

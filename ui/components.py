@@ -5,9 +5,12 @@ Funciones de formateo, renderizado de tarjetas y helpers de Streamlit.
 import time
 import logging
 import streamlit as st
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from random import uniform
+from typing import Optional
 
 from config.constants import ANALYSIS_SLEEP_RANGE
 from core.projections import analizar_proyeccion_empresa
@@ -953,4 +956,168 @@ def render_pro_table(df, title=None, badge_count=None, max_height=520,
         f'</div>'
         f'{footer_html}'
         f'</div>'
+    )
+
+
+# ============================================================================
+#          OI HEATMAP — Interactivo (px.imshow + hover enriquecido)
+# ============================================================================
+
+def render_oi_heatmap(
+    df: pd.DataFrame,
+    min_oi_threshold: int = 1000,
+    tipo_filter: str = "ALL",
+    key_suffix: str = "",
+) -> None:
+    """Heatmap interactivo de Open Interest con transparencia total para decisiones.
+
+    Cómo ayuda a decisiones de inversión
+    ------------------------------------
+    * **Clusters de OI alto (verde)** → niveles de soporte/resistencia gamma
+      donde creadores de mercado cubren exposición.  Funcionan como *imanes*
+      de precio y suelen actuar de techo/piso intradía.
+    * **Zonas vacías (rojo/oscuro)** → poca liquidez, el precio puede
+      atravesar esos strikes sin resistencia.
+    * **Expiración dominante** → fila con mayor OI total indica el
+      vencimiento con mayor *pin risk* (gamma exposure concentrada).
+    * **Hover enriquecido** → cada celda muestra OI + Volumen + Delta,
+      permitiendo distinguir actividad fresca (vol alto) de posiciones
+      viejas (OI alto pero vol bajo).
+
+    Args:
+        df: DataFrame con columnas ``OI``, ``Volumen``, ``Delta``,
+            ``Strike``, ``Vencimiento`` y opcionalmente ``Tipo``.
+        min_oi_threshold: Umbral mínimo de OI; filtra ruido retail.
+        tipo_filter: ``"ALL"``, ``"CALL"`` o ``"PUT"``.
+        key_suffix: Sufijo para el ``st.plotly_chart`` key (evita
+            colisiones si se renderiza más de una vez).
+
+    Example (pytest-compatible)::
+
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({
+        ...     'OI': [5000, 1500, 200], 'Volumen': [300, 100, 10],
+        ...     'Delta': [0.50, -0.30, 0.10],
+        ...     'Strike': [590.0, 600.0, 610.0],
+        ...     'Vencimiento': ['2026-03-20', '2026-03-20', '2026-03-20'],
+        ...     'Tipo': ['CALL', 'PUT', 'CALL'],
+        ... })
+        >>> # render_oi_heatmap(df, min_oi_threshold=1000)  # renders 2 cells
+    """
+    if df is None or df.empty:
+        st.warning("Sin datos de OI disponibles.")
+        return
+
+    _df = df.copy()
+
+    # Normalizar Prima
+    if "Prima_Volumen" in _df.columns and "Prima_Vol" not in _df.columns:
+        _df = _df.rename(columns={"Prima_Volumen": "Prima_Vol"})
+
+    # Filtro por tipo
+    if tipo_filter != "ALL" and "Tipo" in _df.columns:
+        _df = _df[_df["Tipo"] == tipo_filter]
+
+    # Filtro OI mínimo
+    if "OI" not in _df.columns:
+        st.warning("El DataFrame no contiene la columna 'OI'.")
+        return
+    _df = _df[_df["OI"] >= min_oi_threshold]
+
+    if _df.empty:
+        st.warning(f"Sin contratos con OI ≥ {min_oi_threshold:,}")
+        return
+
+    # ── Matrices pivotadas (mismas dimensiones) ──────────────────────
+    oi_matrix = _df.pivot_table(
+        values="OI", index="Vencimiento", columns="Strike", aggfunc="sum",
+    ).fillna(0)
+
+    vol_matrix = _df.pivot_table(
+        values="Volumen", index="Vencimiento", columns="Strike", aggfunc="sum",
+    ).reindex_like(oi_matrix).fillna(0)
+
+    delta_matrix = _df.pivot_table(
+        values="Delta", index="Vencimiento", columns="Strike", aggfunc="mean",
+    ).reindex_like(oi_matrix).fillna(0)
+
+    # Limitar a top 40 strikes con mayor OI total (evita chart ilegible)
+    if oi_matrix.shape[1] > 40:
+        top_cols = oi_matrix.sum(axis=0).nlargest(40).index
+        oi_matrix = oi_matrix[top_cols]
+        vol_matrix = vol_matrix[top_cols]
+        delta_matrix = delta_matrix[top_cols]
+
+    # Ordenar strikes ascendente
+    sorted_cols = sorted(oi_matrix.columns)
+    oi_matrix = oi_matrix[sorted_cols]
+    vol_matrix = vol_matrix[sorted_cols]
+    delta_matrix = delta_matrix[sorted_cols]
+
+    # ── customdata: (rows × cols × 2) para hover vol+delta ──────────
+    customdata = np.stack([vol_matrix.values, delta_matrix.values], axis=-1)
+
+    x_labels = [f"${s:,.0f}" for s in oi_matrix.columns]
+    y_labels = oi_matrix.index.tolist()
+
+    # Decidir si mostrar texto en celdas (solo si la matriz es manejable)
+    _show_text = (oi_matrix.shape[0] * oi_matrix.shape[1]) <= 400
+
+    fig = px.imshow(
+        oi_matrix.values,
+        x=x_labels,
+        y=y_labels,
+        aspect="auto",
+        color_continuous_scale="RdYlGn",
+        labels=dict(x="Strike Price", y="Expiración", color="Open Interest"),
+        text_auto=_show_text,
+    )
+
+    fig.update_traces(
+        customdata=customdata,
+        hovertemplate=(
+            "Strike: %{x}<br>"
+            "Expiración: %{y}<br>"
+            "OI: %{z:,.0f}<br>"
+            "Volumen: %{customdata[0]:,.0f}<br>"
+            "Delta: %{customdata[1]:.3f}<extra></extra>"
+        ),
+    )
+
+    _tipo_label = tipo_filter if tipo_filter != "ALL" else "CALL + PUT"
+    fig.update_layout(
+        title=dict(
+            text=(
+                f"\U0001f50d Heatmap de Open Interest — {_tipo_label} "
+                f"(umbral ≥ {min_oi_threshold:,})"
+            ),
+            font=dict(size=14, color="white"),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="white", family="Inter, sans-serif"),
+        height=max(400, min(700, len(oi_matrix) * 55 + 120)),
+        margin=dict(l=120, r=20, t=55, b=80),
+        xaxis=dict(
+            title="Strike Price",
+            color="#94a3b8",
+            tickangle=-45,
+            tickfont=dict(size=10),
+            side="bottom",
+        ),
+        yaxis=dict(
+            title="Expiración",
+            color="#94a3b8",
+            tickfont=dict(size=11),
+        ),
+        coloraxis_colorbar=dict(
+            title=dict(text="OI", font=dict(color="#94a3b8", size=11)),
+            tickfont=dict(color="#94a3b8", size=10),
+        ),
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        key=f"oi_heatmap_interactive{key_suffix}",
     )
