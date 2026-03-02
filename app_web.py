@@ -153,7 +153,34 @@ _PAGE_MAP: dict[str, object] = {
 }
 
 if _render_fn := _PAGE_MAP.get(_effective_page):
-    _render_fn()
+    try:
+        _render_fn()
+    except Exception as _page_exc:
+        # Safety net: si un circuit breaker abierto o retries agotados
+        # llegan hasta aquí sin ser manejados por la página, informar al usuario.
+        _exc_name = type(_page_exc).__name__
+        if "CircuitOpen" in _exc_name:
+            st.error(
+                "🔌 **API pausada** — Demasiados fallos consecutivos. "
+                "Los datos se recuperarán automáticamente en unos minutos.",
+                icon="🔌",
+            )
+        elif "RetryError" in _exc_name or "RateLimit" in _exc_name:
+            st.warning(
+                "⚠️ **Datos retrasados** — Límite de API alcanzado tras "
+                "varios reintentos. Intenta de nuevo en unos minutos.",
+                icon="⏳",
+            )
+        else:
+            import logging as _log
+            _log.getLogger(__name__).error(
+                "Error no manejado en página %s: %s", _effective_page, _page_exc,
+                exc_info=True,
+            )
+            st.error(
+                f"❌ Error inesperado: {_page_exc}",
+                icon="❌",
+            )
 
 # ============================================================================
 #                    FOOTER

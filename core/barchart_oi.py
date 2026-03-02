@@ -8,7 +8,9 @@ Fuente: https://www.barchart.com/options/open-interest-change
 """
 
 import time
+import logging
 import pandas as pd
+from random import uniform
 from urllib.parse import unquote
 try:
     from curl_cffi import requests as curl_requests
@@ -16,6 +18,13 @@ try:
 except ImportError:
     import requests as curl_requests
     _HAS_CURL_CFFI = False
+
+from utils.retry_utils import (
+    cb_barchart, RateLimitError, CircuitOpenError,
+    notify_retry_exhausted, notify_circuit_open,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # ── Caché TTL para evitar refetches redundantes ─────────────────────────────
@@ -200,6 +209,13 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
     if cached is not None:
         return cached
 
+    # Verificar circuit breaker antes de iniciar
+    try:
+        cb_barchart.check()
+    except CircuitOpenError as e:
+        _oi_cache_set(cache_key, None, str(e))
+        return None, str(e)
+
     def _fetch_direction(order_dir, max_rows=99999):
         """Fetch paginado en una dirección hasta agotar los no-cero o max_rows."""
         PAGE_SIZE = 1000
@@ -241,7 +257,7 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
 
             sim = simbolo.upper()
             resp = None
-            for retry in range(4):
+            for retry_num in range(4):
                 resp = session.get(
                     "https://www.barchart.com/proxies/core-api/v1/options/get",
                     params=params,
@@ -252,13 +268,25 @@ def obtener_oi_simbolo(simbolo, tipo="call", limite=99999):
                     timeout=30,
                 )
                 if resp.status_code == 429:
-                    time.sleep(2 ** retry)
+                    # Exponential backoff + jitter (tenacity-style)
+                    wait = (2 ** retry_num) + uniform(0.5, 2.0)
+                    logger.warning(
+                        "Barchart 429 rate-limit (retry %d/4) — esperando %.1fs",
+                        retry_num + 1, wait,
+                    )
+                    cb_barchart.record_failure()
+                    time.sleep(wait)
                 elif resp.status_code == 403 and pages_this_session > 0:
-                    time.sleep(1.5)
+                    wait = 1.5 + uniform(0.3, 1.0)
+                    logger.info(
+                        "Barchart 403 — renovando sesión (%.1fs)", wait,
+                    )
+                    time.sleep(wait)
                     session = _crear_sesion()
                     token = _obtener_xsrf(session)
                     pages_this_session = 0
                 else:
+                    cb_barchart.record_success()
                     break
 
             if resp.status_code == 403:

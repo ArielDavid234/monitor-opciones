@@ -19,13 +19,18 @@ from typing import Optional
 import requests
 import streamlit as st
 
+from utils.retry_utils import (
+    retry_alpha_vantage, cb_alpha_vantage,
+    RateLimitError, CircuitOpenError,
+    notify_retry_exhausted, notify_circuit_open,
+)
+from tenacity import RetryError
+
 logger = logging.getLogger(__name__)
 
 _AV_BASE_URL = "https://www.alphavantage.co/query"
 
 # Rate limit: Alpha Vantage free tier = 25 req/día, 5 req/min
-_MAX_RETRIES = 2
-_RETRY_DELAY = 12  # segundos entre reintentos (para rate limit)
 
 
 def _get_av_api_key() -> Optional[str]:
@@ -44,56 +49,49 @@ def _get_av_api_key() -> Optional[str]:
     return None
 
 
+@retry_alpha_vantage(max_attempts=3, min_wait=8, max_wait=60)
 def _av_request(params: dict, api_key: str) -> Optional[dict]:
-    """Ejecuta un request a Alpha Vantage con retry y manejo de rate limit.
+    """Ejecuta un request a Alpha Vantage con retry automático (tenacity).
+
+    Backoff exponencial + jitter para respetar el rate-limit severo
+    del free tier (5 req/min). Detecta rate-limit tanto por HTTP 429
+    como por el campo JSON \"Note\" que AV devuelve.
 
     Args:
         params: Parámetros de la query (sin apikey).
         api_key: API key válida.
 
     Returns:
-        dict con la respuesta JSON, o None si falla.
+        dict con la respuesta JSON, o None si error no-transitorio.
+
+    Raises:
+        RateLimitError: Si AV devuelve rate-limit (para que tenacity reintente).
+        requests.exceptions.Timeout: Timeout de red.
+        requests.exceptions.HTTPError: Error 5xx del servidor.
     """
     params["apikey"] = api_key
 
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            resp = requests.get(
-                _AV_BASE_URL,
-                params=params,
-                timeout=15,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+    resp = requests.get(_AV_BASE_URL, params=params, timeout=15)
 
-            # Alpha Vantage devuelve {"Note": "..."} cuando excedes rate limit
-            if "Note" in data and "call frequency" in data.get("Note", ""):
-                if attempt < _MAX_RETRIES:
-                    logger.warning(
-                        f"Alpha Vantage rate limit — reintentando en {_RETRY_DELAY}s "
-                        f"(intento {attempt + 1}/{_MAX_RETRIES})"
-                    )
-                    time.sleep(_RETRY_DELAY)
-                    continue
-                logger.error("Alpha Vantage rate limit excedido — sin reintentos")
-                return None
+    # HTTP 429 → RateLimitError (tenacity reintentará)
+    if resp.status_code == 429:
+        raise RateLimitError("Alpha Vantage HTTP 429 rate limit")
 
-            # Respuesta vacía o error
-            if "Error Message" in data:
-                logger.warning(f"Alpha Vantage error: {data['Error Message']}")
-                return None
+    resp.raise_for_status()
+    data = resp.json()
 
-            return data
+    # Alpha Vantage devuelve {"Note": "..."} cuando excedes rate limit
+    if "Note" in data and "call frequency" in data.get("Note", ""):
+        raise RateLimitError(
+            f"Alpha Vantage rate limit (JSON Note): {data['Note'][:80]}"
+        )
 
-        except requests.exceptions.Timeout:
-            logger.warning(f"Alpha Vantage timeout (intento {attempt + 1})")
-            if attempt < _MAX_RETRIES:
-                time.sleep(3)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Alpha Vantage request error: {e}")
-            return None
+    # Respuesta vacía o error no-transitorio
+    if "Error Message" in data:
+        logger.warning(f"Alpha Vantage error: {data['Error Message']}")
+        return None
 
-    return None
+    return data
 
 
 def _safe_float(value, default: float = 0.0) -> float:
@@ -135,11 +133,28 @@ def get_alpha_vantage_fundamentals(ticker: str) -> dict:
             "source": "Alpha Vantage",
         }
 
+    # ── Circuit breaker: pausar si Alpha Vantage está caído ──────
+    try:
+        cb_alpha_vantage.check()
+    except CircuitOpenError as e:
+        return {"error": str(e), "source": "Alpha Vantage"}
+
     # ── Company Overview ─────────────────────────────────────────
-    overview = _av_request({"function": "OVERVIEW", "symbol": ticker}, api_key)
+    try:
+        overview = _av_request({"function": "OVERVIEW", "symbol": ticker}, api_key)
+        cb_alpha_vantage.record_success()
+    except (RetryError, RateLimitError, Exception) as e:
+        cb_alpha_vantage.record_failure()
+        return {"error": f"Error obteniendo overview: {e}", "source": "Alpha Vantage"}
 
     # ── Earnings (quarterly) ─────────────────────────────────────
-    earnings = _av_request({"function": "EARNINGS", "symbol": ticker}, api_key)
+    try:
+        earnings = _av_request({"function": "EARNINGS", "symbol": ticker}, api_key)
+        cb_alpha_vantage.record_success()
+    except (RetryError, RateLimitError, Exception) as e:
+        cb_alpha_vantage.record_failure()
+        earnings = None  # no bloquear si solo falla earnings
+        logger.warning("Alpha Vantage earnings failed for %s: %s", ticker, e)
 
     # ── Parsear Overview ─────────────────────────────────────────
     if not overview or len(overview) < 5:

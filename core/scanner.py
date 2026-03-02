@@ -35,6 +35,11 @@ except ImportError:
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.cache import get_cached_chain, cache_chain
+from utils.retry_utils import (
+    retry_yfinance, cb_yfinance, RateLimitError, CircuitOpenError,
+    notify_retry_exhausted, notify_circuit_open,
+)
+from tenacity import RetryError
 
 
 # ============================================================================
@@ -334,38 +339,55 @@ def construir_simbolo_contrato(ticker_sym, exp_date, opt_type, strike):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def obtener_historial_contrato(contract_symbol):
-    """Obtiene el historial de precios de un contrato de opción (cached 5 min)."""
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            session, perfil = _get_pooled_session()
-            contract = yf.Ticker(contract_symbol, session=session)
-            hist = contract.history(period="1mo")
-            if hist.empty:
-                hist = contract.history(period="5d")
-            _return_session(session, perfil)
-            return hist, None
-        except Exception as e:
-            error_msg = str(e).lower()
-            is_rate_limit = any(
-                kw in error_msg
-                for kw in ["429", "rate limit", "too many requests"]
-            )
-            if attempt < max_retries - 1:
-                wait = 25 + (15 * attempt) if is_rate_limit else uniform(1.8, 3.5)
-                logger.warning(
-                    "Error en historial %s (intento %d/%d): %s. Esperando %.1fs...",
-                    contract_symbol, attempt + 1, max_retries, e, wait,
-                )
-                time.sleep(wait)
-            else:
-                return pd.DataFrame(), str(e)
+    """Obtiene el historial de precios de un contrato de opción (cached 5 min).
+
+    Usa tenacity para retry con backoff exponencial + jitter y circuit breaker
+    para pausar si yfinance está caído.
+    """
+    try:
+        cb_yfinance.check()
+    except CircuitOpenError as e:
+        return pd.DataFrame(), str(e)
+
+    try:
+        hist = _yf_fetch_contract_history(contract_symbol)
+        cb_yfinance.record_success()
+        return hist, None
+    except (RetryError, Exception) as e:
+        cb_yfinance.record_failure()
+        logger.warning(
+            "Historial %s falló tras retries: %s", contract_symbol, e,
+        )
+        return pd.DataFrame(), str(e)
+
+
+@retry_yfinance(max_attempts=4, min_wait=2, max_wait=40)
+def _yf_fetch_contract_history(contract_symbol):
+    """Fetch interno con retry automático (tenacity).
+
+    Cada intento usa una sesión del pool con TLS fingerprint distinto.
+    Si falla, tenacity espera con backoff exponencial + jitter random
+    antes del siguiente intento.
+    """
+    session, perfil = _get_pooled_session()
+    try:
+        contract = yf.Ticker(contract_symbol, session=session)
+        hist = contract.history(period="1mo")
+        if hist.empty:
+            hist = contract.history(period="5d")
+        _return_session(session, perfil)
+        return hist
+    except Exception as e:
+        # Clasificar para que tenacity decida si reintentar
+        _maybe_raise_rate_limit(e)
+        raise
 
 
 def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
     """Obtiene una sola cadena de opciones con retries y caché.
-    
+
     Función auxiliar para paralelización. Retorna (exp_date, chain_data, error).
+    Usa tenacity para retry con backoff exponencial + jitter.
     """
     # Intentar del caché primero
     try:
@@ -373,26 +395,61 @@ def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
         return exp_date, chain_data, None
     except Exception:
         pass
-    
-    # Cache miss — fetch con retries
-    for attempt in range(max_retries):
-        try:
-            session, perfil = _get_pooled_session()
-            ticker = yf.Ticker(ticker_sym, session=session)
-            raw_chain = ticker.option_chain(exp_date)
-            chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
-            _return_session(session, perfil)
-            return exp_date, chain_data, None
-        except Exception as e:
-            error_msg = str(e).lower()
-            is_rate_limit = any(
-                kw in error_msg for kw in ["429", "rate limit", "too many requests"]
-            )
-            if attempt < max_retries - 1:
-                wait = 25 + (15 * attempt) if is_rate_limit else uniform(1.8, 3.5)
-                time.sleep(wait)
-            else:
-                return exp_date, None, str(e)
+
+    # Circuit breaker
+    try:
+        cb_yfinance.check()
+    except CircuitOpenError as e:
+        return exp_date, None, str(e)
+
+    # Cache miss — fetch con tenacity retry
+    try:
+        chain_data = _yf_fetch_chain_attempt(ticker_sym, exp_date)
+        cb_yfinance.record_success()
+        return exp_date, chain_data, None
+    except (RetryError, Exception) as e:
+        cb_yfinance.record_failure()
+        return exp_date, None, str(e)
+
+
+@retry_yfinance(max_attempts=4, min_wait=2, max_wait=40)
+def _yf_fetch_chain_attempt(ticker_sym, exp_date):
+    """Fetch interno de cadena con retry automático (tenacity)."""
+    session, perfil = _get_pooled_session()
+    try:
+        ticker = yf.Ticker(ticker_sym, session=session)
+        raw_chain = ticker.option_chain(exp_date)
+        chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
+        _return_session(session, perfil)
+        return chain_data
+    except Exception as e:
+        _maybe_raise_rate_limit(e)
+        raise
+
+
+def _maybe_raise_rate_limit(exc: Exception) -> None:
+    """Convierte excepciones genéricas de yfinance a RateLimitError.
+
+    yfinance envuelve errores HTTP en Exception genérica. Si detectamos
+    keywords de rate-limit en el mensaje, convertimos a RateLimitError
+    para que tenacity aplique esperas más largas y el circuit breaker
+    registre el fallo correctamente.
+    """
+    msg = str(exc).lower()
+    if any(kw in msg for kw in ["429", "rate limit", "too many requests"]):
+        raise RateLimitError(str(exc)) from exc
+
+
+@retry_yfinance(max_attempts=3, min_wait=3, max_wait=30)
+def _yf_fetch_options_dates(ticker_sym):
+    """Fetch directo de fechas de expiración con retry (tenacity)."""
+    session, perfil = crear_sesion_nueva()
+    try:
+        ticker = yf.Ticker(ticker_sym, session=session)
+        return tuple(ticker.options)
+    except Exception as e:
+        _maybe_raise_rate_limit(e)
+        raise
 
 
 def fetch_with_cache(ticker_sym: str, exp_date: str):
@@ -432,21 +489,16 @@ def ejecutar_escaneo(
     try:
         options_dates = _cached_options_dates(ticker_sym)
     except Exception as e:
-        # Si falla el caché, intentar directo con retries
-        options_dates = None
-        for attempt in range(3):
-            try:
-                session, perfil = crear_sesion_nueva()
-                ticker = yf.Ticker(ticker_sym, session=session)
-                options_dates = tuple(ticker.options)
-                break
-            except Exception as e2:
-                if attempt < 2:
-                    time.sleep(5 * (3 ** attempt))
-                else:
-                    return [], [], str(e2), perfil, []
-        if not options_dates:
-            return [], [], str(e), perfil, []
+        # Si falla el caché, intentar directo con tenacity retry
+        try:
+            cb_yfinance.check()
+            options_dates = _yf_fetch_options_dates(ticker_sym)
+            cb_yfinance.record_success()
+        except CircuitOpenError as ce:
+            return [], [], str(ce), perfil, []
+        except (RetryError, Exception) as e2:
+            cb_yfinance.record_failure()
+            return [], [], str(e2), perfil, []
 
     if not options_dates:
         return [], [], "No se encontraron fechas de vencimiento", perfil, []
@@ -473,46 +525,16 @@ def ejecutar_escaneo(
                 elif error:
                     logger.warning("Error fetch paralelo %s: %s", exp_date, error)
     else:
-        # Modo secuencial (original) — fallback para pocas fechas
-        max_retries = 3
+        # Modo secuencial — usa _fetch_single_chain que ya tiene tenacity retry
         for idx, exp_date in enumerate(dates_to_scan):
             if idx > 0:
                 time.sleep(uniform(*SCAN_SLEEP_RANGE))
 
-            # Intentar obtener del caché primero
-            chain_data = None
-            try:
-                chain_data = _cached_option_chain(ticker_sym, exp_date)
-            except Exception:
-                # Cache miss o error — retry con backoff
-                for attempt in range(max_retries):
-                    try:
-                        session, perfil = crear_sesion_nueva()
-                        ticker_retry = yf.Ticker(ticker_sym, session=session)
-                        raw_chain = ticker_retry.option_chain(exp_date)
-                        chain_data = {"calls": raw_chain.calls.copy(), "puts": raw_chain.puts.copy()}
-                        break
-                    except Exception as e:
-                        error_msg = str(e).lower()
-                        is_rate_limit = any(
-                            kw in error_msg
-                            for kw in ["429", "rate limit", "too many requests"]
-                        )
-                        if attempt < max_retries - 1:
-                            wait = 25 + (15 * attempt) if is_rate_limit else uniform(1.8, 3.5)
-                            logger.warning(
-                                "Error en %s (intento %d/%d). Esperando %.0fs...",
-                                exp_date, attempt + 1, max_retries, wait,
-                            )
-                            time.sleep(wait)
-                        else:
-                            logger.warning(
-                                "Falló después de %d intentos en %s: %s",
-                                max_retries, exp_date, e,
-                            )
-
+            _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
             if chain_data:
                 chains_map[exp_date] = chain_data
+            elif error:
+                logger.warning("Error secuencial %s: %s", exp_date, error)
     
     # Procesar todas las cadenas obtenidas — VECTORIZADO
 
