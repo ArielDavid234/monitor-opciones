@@ -214,8 +214,7 @@ def render(ticker_symbol, **kwargs):
             st.markdown("#### \U0001f50d Heatmap Interactivo de Open Interest")
             st.caption(
                 "Detecta clusters de OI institucional, niveles de soporte/resistencia "
-                "gamma y pin risk por expiración. Hover sobre cada celda para ver "
-                "Volumen y Delta."
+                "gamma y pin risk por expiración. Hover: OI · Volumen · Delta · Gamma · IV · Prima."
             )
 
             hm_col_oi1, hm_col_oi2, hm_col_oi3 = st.columns([1, 1, 2])
@@ -255,9 +254,9 @@ def render(ticker_symbol, **kwargs):
                     key_suffix="_oi_page",
                 )
                 st.caption(
-                    "Verde = alto OI (liquidez, imán de precio) · "
-                    "Rojo = bajo OI (sin resistencia) · "
-                    "Hover: OI + Volumen + Delta por celda"
+                    "🔴 Rojo = alto OI (muro de resistencia/soporte) · "
+                    "🟢 Verde = bajo OI (sin resistencia, precio se mueve libre) · "
+                    "Hover: OI + Volumen + Delta + Gamma + IV + Prima"
                 )
             else:
                 st.info("Sin datos suficientes del escaneo para generar el heatmap.")
