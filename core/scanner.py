@@ -746,6 +746,85 @@ def get_oi_matrix(
     return oi_matrix, df
 
 
+def calculate_call_put_bias(datos: list[dict]) -> dict:
+    """Calcula el sesgo alcista/bajista basándose en el ratio Call/Put de OI.
+
+    Cómo ayuda a decisiones de inversión
+    ------------------------------------
+    * **Score > 1.2** → Dominio de Calls → el mercado de opciones está
+      posicionado para un movimiento alcista.  Considerar spreads alcistas.
+    * **Score < 0.8** → Dominio de Puts → presión de cobertura/bajista.
+      Precaución con posiciones largas sin protección.
+    * **Score ≈ 1.0** → Equilibrio → sin sesgo claro; esperar confirmación
+      de volumen o precio antes de operar.
+
+    El score usa **Open Interest total** (no volumen) porque el OI
+    refleja posiciones *abiertas* reales, no solo actividad intradía.
+
+    Fórmula:
+        ``bias_score = 2 × (OI_calls / (OI_calls + OI_puts))``
+
+        Escala 0–2: 0=fuertemente bajista, 1=neutral, 2=fuertemente alcista.
+
+    Args:
+        datos: Lista de dicts del escaneo (``st.session_state.datos_completos``).
+
+    Returns:
+        ``dict`` con claves:
+        - ``bias_score`` (float): Valor 0–2.
+        - ``oi_calls`` (int): OI total de Calls.
+        - ``oi_puts`` (int): OI total de Puts.
+        - ``ratio_raw`` (float): OI_calls / OI_puts (o inf si 0 puts).
+        - ``total_oi`` (int): OI total.
+
+    Example (pytest)::
+
+        >>> datos = [
+        ...     {"Tipo": "CALL", "OI": 5000, "Volumen": 300},
+        ...     {"Tipo": "PUT",  "OI": 3000, "Volumen": 200},
+        ... ]
+        >>> r = calculate_call_put_bias(datos)
+        >>> assert 1.0 < r['bias_score'] < 2.0  # calls dominan
+        >>> assert r['oi_calls'] == 5000
+        >>> assert r['oi_puts'] == 3000
+    """
+    result = {
+        "bias_score": 1.0,
+        "oi_calls": 0,
+        "oi_puts": 0,
+        "ratio_raw": 1.0,
+        "total_oi": 0,
+    }
+
+    if not datos:
+        return result
+
+    df = pd.DataFrame(datos)
+    if "Tipo" not in df.columns or "OI" not in df.columns:
+        return result
+
+    df["OI"] = pd.to_numeric(df["OI"], errors="coerce").fillna(0)
+
+    oi_calls = int(df.loc[df["Tipo"] == "CALL", "OI"].sum())
+    oi_puts = int(df.loc[df["Tipo"] == "PUT", "OI"].sum())
+    total = oi_calls + oi_puts
+
+    if total == 0:
+        return result
+
+    ratio = oi_calls / total  # 0–1
+    bias_score = round(2.0 * ratio, 2)  # 0–2
+    raw = round(oi_calls / oi_puts, 3) if oi_puts > 0 else float("inf")
+
+    return {
+        "bias_score": bias_score,
+        "oi_calls": oi_calls,
+        "oi_puts": oi_puts,
+        "ratio_raw": raw,
+        "total_oi": total,
+    }
+
+
 def guardar_alerta_csv(carpeta, ticker_sym, alerta):
     """Guarda una alerta individual en el archivo CSV diario."""
     try:

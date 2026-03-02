@@ -1169,3 +1169,141 @@ def render_oi_heatmap(
     except Exception as exc:
         logger.error("Error renderizando OI heatmap: %s", exc, exc_info=True)
         st.error(f"Error al generar el heatmap de OI: {exc}")
+
+
+# ============================================================================
+#    BIAS GAUGE — Sesgo Alcista/Bajista (Call/Put OI Ratio)
+# ============================================================================
+
+def render_bias_gauge(
+    bias_score: float,
+    oi_calls: int = 0,
+    oi_puts: int = 0,
+    ticker: str = "",
+    height: int = 300,
+    key_suffix: str = "",
+) -> None:
+    """Gauge de sesgo alcista/bajista basado en el ratio Call/Put de OI.
+
+    Cómo ayuda a decisiones de inversión
+    ------------------------------------
+    * **Lectura instantánea**: un vistazo revela si las opciones están
+      posicionadas para subida (calls dominan) o bajada (puts dominan).
+    * **Delta respecto a neutral (1.0)** → indica la magnitud de la
+      desviación y si está aumentando o disminuyendo entre escaneos.
+    * **Contexto numérico en hover y caption** → el usuario ve
+      OI total calls vs puts, no solo un número abstracto.
+
+    Escala:
+        - 0.0 → Fuertemente bajista (solo puts)
+        - 1.0 → Neutral (equilibrio)
+        - 2.0 → Fuertemente alcista (solo calls)
+
+    Args:
+        bias_score: Valor 0–2 calculado por ``calculate_call_put_bias``.
+        oi_calls: OI total de calls (para el caption).
+        oi_puts: OI total de puts (para el caption).
+        ticker: Símbolo del activo.
+        height: Altura del gráfico en píxeles.
+        key_suffix: Sufijo para evitar colisiones de key.
+
+    Example (pytest-compatible)::
+
+        >>> # render_bias_gauge(1.35, oi_calls=50000, oi_puts=30000, ticker="SPY")
+    """
+    if bias_score < 0 or bias_score > 2:
+        st.error("Score de bias inválido (debe estar entre 0 y 2).")
+        return
+
+    try:
+        # Interpretación textual
+        if bias_score < 0.6:
+            interpretation = "Sesgo Bajista Fuerte"
+            bar_color = "#dc2626"  # rojo intenso
+        elif bias_score < 0.8:
+            interpretation = "Sesgo Bajista Moderado"
+            bar_color = "#ef4444"  # rojo
+        elif bias_score < 1.2:
+            interpretation = "Sesgo Neutral"
+            bar_color = "#64748b"  # gris azulado
+        elif bias_score < 1.4:
+            interpretation = "Sesgo Alcista Moderado"
+            bar_color = "#22c55e"  # verde
+        else:
+            interpretation = "Sesgo Alcista Fuerte"
+            bar_color = "#16a34a"  # verde intenso
+
+        _title_ticker = f" — {ticker}" if ticker else ""
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=bias_score,
+            domain={"x": [0, 1], "y": [0, 1]},
+            title={
+                "text": f"Sesgo Call/Put{_title_ticker}",
+                "font": {"size": 16, "color": "white"},
+            },
+            number={
+                "font": {"size": 42, "color": bar_color},
+                "valueformat": ".2f",
+                "suffix": f"  {interpretation}",
+            },
+            delta={
+                "reference": 1.0,
+                "increasing": {"color": "#22c55e"},
+                "decreasing": {"color": "#ef4444"},
+                "valueformat": ".2f",
+                "prefix": "Δ vs neutral: ",
+            },
+            gauge={
+                "axis": {
+                    "range": [0, 2],
+                    "tickwidth": 1,
+                    "tickcolor": "#475569",
+                    "tickfont": {"color": "#94a3b8", "size": 10},
+                    "dtick": 0.25,
+                },
+                "bar": {"color": bar_color, "thickness": 0.25},
+                "bgcolor": "#0f172a",
+                "borderwidth": 0,
+                "steps": [
+                    {"range": [0, 0.6], "color": "rgba(220, 38, 38, 0.30)"},
+                    {"range": [0.6, 0.8], "color": "rgba(239, 68, 68, 0.18)"},
+                    {"range": [0.8, 1.2], "color": "rgba(100, 116, 139, 0.15)"},
+                    {"range": [1.2, 1.4], "color": "rgba(34, 197, 94, 0.18)"},
+                    {"range": [1.4, 2.0], "color": "rgba(22, 163, 74, 0.30)"},
+                ],
+                "threshold": {
+                    "line": {"color": "white", "width": 3},
+                    "thickness": 0.8,
+                    "value": bias_score,
+                },
+            },
+        ))
+
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="white", family="Inter, sans-serif"),
+            height=height,
+            margin=dict(l=25, r=25, t=55, b=15),
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key=f"bias_gauge{key_suffix}",
+        )
+
+        # Caption explicativo con datos crudos
+        _calls_fmt = f"{oi_calls:,}" if oi_calls else "0"
+        _puts_fmt = f"{oi_puts:,}" if oi_puts else "0"
+        st.caption(
+            f"{interpretation} | OI Calls: {_calls_fmt} vs OI Puts: {_puts_fmt} | "
+            f"Basado en Open Interest total de la cadena actual "
+            f"(fórmula: 2 × OI_calls / (OI_calls + OI_puts))"
+        )
+
+    except Exception as exc:
+        logger.error("Error renderizando bias gauge: %s", exc, exc_info=True)
+        st.error(f"Error al generar el gauge de sesgo: {exc}")

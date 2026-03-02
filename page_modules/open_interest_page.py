@@ -4,8 +4,8 @@ import streamlit as st
 import pandas as pd
 
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart
-from ui.components import render_metric_card, render_metric_row, render_oi_heatmap
-from core.scanner import get_oi_matrix
+from ui.components import render_metric_card, render_metric_row, render_oi_heatmap, render_bias_gauge
+from core.scanner import get_oi_matrix, calculate_call_put_bias
 
 
 def render(ticker_symbol, **kwargs):
@@ -205,6 +205,39 @@ def render(ticker_symbol, **kwargs):
                 )
             else:
                 st.info("Sin contratos con OI Chg negativo.")
+
+        # ================================================================
+        #  GAUGE DE SESGO CALL/PUT — Lectura instantánea
+        # ================================================================
+        if st.session_state.datos_completos:
+            st.markdown("---")
+            st.markdown("#### 🎯 Sesgo del Mercado de Opciones")
+            st.caption(
+                "Resume el balance entre Calls y Puts del Open Interest total. "
+                "Ayuda a identificar rápidamente si el posicionamiento institucional "
+                "es alcista, bajista o neutral."
+            )
+
+            bias_data = calculate_call_put_bias(st.session_state.datos_completos)
+
+            _gauge_col, _stats_col = st.columns([3, 1])
+            with _gauge_col:
+                render_bias_gauge(
+                    bias_data["bias_score"],
+                    oi_calls=bias_data["oi_calls"],
+                    oi_puts=bias_data["oi_puts"],
+                    ticker=st.session_state.get("ticker_anterior", ""),
+                    key_suffix="_oi_page",
+                )
+            with _stats_col:
+                st.markdown("##### Desglose")
+                st.metric("OI Calls", f"{bias_data['oi_calls']:,}")
+                st.metric("OI Puts", f"{bias_data['oi_puts']:,}")
+                _raw = bias_data["ratio_raw"]
+                _raw_fmt = f"{_raw:.3f}" if _raw != float('inf') else "∞"
+                st.metric("Ratio C/P", _raw_fmt,
+                          delta=f"{bias_data['bias_score'] - 1.0:+.2f} vs neutral")
+                st.metric("OI Total", f"{bias_data['total_oi']:,}")
 
         # ================================================================
         #  OI HEATMAP INTERACTIVO — Strike × Vencimiento (px.imshow)
