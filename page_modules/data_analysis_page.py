@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Página: 📈 Data Analysis — Sentimiento, soportes/resistencias, distribución."""
+"""Página: 📈 Data Analysis — Sentimiento, soportes/resistencias, distribución, IV Rank, Monte Carlo, Anomaly Detection."""
+import logging
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -9,9 +10,16 @@ from utils.formatters import (
     _fmt_oi, _fmt_oi_chg, _fmt_lado, _fmt_delta,
 )
 from ui.components import (
-    render_pro_table, _sentiment_badge, _type_badge,
+    render_pro_table, render_metric_card, render_metric_row,
+    _sentiment_badge, _type_badge,
+)
+from ui.charts import (
+    render_pcr_gauge, render_iv_gauge, render_oi_heatmap,
+    render_vol_surface, render_monte_carlo_chart, render_anomaly_scatter,
 )
 from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
+
+logger = logging.getLogger(__name__)
 
 
 def render(ticker_symbol, **kwargs):
@@ -393,11 +401,11 @@ def render(ticker_symbol, **kwargs):
         n_calls = tipo_counts.get("CALL", 0)
         n_puts = tipo_counts.get("PUT", 0)
         ratio_pc = n_puts / n_calls if n_calls > 0 else 0
-        st.metric("Put/Call Ratio", f"{ratio_pc:.3f}")
-        if ratio_pc < 0.7:
-            st.success("📈 Ratio < 0.7: Mayor actividad en CALLs (sentimiento alcista)")
-        else:
-            st.info("↔️ Ratio neutral")
+
+        # ── Put/Call Ratio Gauge ──
+        fig_pcr = render_pcr_gauge(ratio_pc)
+        st.plotly_chart(fig_pcr, use_container_width=True, key="pcr_gauge")
+
 
     with col_a2:
         st.markdown("#### 📅 Volumen por Vencimiento")
@@ -524,3 +532,180 @@ def render(ticker_symbol, **kwargs):
         pivot_prima = pivot_prima.nlargest(30, pivot_prima.columns.tolist()[0] if len(pivot_prima.columns) > 0 else pivot_prima.index).sort_index()
         st.bar_chart(pivot_prima)
     st.caption("Prima por Volumen distribuida por strike — muestra dónde se concentran las apuestas más grandes")
+
+    # ================================================================
+    # ADVANCED ANALYTICS — IV Rank, Monte Carlo, Vol Surface, Anomalies
+    # ================================================================
+    st.markdown("---")
+    st.markdown("### 🧠 Análisis Avanzado")
+
+    precio_mc = st.session_state.get("precio_subyacente", 0) or 0
+
+    # ── IV Rank / Percentile ──────────────────────────────────────
+    _iv_cache_key = f"_iv_rank_{ticker_symbol}_{st.session_state.get('scan_count', 0)}"
+    if st.session_state.get(_iv_cache_key) is None:
+        try:
+            from core.iv_rank import calcular_iv_rank_percentile
+            # Usar IV promedio del scan como IV actual
+            avg_iv = df_analisis["IV"].median() if "IV" in df_analisis.columns else None
+            iv_data = calcular_iv_rank_percentile(ticker_symbol, iv_actual=avg_iv)
+            st.session_state[_iv_cache_key] = iv_data
+        except Exception as e:
+            logger.warning(f"Error calculando IV Rank: {e}")
+            st.session_state[_iv_cache_key] = None
+
+    iv_data = st.session_state.get(_iv_cache_key)
+
+    col_adv1, col_adv2 = st.columns(2)
+    with col_adv1:
+        if iv_data and iv_data["iv_rank"] > 0:
+            fig_iv = render_iv_gauge(
+                iv_data["iv_rank"],
+                iv_data["iv_percentile"],
+                iv_data["iv_actual"],
+            )
+            st.plotly_chart(fig_iv, use_container_width=True, key="iv_gauge")
+
+            # Métricas resumidas debajo
+            st.markdown(render_metric_row([
+                render_metric_card("IV Actual", f"{iv_data['iv_actual']:.1f}%"),
+                render_metric_card("IV Max 52w", f"{iv_data['iv_high_52w']:.1f}%",
+                                   color_override="#ef4444"),
+                render_metric_card("IV Min 52w", f"{iv_data['iv_low_52w']:.1f}%",
+                                   color_override="#10b981"),
+                render_metric_card("HV 20d", f"{iv_data['hv_20d']:.1f}%"),
+            ]), unsafe_allow_html=True)
+
+            # Interpretación
+            if iv_data["iv_rank"] >= 60:
+                st.info("📈 **IV alta** — Buen momento para VENDER opciones (prima elevada)")
+            elif iv_data["iv_rank"] <= 30:
+                st.info("📉 **IV baja** — Buen momento para COMPRAR opciones (prima barata)")
+            else:
+                st.info("↔️ **IV media** — Sin ventaja clara direccional en volatilidad")
+        else:
+            st.info("⏳ Calculando IV Rank... Ejecuta un escaneo para activar.")
+
+    # ── Monte Carlo Simulation ────────────────────────────────────
+    with col_adv2:
+        if precio_mc > 0:
+            # Obtener IV para la simulación
+            iv_for_mc = 0.25  # default
+            if iv_data and iv_data["iv_actual"] > 0:
+                iv_for_mc = iv_data["iv_actual"] / 100
+            elif "IV" in df_analisis.columns:
+                med_iv = df_analisis["IV"].median()
+                if med_iv > 0:
+                    iv_for_mc = med_iv / 100
+
+            mc_cache_key = f"_mc_{ticker_symbol}_{st.session_state.get('scan_count', 0)}"
+            if st.session_state.get(mc_cache_key) is None:
+                try:
+                    from core.monte_carlo import simular_monte_carlo
+                    mc_result = simular_monte_carlo(
+                        spot_price=precio_mc,
+                        iv=iv_for_mc,
+                        days=30,
+                        num_sims=1_000,
+                    )
+                    st.session_state[mc_cache_key] = mc_result
+                except Exception as e:
+                    logger.warning(f"Error Monte Carlo: {e}")
+                    st.session_state[mc_cache_key] = None
+
+            mc_result = st.session_state.get(mc_cache_key)
+            if mc_result and mc_result["days"] > 0:
+                fig_mc = render_monte_carlo_chart(mc_result, precio_mc, ticker_symbol)
+                st.plotly_chart(fig_mc, use_container_width=True, key="mc_chart")
+
+                pctls = mc_result["percentiles"]
+                st.markdown(render_metric_row([
+                    render_metric_card("P(Sube)", f"{mc_result['prob_above']:.1f}%",
+                                       color_override="#10b981" if mc_result["prob_above"] > 50 else "#ef4444"),
+                    render_metric_card("Precio Esperado", f"${mc_result['expected_price']:,.2f}"),
+                    render_metric_card("Rango 90%",
+                                       f"${pctls['p5']:,.2f} — ${pctls['p95']:,.2f}"),
+                ]), unsafe_allow_html=True)
+        else:
+            st.info("⏳ Ejecuta un escaneo para activar Monte Carlo.")
+
+    st.markdown("---")
+
+    # ── OI Heatmap ────────────────────────────────────────────────
+    st.markdown("#### 🗺️ Heatmap de Open Interest")
+    hm_col_selector = st.radio(
+        "Métrica del heatmap", ["OI", "Volumen", "IV", "Prima_Vol"],
+        horizontal=True, key="hm_metric", index=0,
+    )
+    hm_tipo = st.radio(
+        "Tipo", ["ALL", "CALL", "PUT"],
+        horizontal=True, key="hm_tipo", index=0,
+    )
+    fig_hm = render_oi_heatmap(
+        st.session_state.datos_completos,
+        tipo=hm_tipo,
+        value_col=hm_col_selector,
+    )
+    if fig_hm:
+        st.plotly_chart(fig_hm, use_container_width=True, key="oi_heatmap")
+    else:
+        st.info("Sin datos suficientes para el heatmap.")
+
+    st.markdown("---")
+
+    # ── Volatility Surface 3D ─────────────────────────────────────
+    st.markdown("#### 🌋 Superficie de Volatilidad Implícita (3D)")
+    fig_vs = render_vol_surface(
+        st.session_state.datos_completos,
+        spot_price=precio_mc,
+    )
+    if fig_vs:
+        st.plotly_chart(fig_vs, use_container_width=True, key="vol_surface")
+        st.caption("Superficie IV por Strike × Vencimiento — Identifica skew y smile de volatilidad")
+    else:
+        st.info("Sin datos suficientes para la superficie de volatilidad (necesita ≥2 vencimientos con IV).")
+
+    st.markdown("---")
+
+    # ── Anomaly Detection ─────────────────────────────────────────
+    st.markdown("#### 🔍 Detector de Anomalías — ML (IsolationForest)")
+    anom_cache_key = f"_anomalies_{ticker_symbol}_{st.session_state.get('scan_count', 0)}"
+    if st.session_state.get(anom_cache_key) is None:
+        try:
+            from core.anomaly_detector import detectar_anomalias
+            df_anom = detectar_anomalias(st.session_state.datos_completos)
+            st.session_state[anom_cache_key] = df_anom
+        except Exception as e:
+            logger.warning(f"Error anomaly detection: {e}")
+            st.session_state[anom_cache_key] = None
+
+    df_anomalies = st.session_state.get(anom_cache_key)
+    if df_anomalies is not None and not df_anomalies.empty:
+        fig_anom = render_anomaly_scatter(df_anomalies)
+        if fig_anom:
+            st.plotly_chart(fig_anom, use_container_width=True, key="anomaly_scatter")
+
+        # Mostrar top anomalías como tabla
+        top_anom = df_anomalies[df_anomalies["is_anomaly"]].nlargest(10, "anomaly_score")
+        if not top_anom.empty:
+            from core.anomaly_detector import anomaly_badge
+            anom_display_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "IV", "anomaly_score"]
+            anom_display_cols = [c for c in anom_display_cols if c in top_anom.columns]
+            anom_show = top_anom[anom_display_cols].copy()
+            if "Strike" in anom_show.columns:
+                anom_show["Strike"] = anom_show["Strike"].apply(lambda x: f"${x:,.1f}")
+            if "Volumen" in anom_show.columns:
+                anom_show["Volumen"] = anom_show["Volumen"].apply(_fmt_entero)
+            if "OI" in anom_show.columns:
+                anom_show["OI"] = anom_show["OI"].apply(_fmt_oi)
+            if "IV" in anom_show.columns:
+                anom_show["IV"] = anom_show["IV"].apply(_fmt_iv)
+            anom_show = anom_show.rename(columns={"anomaly_score": "Anomaly Score"})
+            st.markdown(
+                render_pro_table(anom_show, title="🔴 Top 10 Anomalías Detectadas",
+                                 badge_count=len(top_anom)),
+                unsafe_allow_html=True,
+            )
+        st.caption("IsolationForest analiza patrones de volumen, prima, IV y OI para detectar actividad fuera de lo normal.")
+    else:
+        st.info("Sin suficientes datos para detección de anomalías (mínimo 30 registros). Si sklearn no está instalado, se omite.")

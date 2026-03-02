@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Página: 📊 Open Interest — Top Cambios OI de Barchart."""
+"""Página: 📊 Open Interest — Top Cambios OI de Barchart + OI Heatmap."""
 import streamlit as st
 import pandas as pd
 
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart
 from ui.components import render_metric_card, render_metric_row
+from ui.charts import render_oi_heatmap
 
 
 def render(ticker_symbol, **kwargs):
@@ -204,5 +205,34 @@ def render(ticker_symbol, **kwargs):
                 )
             else:
                 st.info("Sin contratos con OI Chg negativo.")
+
+        # ================================================================
+        #  OI HEATMAP — Strike × Vencimiento
+        # ================================================================
+        if st.session_state.datos_completos:
+            st.markdown("---")
+            st.markdown("#### 🗺️ Heatmap de Open Interest — Strike × Vencimiento")
+            hm_col_oi1, hm_col_oi2 = st.columns(2)
+            with hm_col_oi1:
+                hm_tipo_oi = st.radio(
+                    "Tipo", ["ALL", "CALL", "PUT"],
+                    horizontal=True, key="oi_hm_tipo", index=0,
+                )
+            with hm_col_oi2:
+                hm_value_oi = st.radio(
+                    "Métrica", ["OI", "Volumen"],
+                    horizontal=True, key="oi_hm_value", index=0,
+                )
+            fig_hm_oi = render_oi_heatmap(
+                st.session_state.datos_completos,
+                tipo=hm_tipo_oi,
+                value_col=hm_value_oi,
+            )
+            if fig_hm_oi:
+                st.plotly_chart(fig_hm_oi, use_container_width=True, key="oi_page_heatmap")
+                st.caption("Concentración de OI por Strike y Vencimiento — identifica dónde se acumula interés institucional")
+            else:
+                st.info("Sin datos suficientes del escaneo para generar el heatmap.")
+
     elif st.session_state.scan_count == 0:
         st.info("⏳ **Ejecuta un escaneo** en 🔍 Live Scanning para cargar los datos de Open Interest automáticamente.")

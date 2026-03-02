@@ -1419,5 +1419,117 @@ CSS_STYLES = """
     [data-testid="stExpander"] summary:hover {
         color: var(--neon-green) !important;
     }
+
+    /* ====== MOBILE RESPONSIVE ====== */
+    @media screen and (max-width: 768px) {
+        /* Metric cards: stack vertically */
+        .ok-metric-row {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+        .ok-metric-card {
+            min-width: 100% !important;
+            padding: 12px 14px !important;
+        }
+        .ok-metric-value {
+            font-size: 1.3rem !important;
+        }
+        .ok-metric-title {
+            font-size: 0.7rem !important;
+        }
+
+        /* Tables: horizontal scroll */
+        .ok-table-scroll {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .ok-tbl {
+            min-width: 600px !important;
+            font-size: 0.72rem !important;
+        }
+        .ok-tbl th, .ok-tbl td {
+            padding: 6px 8px !important;
+            white-space: nowrap !important;
+        }
+
+        /* Sidebar collapse */
+        [data-testid="stSidebar"] {
+            min-width: 0 !important;
+        }
+        [data-testid="stSidebar"][aria-expanded="false"] {
+            margin-left: -300px !important;
+        }
+
+        /* Columns: stack on mobile */
+        [data-testid="stColumns"] {
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+        [data-testid="stColumn"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+
+        /* Plotly charts: reduce height */
+        .js-plotly-plot {
+            max-height: 350px !important;
+        }
+
+        /* Company cards: full width */
+        .empresa-card {
+            padding: 14px !important;
+        }
+        .empresa-metrics {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+        }
+
+        /* Badges: smaller */
+        .ok-badge {
+            font-size: 0.62rem !important;
+            padding: 2px 6px !important;
+        }
+
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 4px !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            font-size: 0.72rem !important;
+            padding: 6px 10px !important;
+        }
+
+        /* Header */
+        .ok-header-title {
+            font-size: 1.1rem !important;
+        }
+        .ok-header-subtitle {
+            font-size: 0.7rem !important;
+        }
+
+        /* Sentiment panel */
+        .sp0 {
+            padding: 10px !important;
+        }
+        .sr {
+            flex-wrap: wrap !important;
+            gap: 4px !important;
+        }
+    }
+
+    /* Tablet breakpoint */
+    @media screen and (max-width: 1024px) and (min-width: 769px) {
+        .ok-metric-row {
+            flex-wrap: wrap !important;
+        }
+        .ok-metric-card {
+            flex: 1 1 calc(33% - 8px) !important;
+            min-width: 140px !important;
+        }
+        .empresa-metrics {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
 </style>
 """

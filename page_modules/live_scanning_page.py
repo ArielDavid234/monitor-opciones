@@ -313,6 +313,30 @@ def render(ticker_symbol, **kwargs):
                 render_metric_card("Spot Price", f"${_precio_sub_gex:,.2f}"),
             ]), unsafe_allow_html=True)
 
+        # ── IV Rank quick indicator (cached) ─────────────────────────
+        _iv_r_cache_key = f"_iv_rank_live_{ticker_symbol}_{st.session_state.get('scan_count', 0)}"
+        if st.session_state.get(_iv_r_cache_key) is None:
+            try:
+                from core.iv_rank import calcular_iv_rank_percentile
+                avg_iv_live = datos_df["IV"].median() if "IV" in datos_df.columns else None
+                st.session_state[_iv_r_cache_key] = calcular_iv_rank_percentile(
+                    ticker_symbol, iv_actual=avg_iv_live,
+                )
+            except Exception:
+                st.session_state[_iv_r_cache_key] = {}
+
+        _iv_live = st.session_state.get(_iv_r_cache_key, {})
+        if _iv_live and _iv_live.get("iv_rank", 0) > 0:
+            _ivr = _iv_live["iv_rank"]
+            _ivp = _iv_live["iv_percentile"]
+            _iv_col = "#ef4444" if _ivr >= 60 else "#f59e0b" if _ivr >= 30 else "#10b981"
+            st.markdown(render_metric_row([
+                render_metric_card("IV Rank", f"{_ivr:.0f}%", color_override=_iv_col),
+                render_metric_card("IV Percentile", f"{_ivp:.0f}%", color_override=_iv_col),
+                render_metric_card("IV Actual", f"{_iv_live['iv_actual']:.1f}%"),
+                render_metric_card("HV 20d", f"{_iv_live['hv_20d']:.1f}%"),
+            ]), unsafe_allow_html=True)
+
     # ── Alerts section ───────────────────────────────────────────────────
     if st.session_state.alertas_actuales:
         st.markdown("### 🚨 Alertas Detectadas")
