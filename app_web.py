@@ -74,7 +74,7 @@ from page_modules import (  # noqa: E402
     live_scanning_page, open_interest_page, data_analysis_page,
     range_page, favorites_page, watchlist_page, important_companies_page,
     news_page, reports_page, calendar_page, admin_users_page,
-    credit_spread_page, mi_perfil_page,
+    credit_spread_page, mi_perfil_page, optionkings_page,
 )
 
 initialize_session_state()
@@ -149,6 +149,7 @@ _PAGE_MAP: dict[str, object] = {
     "\U0001f4cb Reports":             lambda: reports_page.render(ticker_symbol, **_page_kwargs),
     "\U0001f4b0 Venta de Prima":      lambda: credit_spread_page.render(**_page_kwargs),
     "\U0001f464 Mi Perfil":           lambda: mi_perfil_page.render(**_page_kwargs),
+    "\U0001f3c6 OptionKings Analytic": lambda: optionkings_page.render(**_page_kwargs),
     "\U0001f451 Administrar Usuarios": lambda: admin_users_page.render(**_page_kwargs),
 }
 

@@ -834,6 +834,7 @@ def _scan_single_ticker(
     ticker_meta = {
         "IV Rank": iv_info["iv_rank"],
         "IV Pctil": iv_info["iv_percentile"],
+        "HV 20D": iv_info["iv_current"],   # HV anualizada 20 días en % (proxy de IV histórica)
         "Tendencia": trend_info["trend"],
     }
 

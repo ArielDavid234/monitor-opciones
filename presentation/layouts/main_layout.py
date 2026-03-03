@@ -25,6 +25,7 @@ _NAV_OPTIONS_BASE: tuple[str, ...] = (
     "📅 Calendar",
     "📋 Reports",
     "💰 Venta de Prima",
+    "🏆 OptionKings Analytic",
 )
 _ADMIN_OPTION = "👑 Administrar Usuarios"
 
