@@ -17,7 +17,7 @@ infraestructura concreta**.  Las únicas excepciones autorizadas son
 
 # Importar sólo lo necesario para que el paquete esté listo.
 # Los consumidores importan directamente desde los submódulos:
-#   from core.entities import User
+#   from domain.entities import User
 #   from core.protocols import AuthProvider
 #   from core.container import get_container
 

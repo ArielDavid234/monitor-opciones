@@ -51,7 +51,7 @@ if not _auth.is_authenticated():
         st.stop()
 
 # ── A partir de aquí el usuario ESTÁ autenticado ─────────────────────────
-from core.entities import User  # noqa: E402
+from domain.entities import User  # noqa: E402
 from presentation.components import render_sidebar_user_block  # noqa: E402
 from presentation.layouts import render_main_header, build_sidebar_nav  # noqa: E402
 

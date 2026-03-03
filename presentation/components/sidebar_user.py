@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import streamlit as st
 
-from core.entities import User
+from domain.entities import User
 
 if TYPE_CHECKING:
     from core.protocols import AuthProvider

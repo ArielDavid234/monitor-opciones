@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core.entities import User
+from domain.entities import User
 
 # Opciones de navegación en orden de aparición en el sidebar
 _NAV_OPTIONS_BASE: tuple[str, ...] = (

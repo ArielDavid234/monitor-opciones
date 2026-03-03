@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-from core.entities import User, UserRole, UserStats
+from domain.entities import User, UserRole, UserStats
 
 logger = logging.getLogger(__name__)
 
