@@ -593,3 +593,233 @@ def render_account_management_sidebar() -> tuple[float, float]:
     st.session_state["ok_risk_pct"] = risk_pct
 
     return float(account_size), float(risk_pct)
+
+
+# ============================================================================
+#   MONTE CARLO — Aspecto 6 — Visualización
+# ============================================================================
+
+def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None:
+    """Renderiza la sección de Simulación Monte Carlo con histograma Plotly.
+
+    Muestra:
+        • 4 KPIs: win rate, retorno promedio, max drawdown, peor racha
+        • Histograma Plotly verde/rojo con líneas de break-even y promedio
+        • Gauge semicircular del porcentaje de escenarios ganadores
+        • Disclaimer educativo obligatorio (evita ilusión estadística)
+
+    Args:
+        mc_results:   dict devuelto por monte_carlo_spread_simulation().
+        spread_label: etiqueta identificadora del spread (ej 'SPY 555/550').
+    """
+    if mc_results.get("error"):
+        st.warning(f"⚠️ Simulación no disponible: {mc_results['error']}")
+        return
+
+    win_rate     = float(mc_results.get("win_rate",      0))
+    avg_return   = float(mc_results.get("avg_return",    0))
+    max_drawdown = float(mc_results.get("max_drawdown",  0))
+    worst_streak = int(  mc_results.get("worst_streak",  0))
+    pnl_dist     = mc_results.get("pnl_distribution",   [])
+    n_sim        = int(  mc_results.get("n_sim",       1000))
+    credit_d     = float(mc_results.get("credit_dollars",  0))
+    max_loss_d   = float(mc_results.get("max_loss_dollars", 0))
+
+    # Paleta de colores por umbral
+    if win_rate >= 70:
+        wr_color = "#22c55e"
+    elif win_rate >= 50:
+        wr_color = "#fbbf24"
+    else:
+        wr_color = "#ef4444"
+
+    avg_color    = "#22c55e" if avg_return >= 0 else "#ef4444"
+    streak_color = "#ef4444" if worst_streak >= 5 else ("#fbbf24" if worst_streak >= 3 else "#22c55e")
+    dd_pct_est   = (max_drawdown / max(credit_d * n_sim, 1)) * 100  # orientativo
+
+    # ── Header ────────────────────────────────────────────────────────────
+    label_txt = f" · {spread_label}" if spread_label else ""
+    st.markdown(
+        f"""
+        <div style="background:linear-gradient(135deg,#0d1117,#0a1628);
+                    border:1px solid #2d1b4e;border-radius:12px;
+                    padding:0.9rem 1.4rem;margin-bottom:0.8rem;">
+            <h4 style="color:#a78bfa;margin:0 0 0.25rem 0;">
+                🎲 Simulación Monte Carlo{label_txt}
+                <span style="font-size:0.75rem;font-weight:400;color:#64748b;
+                    margin-left:8px;">{n_sim:,} escenarios · GBM</span>
+            </h4>
+            <p style="color:#475569;margin:0;font-size:0.75rem;font-family:monospace;">
+                S_T = S₀ × exp((μ − ½σ²)t + σ√t·Z) &nbsp;|&nbsp;
+                μ = 0 (neutro) &nbsp;|&nbsp; σ = IV &nbsp;|&nbsp; t = DTE/365
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── 4 KPIs ────────────────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+
+    def _kpi_card(container, title: str, value: str, subtitle: str, border_color: str) -> None:
+        container.markdown(
+            f"""<div style="background:#0d1117;border:1px solid {border_color}44;
+                border-radius:8px;padding:10px 8px;text-align:center;height:86px;
+                display:flex;flex-direction:column;justify-content:center;">
+                <div style="font-size:0.65rem;color:#64748b;margin-bottom:4px;
+                    text-transform:uppercase;letter-spacing:0.04em;">{title}</div>
+                <div style="font-size:1.5rem;font-weight:700;color:{border_color};
+                    font-family:monospace;line-height:1.1;">{value}</div>
+                <div style="font-size:0.63rem;color:#475569;margin-top:2px;">{subtitle}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    _kpi_card(c1, "% ganadores",    f"{win_rate:.1f}%",      f"de {n_sim:,} sim",      wr_color)
+    _kpi_card(c2, "Retorno prom.",  f"${avg_return:+.0f}",   "por contrato",           avg_color)
+    _kpi_card(c3, "Max drawdown",   f"${max_drawdown:,.0f}", "caída máx. acumulada",   "#ef4444")
+    _kpi_card(c4, "Peor racha",     str(worst_streak),       "pérdidas consecutivas",  streak_color)
+
+    st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+
+    # ── Gauge + Histograma en columnas ────────────────────────────────────
+    if not _PLOTLY_OK or not pnl_dist:
+        st.info("Instala plotly para ver el histograma de distribución.")
+    else:
+        import plotly.graph_objects as go  # type: ignore[import]
+
+        col_gauge, col_hist = st.columns([1, 2])
+
+        # Gauge de win rate
+        with col_gauge:
+            gauge_color = wr_color
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=win_rate,
+                number={
+                    "suffix": "%",
+                    "font": {"size": 34, "color": gauge_color, "family": "monospace"},
+                },
+                delta={"reference": 50, "valueformat": ".1f",
+                       "increasing": {"color": "#22c55e"},
+                       "decreasing": {"color": "#ef4444"}},
+                gauge={
+                    "axis": {"range": [0, 100], "tickcolor": "#475569",
+                             "tickfont": {"size": 9, "color": "#475569"}},
+                    "bar":  {"color": gauge_color, "thickness": 0.25},
+                    "bgcolor": "#0d1117",
+                    "bordercolor": "#1e293b",
+                    "steps": [
+                        {"range": [0,  50], "color": "#1a0a0a"},
+                        {"range": [50, 70], "color": "#1a1500"},
+                        {"range": [70, 100], "color": "#0a1a0a"},
+                    ],
+                    "threshold": {
+                        "line": {"color": "#fbbf24", "width": 2},
+                        "thickness": 0.75,
+                        "value": 50,
+                    },
+                },
+                title={"text": "Escenarios<br>Ganadores",
+                       "font": {"size": 12, "color": "#94a3b8"}},
+            ))
+            fig_gauge.update_layout(
+                paper_bgcolor="#0d1117",
+                height=220,
+                margin=dict(l=10, r=10, t=30, b=10),
+            )
+            st.plotly_chart(fig_gauge, use_container_width=True,
+                            key=f"mc_gauge_{id(mc_results)}")
+
+        # Histograma de distribución PnL
+        with col_hist:
+            pos_vals = [v for v in pnl_dist if v >= 0]
+            neg_vals = [v for v in pnl_dist if v  < 0]
+
+            fig_hist = go.Figure()
+            if neg_vals:
+                fig_hist.add_trace(go.Histogram(
+                    x=neg_vals, name="Pérdida",
+                    nbinsx=25, marker_color="#ef4444", opacity=0.85,
+                ))
+            if pos_vals:
+                fig_hist.add_trace(go.Histogram(
+                    x=pos_vals, name="Ganancia",
+                    nbinsx=25, marker_color="#22c55e", opacity=0.85,
+                ))
+
+            # Líneas de referencia
+            fig_hist.add_vline(
+                x=0, line_width=2, line_dash="dash", line_color="#fbbf24",
+                annotation_text="Break-even",
+                annotation_font=dict(color="#fbbf24", size=10),
+                annotation_yref="paper", annotation_y=1.02,
+            )
+            if abs(avg_return) > 1:
+                fig_hist.add_vline(
+                    x=avg_return, line_width=1.5, line_dash="dot",
+                    line_color="#a78bfa",
+                    annotation_text=f"Prom ${avg_return:.0f}",
+                    annotation_font=dict(color="#a78bfa", size=9),
+                    annotation_yref="paper", annotation_y=0.85,
+                )
+
+            fig_hist.update_layout(
+                title=dict(
+                    text=f"Distribución PnL — {win_rate:.0f}% escenarios ganadores "
+                         f"| {len(pos_vals)}/{n_sim}",
+                    font=dict(size=11, color="#e2e8f0"),
+                ),
+                barmode="overlay",
+                xaxis=dict(title="PnL / contrato ($)", color="#94a3b8",
+                           gridcolor="#1e293b", zerolinecolor="#334155"),
+                yaxis=dict(title="Frecuencia",        color="#94a3b8",
+                           gridcolor="#1e293b"),
+                paper_bgcolor="#0d1117",
+                plot_bgcolor="#0d1117",
+                legend=dict(font=dict(color="#94a3b8", size=10),
+                            bgcolor="rgba(0,0,0,0)", orientation="h",
+                            x=0, y=1.15),
+                height=220,
+                margin=dict(l=40, r=15, t=45, b=35),
+            )
+            st.plotly_chart(fig_hist, use_container_width=True,
+                            key=f"mc_hist_{id(mc_results)}")
+
+    # ── Contexto crédito / max loss ───────────────────────────────────────
+    st.markdown(
+        f"""
+        <div style="background:#0d1117;border:1px solid #1e293b;border-radius:8px;
+                    padding:8px 14px;font-size:0.76rem;margin-top:4px;
+                    display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+            <div>
+                <span style="color:#64748b;">Crédito cobrado:</span>
+                <b style="color:#22c55e;">${credit_d:,.0f}</b> / contrato
+            </div>
+            <div>
+                <span style="color:#64748b;">Pérdida máx. teórica:</span>
+                <b style="color:#ef4444;">${max_loss_d:,.0f}</b> / contrato
+            </div>
+            <div>
+                <span style="color:#64748b;">Rel. win/loss:</span>
+                <b style="color:#94a3b8;">{win_rate:.0f}% / {100-win_rate:.0f}%</b>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Disclaimer obligatorio (Filosofía Aspecto 7) ──────────────────────
+    st.markdown(
+        """
+        <div style="background:#0a0a0a;border:1px solid #2d1b00;border-radius:6px;
+                    padding:7px 12px;margin-top:8px;font-size:0.72rem;color:#78716c;">
+            ⚠️ <b style="color:#fbbf24;">Simulación basada en GBM (Movimiento Browniano Geométrico).</b>
+            Asume volatilidad constante y distribución log-normal.
+            Los saltos discretos, cambios de régimen y eventos de cola no están modelados.
+            <b>No garantiza resultados futuros.</b>
+            Solo para educación cuantitativa y análisis de riesgo.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

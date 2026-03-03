@@ -564,3 +564,143 @@ def apply_intelligent_filters(
         )
         result.append({**item, "pasa": pasa, "rechazos": rechazos})
     return result
+
+
+# ============================================================================
+#   SIMULACIÓN MONTE CARLO — Aspecto 6
+#   Modelo GBM (Geometric Brownian Motion) para credit spreads
+# ============================================================================
+
+def monte_carlo_spread_simulation(
+    spread_data: dict,
+    n_sim: int = 1000,
+    seed: int = 42,
+) -> dict:
+    """Simula n_sim escenarios de precio con GBM y calcula el PnL del spread.
+
+    Modelo:
+        S_T = S_0 × exp( (μ − 0.5 × σ²) × t + σ × √t × Z )
+        con:
+            μ     = 0  (sin drift; análisis neutro por defecto)
+            σ     = IV anualizado del spread (ej 0.25 = 25%)
+            t     = DTE / 365 (horizonte en años)
+            Z     ~ N(0, 1)
+
+    PnL por escenario (por contrato = × 100 acciones):
+        PnL = crédito_recibido − intrínseco_al_vencimiento
+        con intrínseco limitado al ancho del spread (max_loss).
+
+        Bull Put Spread (sv > sc):
+            intrínseco = min(max(0, sv − S_T), spread_width)
+        Bear Call Spread (sv < sc):
+            intrínseco = min(max(0, S_T − sv), spread_width)
+
+    Args:
+        spread_data: dict con clave 'row' (datos del scanner) y opcionalmente
+                     'metrics'.  También acepta el dict del row directamente.
+        n_sim:       número de simulaciones (default 1000, configurable).
+        seed:        semilla para reproducibilidad (default 42).
+
+    Returns:
+        dict con:
+            win_rate          — % escenarios con PnL > 0   (float 0-100)
+            avg_return        — PnL promedio en $ por contrato
+            max_drawdown      — máxima caída desde el pico (distribución acumulada, $)
+            worst_streak      — máxima racha de pérdidas consecutivas (int)
+            pnl_distribution  — lista de PnL por escenario para histograma
+            credit_dollars    — crédito por contrato ($)
+            max_loss_dollars  — pérdida máxima teórica por contrato ($)
+            n_sim             — número de simulaciones ejecutadas
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        logger.error("numpy no instalado — Monte Carlo no disponible")
+        return {
+            "error": "numpy no instalado",
+            "win_rate": 0, "avg_return": 0, "max_drawdown": 0,
+            "worst_streak": 0, "pnl_distribution": [],
+            "credit_dollars": 0, "max_loss_dollars": 0, "n_sim": 0,
+        }
+
+    # spread_data puede contener la clave 'row' (estructura de la página) o
+    # ser directamente el dict de la fila del escáner.
+    row = spread_data.get("row", spread_data)
+
+    S0          = float(row.get("Spot",            0) or 0)
+    iv          = float(row.get("IV",              0) or 0)
+    dte         = int(  row.get("DTE",            30) or 30)
+    tipo        = str(  row.get("Tipo",   "Bull Put"))
+    sv          = float(row.get("Strike Vendido",  0) or 0)
+    sc          = float(row.get("Strike Comprado", 0) or 0)
+    credit_raw  = float(row.get("Crédito",         0) or 0)
+
+    # Validaciones mínimas
+    if S0 <= 0 or iv <= 0 or sv <= 0 or sc <= 0:
+        return {
+            "error": "Datos insuficientes (S0/IV/strikes = 0)",
+            "win_rate": 0, "avg_return": 0, "max_drawdown": 0,
+            "worst_streak": 0, "pnl_distribution": [],
+            "credit_dollars": 0, "max_loss_dollars": 0, "n_sim": 0,
+        }
+
+    # Crédito y pérdida máxima en dólares (por contrato, × 100 acciones)
+    spread_width     = abs(sv - sc)
+    credit_dollars   = credit_raw * 100
+    max_loss_dollars = max((spread_width - credit_raw) * 100, spread_width * 100 * 0.05)
+
+    # ── Parámetros GBM ───────────────────────────────────────────────────
+    sigma = max(iv, 0.05)      # IV anualizado, mínimo 5% para evitar sigma=0
+    t     = max(dte / 365.0, 1 / 365.0)
+    mu    = 0.0                # sin drift direccional (análisis neutro)
+
+    # ── Generación de escenarios ──────────────────────────────────────────
+    rng = np.random.default_rng(seed)
+    Z   = rng.standard_normal(n_sim)
+
+    # S_T = S_0 × exp( (mu - 0.5σ²)t + σ√t·Z )
+    S_T = S0 * np.exp((mu - 0.5 * sigma ** 2) * t + sigma * np.sqrt(t) * Z)
+
+    # ── PnL por escenario ─────────────────────────────────────────────────
+    is_bull_put = "Bull Put" in tipo or "put" in tipo.lower()
+
+    if is_bull_put:
+        # Short put en sv, long put en sc (sv > sc)
+        intrinsic = np.minimum(np.maximum(0.0, sv - S_T), spread_width)
+    else:
+        # Short call en sv, long call en sc (sv < sc) — Bear Call
+        intrinsic = np.minimum(np.maximum(0.0, S_T - sv), spread_width)
+
+    pnl = (credit_raw - intrinsic) * 100   # $ por contrato
+
+    # ── Estadísticas ──────────────────────────────────────────────────────
+    wins      = int(np.sum(pnl > 0))
+    win_rate  = float(wins / n_sim * 100)
+    avg_ret   = float(np.mean(pnl))
+
+    # Máximo drawdown acumulado en la secuencia de simulaciones
+    cumulative   = np.cumsum(pnl)
+    peak         = np.maximum.accumulate(cumulative)
+    drawdown_arr = peak - cumulative
+    max_drawdown = float(np.max(drawdown_arr))
+
+    # Peor racha de pérdidas consecutivas
+    worst_streak = cur = 0
+    for loss in (pnl < 0):
+        if loss:
+            cur += 1
+            if cur > worst_streak:
+                worst_streak = cur
+        else:
+            cur = 0
+
+    return {
+        "win_rate":          win_rate,
+        "avg_return":        avg_ret,
+        "max_drawdown":      max_drawdown,
+        "worst_streak":      worst_streak,
+        "pnl_distribution":  pnl.tolist(),
+        "credit_dollars":    float(credit_dollars),
+        "max_loss_dollars":  float(max_loss_dollars),
+        "n_sim":             n_sim,
+    }

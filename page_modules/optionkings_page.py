@@ -27,10 +27,12 @@ from core.optionkings_analytic import (
     calculate_account_management,
     calculate_all_metrics,
     calculate_professional_score,
+    monte_carlo_spread_simulation,
     passes_smart_filters,
 )
 from ui.optionkings_components import (
     render_account_management_sidebar,
+    render_monte_carlo_section,
     render_spread_card,
 )
 
@@ -59,7 +61,7 @@ def render(**kwargs) -> None:
         """
         <div style="background:linear-gradient(135deg,#0a0a1a,#0d1f3e);
                     border:1px solid #1e3a5f;border-radius:16px;
-                    padding:1.5rem 2rem;margin-bottom:1.5rem;">
+                    padding:1.5rem 2rem;margin-bottom:1rem;">
             <h2 style="color:#00ff88;margin:0 0 0.3rem 0;">
                 👑 OPTIONSKING — Análisis Profesional de Spreads
             </h2>
@@ -68,6 +70,51 @@ def render(**kwargs) -> None:
                 Filtros inteligentes — decide en <b style="color:#00ff88;">3 segundos</b>
                 si el spread tiene edge real.
             </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Filosofía del Producto — Aspecto 7 ───────────────────────────────
+    st.markdown(
+        """
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;
+                    margin-bottom:1.2rem;">
+            <div style="background:#0d1117;border:1px solid #22c55e33;border-radius:8px;
+                        padding:8px 10px;text-align:center;">
+                <div style="font-size:0.7rem;color:#22c55e;font-weight:700;
+                    margin-bottom:3px;">📊 DATA FIRST</div>
+                <div style="font-size:0.65rem;color:#64748b;line-height:1.3;">
+                    Números y gráficos objetivos siempre antes que opiniones.</div>
+            </div>
+            <div style="background:#0d1117;border:1px solid #ef444433;border-radius:8px;
+                        padding:8px 10px;text-align:center;">
+                <div style="font-size:0.7rem;color:#ef4444;font-weight:700;
+                    margin-bottom:3px;">🚨 RISK TRANSPARENT</div>
+                <div style="font-size:0.65rem;color:#64748b;line-height:1.3;">
+                    Drawdown, touch, liquidez y EV negativo siempre visibles.</div>
+            </div>
+            <div style="background:#0d1117;border:1px solid #a78bfa33;border-radius:8px;
+                        padding:8px 10px;text-align:center;">
+                <div style="font-size:0.7rem;color:#a78bfa;font-weight:700;
+                    margin-bottom:3px;">🎯 EDGE CUANTIFICADO</div>
+                <div style="font-size:0.65rem;color:#64748b;line-height:1.3;">
+                    EV · Score · Vol Edge · Monte Carlo como métricas primarias.</div>
+            </div>
+            <div style="background:#0d1117;border:1px solid #fbbf2433;border-radius:8px;
+                        padding:8px 10px;text-align:center;">
+                <div style="font-size:0.7rem;color:#fbbf24;font-weight:700;
+                    margin-bottom:3px;">🧠 PSICOLOGÍA INTEGRADA</div>
+                <div style="font-size:0.65rem;color:#64748b;line-height:1.3;">
+                    Drawdown 3 pérdidas, % ganadores MC, worst case visibles.</div>
+            </div>
+            <div style="background:#0d1117;border:1px solid #38bdf833;border-radius:8px;
+                        padding:8px 10px;text-align:center;">
+                <div style="font-size:0.7rem;color:#38bdf8;font-weight:700;
+                    margin-bottom:3px;">🚫 SIN ILUSIÓN</div>
+                <div style="font-size:0.65rem;color:#64748b;line-height:1.3;">
+                    No prometemos ganancias. Solo probabilidades y riesgos reales.</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -317,6 +364,42 @@ def render(**kwargs) -> None:
                 idx=idx,
                 management=mgmt,
             )
+
+            # ── Monte Carlo por spread (Aspecto 6) ───────────────────────
+            _ticker = item["row"].get("Ticker", "?")
+            _sv     = item["row"].get("Strike Vendido",  0)
+            _sc     = item["row"].get("Strike Comprado", 0)
+            _mc_key = f"ok_mc_{_ticker}_{_sv:.0f}_{_sc:.0f}"
+            _label  = f"{_ticker} {_sv:.0f}/{_sc:.0f}"
+
+            with st.expander(
+                f"🎲 Simulación Monte Carlo — {_label}",
+                expanded=False,
+            ):
+                if st.button(
+                    "▶ Ejecutar simulación (1 000 escenarios GBM)",
+                    key=f"mc_btn_{idx}",
+                    type="secondary",
+                    help="Simula 1 000 trayectorias de precio con Movimiento "
+                         "Browniano Geométrico y calcula la distribución de PnL.",
+                ):
+                    with st.spinner("Simulando escenarios…"):
+                        mc_res = monte_carlo_spread_simulation(
+                            item, n_sim=1000, seed=42
+                        )
+                    st.session_state[_mc_key] = mc_res
+
+                if _mc_key in st.session_state:
+                    render_monte_carlo_section(
+                        st.session_state[_mc_key],
+                        spread_label=_label,
+                    )
+                else:
+                    st.markdown(
+                        '<p style="color:#475569;font-size:0.8rem;padding:6px 0;">'  
+                        "Pulsa el botón para ver la distribución de PnL simulada.</p>",
+                        unsafe_allow_html=True,
+                    )
 
     # ── Spreads rechazados (transparencia) ────────────────────────────────
     if show_rej and rechazados:
