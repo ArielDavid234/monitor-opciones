@@ -23,11 +23,12 @@ Uso típico:
 from __future__ import annotations
 
 import logging
-import math
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from core.option_greeks import quick_delta, quick_gamma
 
 logger = logging.getLogger(__name__)
 
@@ -174,50 +175,14 @@ def calculate_delta_weighted_premium(
 
 
 # ---------------------------------------------------------------------------
-#   DELTA APPROXIMATION — Black-Scholes simplificado
+#   DELTA / GAMMA — delegated to core.option_greeks (single source of truth)
 # ---------------------------------------------------------------------------
+# quick_delta and quick_gamma are imported at the top from core.option_greeks.
+# They provide the same safe fall-back behaviour that the old _approx_delta
+# and _approx_gamma had (0.5/-0.5 and 0.0 on invalid inputs).
 
-def _approx_delta(
-    S: float,
-    K: float,
-    T: float,
-    iv: float,
-    option_type: str = "call",
-) -> float:
-    """Aproxima el delta con la fórmula de Black-Scholes (r=0).
-
-    Args:
-        S:           precio spot del subyacente.
-        K:           strike de la opción.
-        T:           tiempo hasta vencimiento en años (DTE / 365).
-        iv:          volatilidad implícita anualizada (ej. 0.25).
-        option_type: 'call' o 'put'.
-
-    Returns:
-        Delta aproximado (float).
-    """
-    try:
-        from scipy.stats import norm  # type: ignore[import]
-        if T <= 0 or iv <= 0 or S <= 0 or K <= 0:
-            return 0.5 if option_type == "call" else -0.5
-        d1 = (math.log(S / K) + 0.5 * iv ** 2 * T) / (iv * math.sqrt(T))
-        if option_type.lower().startswith("p"):
-            return norm.cdf(d1) - 1.0
-        return norm.cdf(d1)
-    except Exception:
-        return 0.5 if option_type == "call" else -0.5
-
-
-def _approx_gamma(S: float, K: float, T: float, iv: float) -> float:
-    """Aproxima el gamma con B-S (r=0)."""
-    try:
-        from scipy.stats import norm  # type: ignore[import]
-        if T <= 0 or iv <= 0 or S <= 0 or K <= 0:
-            return 0.0
-        d1 = (math.log(S / K) + 0.5 * iv ** 2 * T) / (iv * math.sqrt(T))
-        return norm.pdf(d1) / (S * iv * math.sqrt(T))
-    except Exception:
-        return 0.0
+_approx_delta = quick_delta
+_approx_gamma = quick_gamma
 
 
 # ---------------------------------------------------------------------------

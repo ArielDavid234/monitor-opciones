@@ -3,7 +3,15 @@ Black-Scholes-Merton option pricing and Greeks calculator.
 
 Supports European options with continuous dividend yield (q).
 All formulas follow the Merton (1973) extension of Black-Scholes (1973).
+
+This module is the **single source of truth** for all BSM-related
+calculations in the project.  Other modules should import from here
+instead of reimplementing Black-Scholes formulas.
 """
+
+from __future__ import annotations
+
+from typing import Union
 
 import numpy as np
 from scipy.stats import norm
@@ -345,6 +353,130 @@ class OptionGreeks:
             "theta": self.theta(),
             "rho":   self.rho(),
         }
+
+
+# ======================================================================
+# Standalone convenience functions  (safe wrappers around OptionGreeks)
+# ======================================================================
+
+def quick_delta(
+    S: float,
+    K: float,
+    T: float,
+    iv: float,
+    option_type: str = "call",
+    r: float = 0.0,
+    q: float = 0.0,
+) -> float:
+    """Return a single delta value with graceful fallback on invalid inputs.
+
+    This is a *safe* wrapper intended for hot loops where creating a full
+    ``OptionGreeks`` instance and handling exceptions is impractical.
+
+    Parameters
+    ----------
+    S, K, T, iv : float — spot, strike, time-to-expiry (yrs), implied vol.
+    option_type  : ``'call'`` or ``'put'``.
+    r, q         : risk-free rate and dividend yield (default 0).
+
+    Returns
+    -------
+    float — delta in approximately [-1, +1].  Returns 0.5 / -0.5 on error.
+    """
+    try:
+        if T <= 0 or iv <= 0 or S <= 0 or K <= 0:
+            return 0.5 if option_type.lower().startswith("c") else -0.5
+        opt = OptionGreeks(S=S, K=K, T=T, r=r, sigma=iv, q=q)
+        key = "put" if option_type.lower().startswith("p") else "call"
+        return opt.delta()[key]
+    except Exception:
+        return 0.5 if option_type.lower().startswith("c") else -0.5
+
+
+def quick_gamma(
+    S: float,
+    K: float,
+    T: float,
+    iv: float,
+    r: float = 0.0,
+    q: float = 0.0,
+) -> float:
+    """Return gamma with graceful fallback on invalid inputs.
+
+    Parameters
+    ----------
+    S, K, T, iv : float — spot, strike, time-to-expiry (yrs), implied vol.
+    r, q        : risk-free rate and dividend yield (default 0).
+
+    Returns
+    -------
+    float — gamma (>= 0).  Returns 0.0 on error.
+    """
+    try:
+        if T <= 0 or iv <= 0 or S <= 0 or K <= 0:
+            return 0.0
+        opt = OptionGreeks(S=S, K=K, T=T, r=r, sigma=iv, q=q)
+        return opt.gamma()
+    except Exception:
+        return 0.0
+
+
+# ======================================================================
+# Vectorized gamma (for option-chain level batch computations)
+# ======================================================================
+
+def vectorized_gamma(
+    S: Union[float, np.ndarray],
+    K: Union[float, np.ndarray],
+    T: Union[float, np.ndarray],
+    r: float,
+    sigma: Union[float, np.ndarray],
+    q: float = 0.0,
+) -> np.ndarray:
+    """Compute BSM gamma over numpy arrays (vectorized).
+
+    This is the high-performance counterpart of ``OptionGreeks.gamma()``
+    designed for processing entire option chains in one call.
+
+    Formula
+    -------
+        Γ = e^{-qT} · N'(d1) / (S · σ · √T)
+
+    Parameters
+    ----------
+    S, K, T, sigma : float | np.ndarray — broadcastable.
+    r              : float — risk-free rate.
+    q              : float — continuous dividend yield.
+
+    Returns
+    -------
+    np.ndarray — gamma values (0 where inputs are invalid).
+    """
+    S = np.atleast_1d(np.asarray(S, dtype=np.float64))
+    K = np.atleast_1d(np.asarray(K, dtype=np.float64))
+    T = np.atleast_1d(np.asarray(T, dtype=np.float64))
+    sigma = np.atleast_1d(np.asarray(sigma, dtype=np.float64))
+
+    S, K, T, sigma = np.broadcast_arrays(S, K, T, sigma)
+
+    valid = (S > 0) & (K > 0) & (T > 0) & (sigma > 0)
+    gamma = np.zeros_like(S, dtype=np.float64)
+
+    if not valid.any():
+        return gamma
+
+    s = S[valid]
+    k = K[valid]
+    t = T[valid]
+    sig = sigma[valid]
+
+    vol_sqrt_t = sig * np.sqrt(t)
+    d1 = (np.log(s / k) + (r - q + 0.5 * sig ** 2) * t) / vol_sqrt_t
+
+    disc_q = np.exp(-q * t)
+    gamma[valid] = disc_q * norm.pdf(d1) / (s * vol_sqrt_t)
+
+    return gamma
 
 
 # ---------------------------------------------------------------------------

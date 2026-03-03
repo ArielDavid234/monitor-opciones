@@ -32,77 +32,15 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
+
+from core.option_greeks import vectorized_gamma
 
 
 # ======================================================================
-# Gamma Black-Scholes-Merton (vectorizado)
+# Backward-compatible alias — other callers that imported
+# ``black_scholes_gamma`` from this module keep working.
 # ======================================================================
-
-def black_scholes_gamma(
-    S: Union[float, np.ndarray],
-    K: Union[float, np.ndarray],
-    T: Union[float, np.ndarray],
-    r: float,
-    sigma: Union[float, np.ndarray],
-    q: float = 0.0,
-) -> np.ndarray:
-    """
-    Calcula la gamma BSM para opciones europeas (calls y puts tienen la misma gamma).
-
-    Fórmula
-    -------
-        Γ = e^(-q·T) · N'(d1) / (S · σ · √T)
-
-        donde  d1 = [ln(S/K) + (r - q + σ²/2)·T] / (σ·√T)
-               N'(·) = PDF de la distribución normal estándar
-
-    Parámetros
-    ----------
-    S     : precio spot del subyacente
-    K     : strike price
-    T     : tiempo a vencimiento en años (>0)
-    r     : tasa libre de riesgo anualizada (ej. 0.045 para 4.5%)
-    sigma : volatilidad implícita anualizada (ej. 0.25 para 25%)
-    q     : dividend yield continuo (default 0.0)
-
-    Retorna
-    -------
-    np.ndarray  —  gamma por contrato individual (antes de multiplicar por OI, S², etc.)
-    """
-    # Convertir a arrays numpy para vectorización
-    S = np.atleast_1d(np.asarray(S, dtype=np.float64))
-    K = np.atleast_1d(np.asarray(K, dtype=np.float64))
-    T = np.atleast_1d(np.asarray(T, dtype=np.float64))
-    sigma = np.atleast_1d(np.asarray(sigma, dtype=np.float64))
-
-    # Broadcast a la misma forma (permite S escalar + K array, etc.)
-    S, K, T, sigma = np.broadcast_arrays(S, K, T, sigma)
-
-    # Máscara de valores válidos: evitar divisiones por cero y log de negativos
-    valid = (S > 0) & (K > 0) & (T > 0) & (sigma > 0)
-
-    # Inicializar resultado con ceros (contratos inválidos → gamma = 0)
-    gamma = np.zeros_like(S, dtype=np.float64)
-
-    if not valid.any():
-        return gamma
-
-    # Extraer solo valores válidos para el cálculo
-    s = S[valid]
-    k = K[valid]
-    t = T[valid]
-    sig = sigma[valid]
-
-    # d1 según BSM con dividendos continuos
-    vol_sqrt_t = sig * np.sqrt(t)
-    d1 = (np.log(s / k) + (r - q + 0.5 * sig**2) * t) / vol_sqrt_t
-
-    # Gamma = e^(-q·T) · φ(d1) / (S · σ · √T)
-    disc_q = np.exp(-q * t)
-    gamma[valid] = disc_q * norm.pdf(d1) / (s * vol_sqrt_t)
-
-    return gamma
+black_scholes_gamma = vectorized_gamma
 
 
 # ======================================================================
