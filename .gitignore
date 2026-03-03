@@ -50,6 +50,7 @@ Cositas/
 
 # ── Test artifacts ────────────────────────────────────
 test_*.py
+!tests/test_*.py
 .pytest_cache/
 .coverage
 htmlcov/
