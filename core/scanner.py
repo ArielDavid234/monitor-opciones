@@ -34,12 +34,25 @@ except ImportError:
 
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from core.cache import get_cached_chain, cache_chain
+from infrastructure.caching import get_cache as _get_cache
 from utils.retry_utils import (
     retry_yfinance, cb_yfinance, RateLimitError, CircuitOpenError,
     notify_retry_exhausted, notify_circuit_open,
 )
 from tenacity import RetryError
+
+# ── Cache helpers (delegados a CacheManager unificado) ────────────────────
+_cache = _get_cache()
+
+
+def get_cached_chain(ticker: str, expiration: str):
+    """Devuelve chain cacheado o None si no existe/expiró."""
+    return _cache.get(f"chain:{ticker}:{expiration}")
+
+
+def cache_chain(ticker: str, expiration: str, chain_df, ttl_seconds: int = 720):
+    """Guarda el chain en caché."""
+    _cache.set(f"chain:{ticker}:{expiration}", chain_df, ttl=ttl_seconds)
 
 
 # ============================================================================

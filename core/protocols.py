@@ -117,37 +117,8 @@ class CacheProvider(Protocol):
         ...
 
 
-# ============================================================================
-#  MarketDataGateway — contrato de acceso a datos de mercado
-# ============================================================================
-
-@runtime_checkable
-class MarketDataGateway(Protocol):
-    """Contrato para obtener datos de mercado (precios, opciones, historial).
-
-    La implementación concreta vive en ``infrastructure/data/``.
-    """
-
-    def get_current_price(self, ticker: str) -> Optional[float]:
-        """Precio spot actual del subyacente."""
-        ...
-
-    def get_option_dates(self, ticker: str) -> list[str]:
-        """Fechas de expiración disponibles."""
-        ...
-
-    def get_option_chain(self, ticker: str, expiration: str) -> dict:
-        """Cadena de opciones (puts/calls DataFrames)."""
-        ...
-
-    def get_history(self, ticker: str, period: str) -> Any:
-        """Historial de precios OHLCV."""
-        ...
-
-
 __all__ = [
     "AuthProvider",
     "UserRepository",
     "CacheProvider",
-    "MarketDataGateway",
 ]
