@@ -439,3 +439,128 @@ def passes_smart_filters(
         )
 
     return (len(rechazos) == 0, rechazos)
+
+
+# ============================================================================
+#   GESTIÓN DE CUENTA — Aspecto 5 del PDF
+# ============================================================================
+
+def calculate_account_management(
+    metrics: dict,
+    account_size: float,
+    risk_pct: float,
+) -> dict:
+    """Calcula gestión de cuenta para un spread individual (Aspecto 5 del PDF).
+
+    Devuelve:
+        - Contratos recomendados según capital en riesgo
+        - Riesgo real en $ y % de la cuenta
+        - Drawdown en $ y % para 1, 2, 3 y 4 pérdidas consecutivas
+        - Probabilidad estadística de cada racha de pérdidas
+
+    Fórmulas:
+        capital_riesgo      = account_size × (risk_pct / 100)
+        contratos           = floor(capital_riesgo / max_loss_dollars)  [mín 1]
+        riesgo_real_$       = contratos × max_loss_dollars
+        riesgo_real_%       = riesgo_real_$ / account_size × 100
+        drawdown_n_$        = contratos × max_loss_dollars × n
+        prob_n_losses       = (1 − POP)ⁿ × 100
+
+    Args:
+        metrics:      dict de calculate_all_metrics(row).
+        account_size: tamaño de la cuenta en $.
+        risk_pct:     % de la cuenta a arriesgar por trade (ej 2.0 = 2%).
+    """
+    max_loss    = metrics.get("max_loss_dollars", 0.0)
+    pop         = metrics.get("pop_pct", 80.0) / 100.0
+    prob_loss   = max(0.0, 1.0 - pop)
+
+    # ── Contratos recomendados ────────────────────────────────────────────
+    capital_riesgo = account_size * (risk_pct / 100.0)
+    if max_loss > 0:
+        contratos = max(1, int(capital_riesgo // max_loss))
+    else:
+        contratos = 1
+
+    # ── Riesgo real ───────────────────────────────────────────────────────
+    riesgo_real_d   = round(contratos * max_loss, 2)
+    riesgo_real_pct = round(riesgo_real_d / account_size * 100, 2) if account_size > 0 else 0.0
+
+    # ── Drawdowns absolutos (si se dan n pérdidas consecutivas) ─────────
+    dd_1 = round(max_loss * contratos,       2)
+    dd_2 = round(max_loss * contratos * 2.0, 2)
+    dd_3 = round(max_loss * contratos * 3.0, 2)
+    dd_4 = round(max_loss * contratos * 4.0, 2)
+
+    # ── Drawdowns como % de la cuenta ────────────────────────────────────
+    _safe_acc = account_size if account_size > 0 else 1
+    dd_1_pct = round(dd_1 / _safe_acc * 100, 2)
+    dd_2_pct = round(dd_2 / _safe_acc * 100, 2)
+    dd_3_pct = round(dd_3 / _safe_acc * 100, 2)
+    dd_4_pct = round(dd_4 / _safe_acc * 100, 2)
+
+    # ── Probabilidades de cada racha ──────────────────────────────────────
+    prob_1 = round(prob_loss ** 1 * 100, 2)
+    prob_2 = round(prob_loss ** 2 * 100, 2)
+    prob_3 = round(prob_loss ** 3 * 100, 2)
+    prob_4 = round(prob_loss ** 4 * 100, 2)
+
+    return {
+        "contratos":          contratos,
+        "capital_riesgo":     round(capital_riesgo, 2),
+        "riesgo_real_d":      riesgo_real_d,
+        "riesgo_real_pct":    riesgo_real_pct,
+        "max_loss_contract":  max_loss,
+        # Drawdowns absolutos
+        "dd_1":     dd_1,   "dd_1_pct": dd_1_pct,
+        "dd_2":     dd_2,   "dd_2_pct": dd_2_pct,
+        "dd_3":     dd_3,   "dd_3_pct": dd_3_pct,
+        "dd_4":     dd_4,   "dd_4_pct": dd_4_pct,
+        # Probabilidades
+        "prob_1": prob_1,
+        "prob_2": prob_2,
+        "prob_3": prob_3,
+        "prob_4": prob_4,
+    }
+
+
+# ============================================================================
+#   FILTROS INTELIGENTES REACTIVOS — Aspecto 4 del PDF
+# ============================================================================
+
+def apply_intelligent_filters(
+    spreads_data: list,
+    account_size: float,
+    risk_pct: float,
+) -> list:
+    """Re-aplica los 5 filtros inteligentes del PDF sobre una lista ya computada.
+
+    Diseñado para reactivity: cada vez que el usuario cambia account_size o
+    risk_pct en el sidebar, esta función se llama sin re-escanear la API.
+
+    Los filtros (todos obligatorios):
+        1. EV > $0
+        2. IV Percentile > 50%
+        3. Liquidez < 5% del crédito
+        4. Prob Touch < 35%
+        5. Max Loss < risk_pct% de la cuenta
+
+    Args:
+        spreads_data: lista de dicts con claves 'row', 'metrics', 'score'.
+        account_size: tamaño de cuenta en $.
+        risk_pct:     % de riesgo por trade (ej 2.0 = 2%).
+
+    Returns:
+        Misma lista con 'pasa' y 'rechazos' actualizados según los parámetros.
+    """
+    max_loss_pct_account = risk_pct / 100.0
+    result = []
+    for item in spreads_data:
+        pasa, rechazos = passes_smart_filters(
+            item["row"],
+            item["metrics"],
+            account_size=account_size,
+            max_loss_pct_account=max_loss_pct_account,
+        )
+        result.append({**item, "pasa": pasa, "rechazos": rechazos})
+    return result

@@ -21,14 +21,18 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 from core.container import get_container
 from core.optionkings_analytic import (
+    apply_intelligent_filters,
+    calculate_account_management,
     calculate_all_metrics,
     calculate_professional_score,
     passes_smart_filters,
 )
-from ui.optionkings_components import render_spread_card
+from ui.optionkings_components import (
+    render_account_management_sidebar,
+    render_spread_card,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,11 @@ _DEFAULT_TICKERS = ["SPY", "QQQ", "IWM", "NVDA"]
 def render(**kwargs) -> None:
     """Renderiza la página OptionKings Analytic."""
     _cs_service = get_container().credit_spread_service
+
+    # ── Sidebar: Gestión de Cuenta (Aspecto 5) ────────────────────────
+    with st.sidebar:
+        st.markdown("---")
+        account_size, risk_pct = render_account_management_sidebar()
 
     # ── Header ───────────────────────────────────────────────────────────
     st.markdown(
@@ -135,20 +144,15 @@ def render(**kwargs) -> None:
                 format="$%.2f",
                 key="ok_min_credit",
             )
-            account_size = st.number_input(
-                "💼 Tamaño de cuenta ($)",
-                min_value=1_000,
-                max_value=1_000_000,
-                value=int(ALERT_DEFAULT_ACCOUNT_SIZE),
-                step=1_000,
-                key="ok_account_size",
-                help="Para calcular Max Loss < 5% de cuenta.",
-            )
             min_score = st.slider(
                 "🏆 Score mínimo para mostrar",
                 0, 100, 40, 5,
                 key="ok_min_score",
                 help="Solo tarjetas con Score ≥ este valor.",
+            )
+            st.info(
+                "💰 **Cuenta y riesgo** en el panel izquierdo (sidebar).",
+                icon="ℹ️",
             )
 
         st.markdown("---")
@@ -212,7 +216,6 @@ def render(**kwargs) -> None:
 
         st.session_state["ok_results"]   = df
         st.session_state["ok_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.session_state["ok_account"]   = account_size
         st.session_state["ok_settings"]  = {
             "apply_smart": apply_smart,
             "show_rejected": show_rejected,
@@ -225,7 +228,9 @@ def render(**kwargs) -> None:
     settings: dict          = st.session_state.get("ok_settings", {
         "apply_smart": True, "show_rejected": False, "min_score": 40,
     })
-    acc_size: float = float(st.session_state.get("ok_account", ALERT_DEFAULT_ACCOUNT_SIZE))
+    # account_size y risk_pct ya están en session_state (escritos por el sidebar)
+    acc_size: float  = float(account_size)
+    risk_pct_val: float = float(risk_pct)
 
     if df is None:
         st.markdown(
@@ -243,27 +248,28 @@ def render(**kwargs) -> None:
         return
 
     # ── Calcular métricas y score para cada spread ────────────────────────
-    spreads_data: list[dict] = []
-    for _, row in df.iterrows():
-        row_d    = row.to_dict()
-        metrics  = calculate_all_metrics(row_d)
-        score_d  = calculate_professional_score(metrics)
-        pasa, rechazos = passes_smart_filters(row_d, metrics, acc_size)
-        spreads_data.append({
-            "row":      row_d,
-            "metrics":  metrics,
-            "score":    score_d,
-            "pasa":     pasa,
-            "rechazos": rechazos,
-        })
+    # Caché estática: re-computa solo si cambia el df de resultados.
+    # Los filtros (cuenta, riesgo) se re-aplican en cada render sin re-escanear.
+    _cache_key = id(df)
+    if st.session_state.get("_ok_cache_key") != _cache_key:
+        spreads_raw: list[dict] = []
+        for _, row in df.iterrows():
+            row_d   = row.to_dict()
+            metrics = calculate_all_metrics(row_d)
+            score_d = calculate_professional_score(metrics)
+            spreads_raw.append({"row": row_d, "metrics": metrics, "score": score_d})
+        spreads_raw.sort(key=lambda x: x["score"]["score"], reverse=True)
+        st.session_state["_ok_spreads_raw"]  = spreads_raw
+        st.session_state["_ok_cache_key"]    = _cache_key
+    else:
+        spreads_raw = st.session_state["_ok_spreads_raw"]
 
-    # Ordenar por score descendente
-    spreads_data.sort(key=lambda x: x["score"]["score"], reverse=True)
+    # Re-aplicar filtros inteligentes con parámetros actuales (Aspecto 4 reactivo)
+    apply_sf = settings.get("apply_smart", True)
+    show_rej = settings.get("show_rejected", False)
+    min_sc   = settings.get("min_score", 40)
 
-    # Aplicar filtros
-    apply_sf   = settings.get("apply_smart", True)
-    show_rej   = settings.get("show_rejected", False)
-    min_sc     = settings.get("min_score", 40)
+    spreads_data = apply_intelligent_filters(spreads_raw, acc_size, risk_pct_val)
 
     aprobados  = [s for s in spreads_data if (not apply_sf or s["pasa"]) and s["score"]["score"] >= min_sc]
     rechazados = [s for s in spreads_data if (apply_sf and not s["pasa"]) or s["score"]["score"] < min_sc]
@@ -301,11 +307,15 @@ def render(**kwargs) -> None:
             f"### ✅ {len(aprobados)} Spreads con Edge Matemático Verificado"
         )
         for idx, item in enumerate(aprobados):
+            mgmt = calculate_account_management(
+                item["metrics"], acc_size, risk_pct_val
+            )
             render_spread_card(
                 row=item["row"],
                 metrics=item["metrics"],
                 score_data=item["score"],
                 idx=idx,
+                management=mgmt,
             )
 
     # ── Spreads rechazados (transparencia) ────────────────────────────────

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
+
 try:
     import plotly.graph_objects as go
     _PLOTLY_OK = True
@@ -137,6 +139,7 @@ def render_spread_card(
     metrics: dict,
     score_data: dict,
     idx: int = 0,
+    management: dict | None = None,
 ) -> None:
     """Renderiza una tarjeta expandible completa para un credit spread.
 
@@ -338,3 +341,255 @@ def render_spread_card(
             bars_html += _score_bar_html(lbl, val, wt, clr)
 
         st.markdown(bars_html + '</div>', unsafe_allow_html=True)
+
+        # ── Gestión de cuenta (si se proporcionó) ─────────────────────────
+        if management:
+            render_account_summary_card(management)
+            render_drawdown_chart(management)
+
+
+# ============================================================================
+#   CARD DE GESTIÓN DE CUENTA — Contratos + Riesgo Real
+# ============================================================================
+
+def render_account_summary_card(mgmt: dict) -> None:
+    """Tarjeta compacta: contratos recomendados + riesgo real + drawdown rápido.
+
+    Se renderiza dentro de cada expander de spread, debajo del desglose del score.
+
+    Args:
+        mgmt: dict de calculate_account_management().
+    """
+    contratos   = mgmt.get("contratos", 1)
+    riesgo_d    = mgmt.get("riesgo_real_d", 0)
+    riesgo_pct  = mgmt.get("riesgo_real_pct", 0)
+    dd_2        = mgmt.get("dd_2", 0)
+    dd_3        = mgmt.get("dd_3", 0)
+    dd_2_pct    = mgmt.get("dd_2_pct", 0)
+    dd_3_pct    = mgmt.get("dd_3_pct", 0)
+    prob_2      = mgmt.get("prob_2", 0)
+    prob_3      = mgmt.get("prob_3", 0)
+    cap_riesgo  = mgmt.get("capital_riesgo", 0)
+
+    riesgo_color = "#22c55e" if riesgo_pct < 2 else ("#fbbf24" if riesgo_pct < 4 else "#ef4444")
+    dd2_color    = "#22c55e" if dd_2_pct < 5  else ("#fbbf24" if dd_2_pct < 10  else "#ef4444")
+    dd3_color    = "#fbbf24" if dd_3_pct < 8  else "#ef4444"
+
+    st.markdown(
+        f"""
+        <div style="background:linear-gradient(135deg,#0a1628,#0d1f3e);
+                    border:1px solid #1e3a5f;border-radius:10px;
+                    padding:14px 18px;margin-top:12px;">
+            <div style="color:#60a5fa;font-size:0.78rem;font-weight:600;
+                        letter-spacing:.06em;margin-bottom:10px;">
+                💼 GESTIÓN DE CUENTA — ESTE SPREAD
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:0.82rem;">
+                <div style="background:#0d1117;border-radius:8px;padding:8px 12px;
+                            border-left:3px solid #60a5fa;">
+                    <div style="color:#64748b;font-size:0.7rem;">CONTRATOS REC.</div>
+                    <div style="color:#e2e8f0;font-size:1.3rem;font-weight:800;">
+                        {contratos}
+                        <span style="font-size:0.7rem;color:#64748b;"> contrato{'s' if contratos != 1 else ''}</span>
+                    </div>
+                    <div style="color:#475569;font-size:0.7rem;">Capital: ${cap_riesgo:,.0f}</div>
+                </div>
+                <div style="background:#0d1117;border-radius:8px;padding:8px 12px;
+                            border-left:3px solid {riesgo_color};">
+                    <div style="color:#64748b;font-size:0.7rem;">RIESGO REAL</div>
+                    <div style="color:{riesgo_color};font-size:1.3rem;font-weight:800;">
+                        {riesgo_pct:.1f}%
+                    </div>
+                    <div style="color:#475569;font-size:0.7rem;">${riesgo_d:,.0f} de la cuenta</div>
+                </div>
+                <div style="background:#0d1117;border-radius:8px;padding:8px 12px;
+                            border-left:3px solid {dd2_color};">
+                    <div style="color:#64748b;font-size:0.7rem;">2 PÉRDIDAS SEGUIDAS</div>
+                    <div style="color:{dd2_color};font-size:1.1rem;font-weight:800;">
+                        ${dd_2:,.0f} ({dd_2_pct:.1f}%)
+                    </div>
+                    <div style="color:#475569;font-size:0.7rem;">P = {prob_2:.2f}% estadístico</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;
+                        font-size:0.8rem;margin-top:8px;">
+                <div style="background:#0d1117;border-radius:6px;padding:6px 10px;
+                            display:flex;justify-content:space-between;">
+                    <span style="color:#64748b;">3 pérdidas seguidas</span>
+                    <span style="color:{dd3_color};font-weight:700;">
+                        ${dd_3:,.0f} · {dd_3_pct:.1f}% · P={prob_3:.2f}%
+                    </span>
+                </div>
+                <div style="background:#0d1117;border-radius:6px;padding:6px 10px;
+                            display:flex;justify-content:space-between;">
+                    <span style="color:#64748b;">4 pérdidas seguidas</span>
+                    <span style="color:#ef4444;font-weight:700;">
+                        ${mgmt.get('dd_4', 0):,.0f} · {mgmt.get('dd_4_pct', 0):.1f}% · P={mgmt.get('prob_4', 0):.2f}%
+                    </span>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ============================================================================
+#   GRÁFICO DE DRAWDOWN — Bar chart Plotly rojo para psicología del trader
+# ============================================================================
+
+def render_drawdown_chart(mgmt: dict) -> None:
+    """Bar chart Plotly de drawdown por rachas de pérdidas consecutivas.
+
+    Diseñado para impacto psicológico: el trader ve de golpe el daño potencial
+    de 1, 2, 3 y 4 pérdidas seguidas con su probabilidad estadística.
+
+    Colores:
+        verde  (1 pérdida) → pérdida controlada
+        amarillo (2)       → llamada de atención
+        naranja (3)        → zona de alerta
+        rojo   (4)         → racha severa
+
+    Args:
+        mgmt: dict de calculate_account_management().
+    """
+    if not _PLOTLY_OK:
+        return
+
+    labels     = ["1 pérdida", "2 seguidas", "3 seguidas", "4 seguidas"]
+    amounts    = [mgmt.get("dd_1",0), mgmt.get("dd_2",0), mgmt.get("dd_3",0), mgmt.get("dd_4",0)]
+    pcts       = [mgmt.get("dd_1_pct",0), mgmt.get("dd_2_pct",0), mgmt.get("dd_3_pct",0), mgmt.get("dd_4_pct",0)]
+    probs      = [mgmt.get("prob_1",0), mgmt.get("prob_2",0), mgmt.get("prob_3",0), mgmt.get("prob_4",0)]
+    bar_colors = ["#22c55e", "#fbbf24", "#f97316", "#ef4444"]
+
+    custom_text = [
+        f"${a:,.0f}<br>{p:.1f}% cuenta<br>P={pr:.2f}%"
+        for a, p, pr in zip(amounts, pcts, probs)
+    ]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=labels,
+        y=amounts,
+        text=custom_text,
+        textposition="outside",
+        textfont={"size": 10, "color": "#e2e8f0"},
+        marker_color=bar_colors,
+        marker_line=dict(color="#0d1117", width=1),
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "Drawdown: $%{y:,.0f}<br>"
+            "%{text}<extra></extra>"
+        ),
+        width=0.55,
+    ))
+
+    # Línea de referencia en el drawdown máximo "tolerable" (10% de cuenta)
+    max_tolerable = 0.10 * (amounts[0] / (pcts[0] / 100.0)) if pcts[0] > 0 else 0
+    if max_tolerable > 0:
+        fig.add_hline(
+            y=max_tolerable,
+            line_dash="dot",
+            line_color="#475569",
+            annotation_text="10% cuenta",
+            annotation_font={"color": "#475569", "size": 9},
+        )
+
+    fig.update_layout(
+        paper_bgcolor="#0d1117",
+        plot_bgcolor="#0d1117",
+        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
+        margin=dict(l=0, r=0, t=30, b=0),
+        height=220,
+        title={
+            "text": "📉 Impacto de Pérdidas Consecutivas",
+            "font": {"size": 12, "color": "#94a3b8"},
+            "x": 0,
+            "xanchor": "left",
+            "pad": {"l": 4},
+        },
+        xaxis=dict(
+            showgrid=False, zeroline=False,
+            tickfont={"size": 10, "color": "#94a3b8"},
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#1e293b",
+            gridwidth=1,
+            zeroline=False,
+            tickprefix="$",
+            tickfont={"size": 9, "color": "#64748b"},
+        ),
+        bargap=0.3,
+    )
+
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+# ============================================================================
+#   SIDEBAR DE GESTIÓN — bloque para st.sidebar de la página OptionKings
+# ============================================================================
+
+def render_account_management_sidebar() -> tuple[float, float]:
+    """Renderiza el bloque de gestión de cuenta en el sidebar de OptionKings.
+
+    Debe llamarse dentro de un bloque ``with st.sidebar:``. Devuelve los
+    valores elegidos por el usuario para que la página los use directamente.
+
+    Returns:
+        Tuple (account_size: float, risk_pct: float)
+    """
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,#0a1628,#0d1f3e);
+                    border:1px solid #1e3a5f;border-radius:10px;
+                    padding:10px 14px;margin-bottom:4px;">
+            <div style="color:#60a5fa;font-size:0.78rem;font-weight:700;
+                        letter-spacing:.06em;">💼 GESTIÓN DE CUENTA</div>
+            <div style="color:#475569;font-size:0.68rem;margin-top:2px;">
+                Afecta contratos, riesgo real y drawdowns en tiempo real.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    account_size = st.number_input(
+        "💰 Tamaño de cuenta ($)",
+        min_value=1_000,
+        max_value=2_000_000,
+        value=int(st.session_state.get("ok_account", ALERT_DEFAULT_ACCOUNT_SIZE)),
+        step=1_000,
+        key="ok_sb_account_size",
+        help="Capital total disponible para trading de opciones.",
+    )
+    risk_pct = st.slider(
+        "⚡ % Riesgo por trade",
+        min_value=0.5,
+        max_value=5.0,
+        value=float(st.session_state.get("ok_risk_pct", 2.0)),
+        step=0.5,
+        format="%.1f%%",
+        key="ok_sb_risk_pct",
+        help=(
+            "Porcentaje máximo de la cuenta a arriesgar en UN trade.\n"
+            "Recomendado: 1-2%. Nunca superar 5%."
+        ),
+    )
+
+    # Feedback visual inmediato: capital en riesgo
+    capital_riesgo = account_size * risk_pct / 100
+    riesgo_color = "#22c55e" if risk_pct <= 2 else ("#fbbf24" if risk_pct <= 3.5 else "#ef4444")
+    st.markdown(
+        f'<div style="background:#0d1117;border-radius:6px;padding:6px 10px;'
+        f'font-size:0.78rem;text-align:center;margin-bottom:6px;">'
+        f'Capital en riesgo: <b style="color:{riesgo_color};">${capital_riesgo:,.0f}</b>'
+        f' ({risk_pct:.1f}%)</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Guardar en session_state para persistencia
+    st.session_state["ok_account"]  = account_size
+    st.session_state["ok_risk_pct"] = risk_pct
+
+    return float(account_size), float(risk_pct)
