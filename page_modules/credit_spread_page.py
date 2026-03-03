@@ -17,6 +17,7 @@ from datetime import datetime
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 from core.container import get_container
+from core.optionkings_analytic import enrich_dataframe_with_ev, ev_label
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,23 @@ function(params) {
     if (params.value === 'Excelente') return {'color': '#00ff00', 'fontWeight': '700'};
     if (params.value === 'Buena') return {'color': '#ffaa00', 'fontWeight': '600'};
     return {'color': '#94a3b8'};
+}
+""")
+
+_JS_EV_DOLLAR_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 80)  return {'backgroundColor': '#166534', 'color': '#4ade80', 'fontWeight': '700'};
+    if (params.value >  0)   return {'color': '#22d3ee', 'fontWeight': '600'};
+    if (params.value === 0)  return {'color': '#94a3b8'};
+    return {'backgroundColor': '#3f1219', 'color': '#f87171', 'fontWeight': '700'};
+}
+""")
+
+_JS_EV_PCT_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 20)  return {'color': '#4ade80', 'fontWeight': '700'};
+    if (params.value > 0)    return {'color': '#fbbf24', 'fontWeight': '600'};
+    return {'color': '#f87171'};
 }
 """)
 
@@ -240,6 +258,16 @@ def render(**kwargs) -> None:
             value=False,
             help="Bull Put solo si tendencia Alcista, Bear Call solo si Bajista.",
             key="cs_trend_align",
+        )
+        filter_by_ev = st.checkbox(
+            "🧮 Solo spreads con EV positivo (EV > $0)",
+            value=True,
+            help=(
+                "Expected Value: EV = (POP × Crédito) − ((1−POP) × Pérdida).\n"
+                "Si EV > $0 el spread tiene edge matemático real a largo plazo. "
+                "Desactiva para ver también spreads sin edge."
+            ),
+            key="cs_filter_by_ev",
         )
         st.markdown("---")
         st.markdown("#### 🛡️ Modo Estricto")
@@ -494,6 +522,13 @@ def render(**kwargs) -> None:
         )
         df_filtered = df_filtered[mask]
 
+    # ── Calcular EV (Expected Value) ─────────────────────────────────────
+    df_filtered = enrich_dataframe_with_ev(df_filtered)
+
+    # Filtro EV positivo
+    if filter_by_ev and "EV $" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["EV $"] > 0]
+
     if df_filtered.empty:
         st.info(f"No hay spreads de tipo '{tipo_filter}' en los resultados.")
         return
@@ -559,6 +594,62 @@ def render(**kwargs) -> None:
             unsafe_allow_html=True,
         )
 
+    # ── EV Hero Card — Edge matemático del conjunto de spreads ───────────
+    if "EV $" in df_filtered.columns:
+        _n_ev_pos = int((df_filtered["EV $"] > 0).sum())
+        _n_total = len(df_filtered)
+        _best_ev_d = df_filtered["EV $"].max() if _n_total else 0
+        _best_ev_p = df_filtered["EV %"].max() if _n_total else 0
+        _avg_ev_d = df_filtered.loc[df_filtered["EV $"] > 0, "EV $"].mean() if _n_ev_pos else 0
+
+        _ev_color = "#00ff88" if _best_ev_d >= 80 else ("#fbbf24" if _best_ev_d > 0 else "#ef4444")
+        _ev_icon = "✅" if _best_ev_d > 0 else "❌"
+        _ev_badge = ev_label(_best_ev_d)
+
+        ev_c1, ev_c2, ev_c3 = st.columns([2, 1, 1])
+        with ev_c1:
+            st.markdown(
+                f"""
+                <div style="background:linear-gradient(135deg,#0d1117,#0f2430);
+                            border:2px solid {_ev_color};border-radius:12px;
+                            padding:12px 20px;display:flex;align-items:center;gap:16px;">
+                    <span style="font-size:2.2rem;">{_ev_icon}</span>
+                    <div>
+                        <div style="color:#94a3b8;font-size:0.75rem;letter-spacing:.06em;">
+                            MEJOR EV POR CONTRATO
+                        </div>
+                        <div style="color:{_ev_color};font-size:1.6rem;font-weight:800;
+                                    line-height:1.2;">
+                            ${_best_ev_d:+.2f}
+                            <span style="font-size:0.85rem;font-weight:600;
+                                        margin-left:8px;color:#94a3b8;">
+                                {_ev_badge}
+                            </span>
+                        </div>
+                        <div style="color:#64748b;font-size:0.75rem;margin-top:2px;">
+                            EV% del capital en riesgo: <b style="color:{_ev_color};">{_best_ev_p:+.1f}%</b>
+                            &nbsp;·&nbsp;
+                            {_n_ev_pos}/{_n_total} spreads con edge positivo
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with ev_c2:
+            st.metric(
+                label="💚 EV Promedio (positivos)",
+                value=f"${_avg_ev_d:+.2f}",
+                help="Promedio del EV entre los spreads con EV > $0",
+            )
+        with ev_c3:
+            st.metric(
+                label="🎯 Spreads con Edge",
+                value=f"{_n_ev_pos}/{_n_total}",
+                delta=f"{(_n_ev_pos/_n_total*100):.0f}% del total" if _n_total else "—",
+            )
+        st.markdown("")
+
     # ── Score de Oportunidad — card destacado ─────────────────────────────
     _best_opp = (
         df_filtered["Score Oportunidad"].max()
@@ -610,7 +701,7 @@ def render(**kwargs) -> None:
         "Income Score", "Calidad", "Spot",
         "Strike Vendido", "Strike Comprado",
         "DTE", "Delta Vendido", "POP %", "Prob OTM %", "Crédito",
-        "Riesgo Máx", "Retorno %", "Dist Strike %", "IV %",
+        "Riesgo Máx", "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
         "IV Rank", "IV Pctil", "Tendencia",
         "Liquidez", "Volumen", "OI", "Bid-Ask",
     ]
@@ -682,6 +773,13 @@ def render(**kwargs) -> None:
                         type=["numericColumn"])
     gb.configure_column("Bid-Ask", width=80, type=["numericColumn"],
                         valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("EV $", headerName="EV $ /contrato", width=120,
+                        type=["numericColumn"], cellStyle=_JS_EV_DOLLAR_STYLE,
+                        valueFormatter="(x >= 0 ? '+' : '') + '$' + x.toFixed(2)",
+                        sort="desc")
+    gb.configure_column("EV %", headerName="EV % capital", width=110,
+                        type=["numericColumn"], cellStyle=_JS_EV_PCT_STYLE,
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
 
     gb.configure_selection(selection_mode="single", use_checkbox=False)
 
@@ -798,8 +896,12 @@ def render(**kwargs) -> None:
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
                 _iscore = row.get("Income Score", 0)
+                _ev_d = row.get("EV $", 0)
+                _ev_p = row.get("EV %", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 _sc_c = "#4ade80" if _iscore >= 80 else ("#fbbf24" if _iscore >= 60 else "#f87171")
+                _ev_c = "#4ade80" if _ev_d >= 80 else ("#22d3ee" if _ev_d > 0 else "#f87171")
+                _ev_badge = ev_label(_ev_d)
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #1e3a2f;'
                     f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
@@ -814,7 +916,9 @@ def render(**kwargs) -> None:
                     f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span><br>'
                     f'<span style="color:#64748b;">Dist: {_dist:.1f}%</span> · '
                     f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
-                    f'<span style="color:#64748b;">{_trend}</span>'
+                    f'<span style="color:#64748b;">{_trend}</span><br>'
+                    f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/contrato '
+                    f'({_ev_p:+.1f}%) — {_ev_badge}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -830,8 +934,12 @@ def render(**kwargs) -> None:
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
                 _iscore = row.get("Income Score", 0)
+                _ev_d = row.get("EV $", 0)
+                _ev_p = row.get("EV %", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 _sc_c = "#4ade80" if _iscore >= 80 else ("#fbbf24" if _iscore >= 60 else "#f87171")
+                _ev_c = "#4ade80" if _ev_d >= 80 else ("#22d3ee" if _ev_d > 0 else "#f87171")
+                _ev_badge = ev_label(_ev_d)
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #3a1e1e;'
                     f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.82rem;">'
@@ -846,7 +954,9 @@ def render(**kwargs) -> None:
                     f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span><br>'
                     f'<span style="color:#64748b;">Dist: {_dist:.1f}%</span> · '
                     f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
-                    f'<span style="color:#64748b;">{_trend}</span>'
+                    f'<span style="color:#64748b;">{_trend}</span><br>'
+                    f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/contrato '
+                    f'({_ev_p:+.1f}%) — {_ev_badge}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
