@@ -26,6 +26,7 @@ _NAV_OPTIONS_BASE: tuple[str, ...] = (
     "📋 Reports",
     "💰 Venta de Prima",
     "🏆 OptionKings Analytic",
+    "🌊 OKA Sentiment Index",
 )
 _ADMIN_OPTION = "👑 Administrar Usuarios"
 
