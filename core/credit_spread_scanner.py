@@ -384,64 +384,25 @@ def opportunity_score_breakdown(row: dict) -> list[dict]:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-#  IV Rank & IV Percentile (usa HV a 20 días como proxy de IV)
+#  IV Rank & IV Percentile  — delegado a core.iv_rank (fuente canónica)
 # ────────────────────────────────────────────────────────────────────────────
 
 def compute_iv_rank_percentile(ticker: str) -> dict:
-    """Calcula IV Rank e IV Percentile para un ticker.
+    """Thin adapter around ``core.iv_rank.calcular_iv_rank_percentile``.
 
-    Usa la volatilidad histórica anualizada a 20 días (close-to-close)
-    como proxy de la IV, con datos del último año.
-
-    Returns
-    -------
-    dict con keys: iv_current, iv_rank, iv_percentile, iv_1y_high, iv_1y_low
+    Returns keys expected by the rest of this module:
+        iv_current, iv_rank, iv_percentile, iv_1y_high, iv_1y_low
     """
-    default = {
-        "iv_current": 0.0,
-        "iv_rank": 0.0,
-        "iv_percentile": 0.0,
-        "iv_1y_high": 0.0,
-        "iv_1y_low": 0.0,
+    from core.iv_rank import calcular_iv_rank_percentile  # canonical impl
+
+    raw = calcular_iv_rank_percentile(ticker)
+    return {
+        "iv_current":    raw.get("hv_20d", 0.0),
+        "iv_rank":       raw.get("iv_rank", 0.0),
+        "iv_percentile": raw.get("iv_percentile", 0.0),
+        "iv_1y_high":    raw.get("iv_high_52w", 0.0),
+        "iv_1y_low":     raw.get("iv_low_52w", 0.0),
     }
-    try:
-        hist = _cached_history(ticker, "1y")
-        if hist is None or hist.empty or len(hist) < 30:
-            return default
-
-        close = hist["Close"]
-        if hasattr(close, "squeeze"):
-            close = close.squeeze()
-
-        # HV rolling 20 días, anualizada (√252)
-        log_ret = np.log(close / close.shift(1)).dropna()
-        hv_series = log_ret.rolling(window=20).std() * np.sqrt(252)
-        hv_series = hv_series.dropna()
-
-        if hv_series.empty:
-            return default
-
-        current_hv = float(hv_series.iloc[-1])
-        hv_1y_high = float(hv_series.max())
-        hv_1y_low = float(hv_series.min())
-
-        # IV Rank
-        rng = hv_1y_high - hv_1y_low
-        iv_rank = ((current_hv - hv_1y_low) / rng * 100) if rng > 0 else 0.0
-
-        # IV Percentile = % de días del último año con HV < actual
-        iv_pctile = float((hv_series < current_hv).sum()) / len(hv_series) * 100
-
-        return {
-            "iv_current": round(current_hv * 100, 1),
-            "iv_rank": round(iv_rank, 1),
-            "iv_percentile": round(iv_pctile, 1),
-            "iv_1y_high": round(hv_1y_high * 100, 1),
-            "iv_1y_low": round(hv_1y_low * 100, 1),
-        }
-    except Exception as exc:
-        logger.warning("Error calculando IV Rank para %s: %s", ticker, exc)
-        return default
 
 
 # ────────────────────────────────────────────────────────────────────────────
