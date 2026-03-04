@@ -175,7 +175,7 @@ def render(**kwargs) -> None:
               <li>✅ <b style="color:#22c55e;">IV alto</b> — prima inflada = más crédito recibido</li>
               <li>✅ <b style="color:#22c55e;">Liquidez alta</b> — spreads ajustados, fácil entrada/salida</li>
               <li>✅ <b style="color:#22c55e;">DTE 30–45 días</b> — zona óptima de decaimiento theta</li>
-              <li>✅ <b style="color:#22c55e;">Crédito ≥ ⅓ del ancho</b> — relación riesgo/beneficio aceptable</li>
+              <li>✅ <b style="color:#22c55e;">Crédito ≥ 15% del ancho</b> — relación riesgo/beneficio aceptable</li>
               <li>✅ <b style="color:#22c55e;">Riesgo ≤ 5% de la cuenta</b> — proteger el capital</li>
             </ul>
             <div style="margin-top:0.5rem;padding:6px 10px;background:#0d1117;border-left:3px solid #00ff88;border-radius:4px;">
@@ -277,7 +277,7 @@ def render(**kwargs) -> None:
             help=(
                 "Aplica 9 filtros obligatorios: whitelist, precio>"
                 "$20, vol>1M, IV Rank≥30, DTE 25-45, delta 0.10-0.20, "
-                "ancho 3 o 5, crédito≥30% ancho, distancia≥3%, "
+                "ancho 2, 3 o 5, crédito≥15% ancho, distancia≥3%, "
                 "OI>500, vol>100, bid-ask≤10%. "
                 "Desactiva para ver TODAS las oportunidades sin filtrar."
             ),

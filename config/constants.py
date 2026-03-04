@@ -60,8 +60,8 @@ CS_DTE_MIN = 25                        # Mínimo DTE estricto
 CS_DTE_MAX = 45                        # Máximo DTE estricto
 CS_DELTA_MIN = 0.10                    # |delta vendido| mínimo
 CS_DELTA_MAX = 0.20                    # |delta vendido| máximo
-CS_ALLOWED_WIDTHS = [3, 5]             # Anchos de spread permitidos
-CS_MIN_CREDIT_PCT = 0.30               # Crédito mínimo = 30% del ancho
+CS_ALLOWED_WIDTHS = [2, 3, 5]          # Anchos de spread permitidos
+CS_MIN_CREDIT_PCT = 0.15               # Crédito mínimo = 15% del ancho (OTM δ0.10-0.20)
 CS_MIN_DIST_PCT = 3.0                  # Distancia mínima del strike (%)
 CS_MIN_SOLD_OI = 500                   # OI mínimo del strike vendido
 CS_MIN_SOLD_VOL = 100                  # Volumen mínimo del strike vendido
@@ -71,7 +71,7 @@ CS_MAX_BID_ASK_PCT = 0.10              # Bid-Ask Spread ≤ 10% del mid price
 OPP_SCORE_IV_RANK_MIN = 40             # +20 si IV Rank > 40
 OPP_SCORE_DELTA_MIN = 0.12             # +20 si |delta| en [0.12, 0.18]
 OPP_SCORE_DELTA_MAX = 0.18
-OPP_SCORE_CREDIT_WIDTH_PCT = 0.35      # +20 si crédito ≥ 35% del ancho
+OPP_SCORE_CREDIT_WIDTH_PCT = 0.20      # +20 si crédito ≥ 20% del ancho
 OPP_SCORE_DIST_PCT_MIN = 4.0           # +20 si distancia > 4%
 OPP_SCORE_VOL_MIN = 100                # +20 si volumen > 100
 OPP_SCORE_OI_MIN = 500                 # +20 si OI > 500

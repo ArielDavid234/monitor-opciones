@@ -266,7 +266,7 @@ def compute_opportunity_score(row: dict) -> tuple[float, str]:
     Componentes (20 pts cada uno):
       1. IV Rank > 40
       2. Delta en sweet spot (0.12–0.18)
-      3. Crédito ≥ 35 % del ancho del spread
+      3. Crédito ≥ 20 % del ancho del spread
       4. Distancia al strike > 4 %
       5. Liquidez alta (vol > 100, OI > 500, B-A ≤ 10 % del crédito)
 
@@ -351,7 +351,7 @@ def opportunity_score_breakdown(row: dict) -> list[dict]:
     ratio = credit / width * 100 if width > 0 else 0
     p = width > 0 and credit >= OPP_SCORE_CREDIT_WIDTH_PCT * width
     breakdown.append({
-        "criterio": "Crédito ≥ 35% del ancho",
+        "criterio": f"Crédito ≥ {OPP_SCORE_CREDIT_WIDTH_PCT*100:.0f}% del ancho",
         "detalle": f"${credit:.2f} / ${width:.0f} = {ratio:.0f}%",
         "puntos": 20 if p else 0, "maximo": 20, "cumple": p,
     })
@@ -426,12 +426,12 @@ def compute_trend(ticker: str) -> dict:
         "preferred_type": None,
     }
     try:
-        # Historial de 1 mes para EMAs, 5 días para VWAP intradiario
-        hist_1mo = _cached_history(ticker, "1mo")
-        if hist_1mo is None or hist_1mo.empty or len(hist_1mo) < 21:
+        # Historial de 3 meses para EMAs robustas (~60 trading days)
+        hist = _cached_history(ticker, "3mo")
+        if hist is None or hist.empty or len(hist) < 10:
             return default
 
-        close = hist_1mo["Close"]
+        close = hist["Close"]
         if hasattr(close, "squeeze"):
             close = close.squeeze()
 
@@ -441,15 +441,20 @@ def compute_trend(ticker: str) -> dict:
 
         # VWAP aproximado (usando datos diarios del último mes)
         # Usamos típico = (H+L+C)/3 * Volume / cumSum(Volume)
-        high = hist_1mo["High"]
-        low = hist_1mo["Low"]
-        vol = hist_1mo["Volume"]
+        # Solo usar las últimas ~21 barras para VWAP (periodo mensual)
+        hist_vwap = hist.tail(21)
+        high = hist_vwap["High"]
+        low = hist_vwap["Low"]
+        vol = hist_vwap["Volume"]
         if hasattr(high, "squeeze"):
             high = high.squeeze()
             low = low.squeeze()
             vol = vol.squeeze()
+        close_vwap = hist_vwap["Close"]
+        if hasattr(close_vwap, "squeeze"):
+            close_vwap = close_vwap.squeeze()
 
-        typical = (high + low + close) / 3
+        typical = (high + low + close_vwap) / 3
         cum_vol = vol.cumsum()
         cum_tp_vol = (typical * vol).cumsum()
         vwap_series = cum_tp_vol / cum_vol.replace(0, np.nan)
@@ -567,9 +572,27 @@ def _build_spreads_for_expiry(
             if strict and not _passes_bid_ask_filter(sold_bid, sold_ask):
                 continue
 
-            for j in range(i + 1, min(i + 6, len(otm_puts))):
-                bought = otm_puts.iloc[j]
-                bought_strike = float(bought["strike"])
+            # Build a strike→row lookup for fast width matching
+            _put_strikes = {float(r["strike"]): r for _, r in otm_puts.iterrows()}
+
+            # In strict mode, only try allowed widths; otherwise try next 5 strikes
+            if strict:
+                _target_widths = CS_ALLOWED_WIDTHS
+            else:
+                _target_widths = None  # fallback: iterate consecutive
+
+            _bought_candidates: list[tuple[float, pd.Series]] = []
+            if _target_widths:
+                for w in _target_widths:
+                    target_k = round(sold_strike - w, 2)
+                    if target_k in _put_strikes:
+                        _bought_candidates.append((target_k, _put_strikes[target_k]))
+            else:
+                for j in range(i + 1, min(i + 8, len(otm_puts))):
+                    _b = otm_puts.iloc[j]
+                    _bought_candidates.append((float(_b["strike"]), _b))
+
+            for bought_strike, bought in _bought_candidates:
                 bought_ask = float(_safe_num(bought.get("ask", 0)))
 
                 if bought_ask <= 0:
@@ -589,7 +612,7 @@ def _build_spreads_for_expiry(
                     if width_int not in CS_ALLOWED_WIDTHS:
                         continue
 
-                # Filtro 7 — Crédito ≥ 30% del ancho (strict)
+                # Filtro 7 — Crédito mínimo % del ancho (strict)
                 if strict and credit < width * CS_MIN_CREDIT_PCT:
                     continue
 
@@ -668,9 +691,26 @@ def _build_spreads_for_expiry(
             if strict and not _passes_bid_ask_filter(sold_bid, sold_ask):
                 continue
 
-            for j in range(i + 1, min(i + 6, len(otm_calls))):
-                bought = otm_calls.iloc[j]
-                bought_strike = float(bought["strike"])
+            # Build a strike→row lookup for fast width matching
+            _call_strikes = {float(r["strike"]): r for _, r in otm_calls.iterrows()}
+
+            if strict:
+                _target_widths_c = CS_ALLOWED_WIDTHS
+            else:
+                _target_widths_c = None
+
+            _bought_candidates_c: list[tuple[float, pd.Series]] = []
+            if _target_widths_c:
+                for w in _target_widths_c:
+                    target_k = round(sold_strike + w, 2)
+                    if target_k in _call_strikes:
+                        _bought_candidates_c.append((target_k, _call_strikes[target_k]))
+            else:
+                for j in range(i + 1, min(i + 8, len(otm_calls))):
+                    _b = otm_calls.iloc[j]
+                    _bought_candidates_c.append((float(_b["strike"]), _b))
+
+            for bought_strike, bought in _bought_candidates_c:
                 bought_ask = float(_safe_num(bought.get("ask", 0)))
 
                 if bought_ask <= 0:
@@ -690,7 +730,7 @@ def _build_spreads_for_expiry(
                     if width_int not in CS_ALLOWED_WIDTHS:
                         continue
 
-                # Filtro 7 — Crédito ≥ 30% del ancho (strict)
+                # Filtro 7 — Crédito mínimo % del ancho (strict)
                 if strict and credit < width * CS_MIN_CREDIT_PCT:
                     continue
 
@@ -986,16 +1026,16 @@ def _check_10_rules(row: dict, account_size: float) -> tuple[bool, list[dict]]:
     if not r5:
         all_pass = False
 
-    # Regla 6 — Width = 3 o 5
+    # Regla 6 — Width = 2, 3 o 5
     width_int = int(round(width))
     r6 = width_int in CS_ALLOWED_WIDTHS
-    rules.append({"regla": "6. Ancho 3 o 5", "ok": r6})
+    rules.append({"regla": f"6. Ancho {CS_ALLOWED_WIDTHS}", "ok": r6})
     if not r6:
         all_pass = False
 
-    # Regla 7 — Crédito >= 30% del ancho
+    # Regla 7 — Crédito >= 15% del ancho
     r7 = width > 0 and credit >= CS_MIN_CREDIT_PCT * width
-    rules.append({"regla": "7. Crédito ≥ 30% ancho", "ok": r7})
+    rules.append({"regla": f"7. Crédito ≥ {CS_MIN_CREDIT_PCT*100:.0f}% ancho", "ok": r7})
     if not r7:
         all_pass = False
 

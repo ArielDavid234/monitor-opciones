@@ -150,6 +150,7 @@ def limpiar_cache_ticker(ticker_sym=None):
         _cached_options_dates.cache_invalidate(ticker_sym)
         _cached_history.cache_invalidate(ticker_sym, "1d")
         _cached_history.cache_invalidate(ticker_sym, "1mo")
+        _cached_history.cache_invalidate(ticker_sym, "3mo")
         _cached_history.cache_invalidate(ticker_sym, "5d")
         logger.info("Cache limpiado para ticker: %s", ticker_sym)
 
