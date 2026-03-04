@@ -433,49 +433,68 @@ def _build_trades_from_snapshots(
 def _generate_mock_trades(symbol: str, n: int = 100) -> list[dict]:
     """Genera trades mock realistas para demo sin API key.
 
-    Los datos son aleatorios pero estadísticamente plausibles para que
-    la visualización sea significativa.
+    Produce una mezcla de flujo institucional (~55 %) y ruido retail (~45 %)
+    para que los filtros institucionales dejen pasar suficientes trades y la
+    demo muestre un OKA Index dinámico.
     """
     import random
     rng = random.Random(int(time.time()) // 30)   # cambia cada 30s (demo live)
 
     spot_prices = {
-        "SPY": 570, "QQQ": 480, "IWM": 200, "NVDA": 110, "TSLA": 250,
-        "AAPL": 220, "AMD": 115, "MSFT": 415, "AMZN": 195, "META": 620,
+        "SPY": 597, "QQQ": 520, "IWM": 210, "NVDA": 135, "TSLA": 345,
+        "AAPL": 215, "AMD": 120, "MSFT": 445, "AMZN": 210, "META": 640,
+        "GOOGL": 175, "NFLX": 1050, "BA": 195, "GLD": 300,
     }
     spot = float(spot_prices.get(symbol.upper(), 400))
 
     trades: list[dict] = []
     for i in range(n):
-        is_call   = rng.random() > 0.45
-        opt_type  = "call" if is_call else "put"
-        offset    = rng.uniform(-0.08, 0.08)
-        strike    = round(spot * (1 + offset) / 5) * 5
-        dte       = rng.choice([7, 14, 21, 30, 45, 60])
+        # ── Decide si es trade institucional (~55 %) o retail ─────────
+        is_institutional = rng.random() < 0.55
+
+        is_call  = rng.random() > 0.45
+        opt_type = "call" if is_call else "put"
+
+        if is_institutional:
+            # ATM / NTM strikes, alto volumen, sweep frecuente
+            offset  = rng.uniform(-0.03, 0.03)
+            strike  = round(spot * (1 + offset) / 5) * 5
+            dte     = rng.choice([7, 14, 21, 30, 45])
+            iv      = rng.uniform(0.18, 0.40)
+            volume  = rng.choice([300, 500, 800, 1000, 1500, 2000, 3000, 5000])
+            # Volumen inusual: OI menor que volumen  (señal institucional)
+            oi      = rng.randint(max(1, int(volume * 0.10)), int(volume * 0.85))
+            is_sweep = rng.random() < 0.70      # 70 % sweeps
+        else:
+            # Retail: OTM, bajo volumen, poco sweep
+            offset  = rng.uniform(-0.08, 0.08)
+            strike  = round(spot * (1 + offset) / 5) * 5
+            dte     = rng.choice([7, 14, 21, 30, 45, 60])
+            iv      = rng.uniform(0.20, 0.55)
+            volume  = rng.choice([5, 10, 25, 50, 100, 200])
+            oi      = rng.randint(int(volume * 1), int(volume * 8))
+            is_sweep = rng.random() < 0.15      # 15 % sweeps
+
         T         = dte / 365.0
-        iv        = rng.uniform(0.18, 0.55)
         delta_val = _approx_delta(spot, strike, T, iv, opt_type)
         gamma_val = _approx_gamma(spot, strike, T, iv)
 
-        mid_price = max(0.05, abs(delta_val) * rng.uniform(0.8, 3.5))
-        spread    = mid_price * rng.uniform(0.03, 0.12)
-        bid       = max(0.01, mid_price - spread / 2)
-        ask       = mid_price + spread / 2
+        # Precio más realista: base = |delta| × spot × factor
+        base_price = max(0.10, abs(delta_val) * spot * rng.uniform(0.012, 0.04))
+        spread     = base_price * rng.uniform(0.02, 0.08)
+        bid        = max(0.05, base_price - spread / 2)
+        ask        = base_price + spread / 2
 
-        # Simular tipos de flujo: 55% trades son agresivos
+        # 60 % de trades son agresivos (buy o sell)
         aggr_rnd = rng.random()
-        if aggr_rnd < 0.30:
-            price = ask + rng.uniform(0, 0.02)   # aggressive buy
-        elif aggr_rnd < 0.55:
-            price = bid - rng.uniform(0, 0.02)   # aggressive sell
+        if aggr_rnd < 0.35:
+            price = ask + rng.uniform(0, 0.03)   # aggressive buy
+        elif aggr_rnd < 0.60:
+            price = max(0.01, bid - rng.uniform(0, 0.03))   # aggressive sell
         else:
             price = (bid + ask) / 2               # neutral
 
-        volume = rng.choice([10, 25, 50, 100, 200, 500, 1000, 2500])
-        oi     = rng.randint(int(volume * 0.5), int(volume * 5))
-
         exp_date = (datetime.now() + timedelta(days=dte)).strftime("%Y-%m-%d")
-        is_sweep = rng.random() > 0.70
 
         trades.append({
             "symbol":        f"{symbol.upper()}_{exp_date}_{strike:.0f}{opt_type[0].upper()}",
@@ -493,6 +512,8 @@ def _generate_mock_trades(symbol: str, n: int = 100) -> list[dict]:
             "gamma":         round(gamma_val, 6),
             "iv":            round(iv, 4),
             "sweep_flag":    is_sweep,
+            "spot":          spot,
+            "dte":           dte,
         })
 
     return trades
@@ -560,12 +581,12 @@ def compute_oka_index(
 
     # ── 2. Enriquecer con greeks si faltan ────────────────────────────────
     for t in raw_trades:
-        if not t.get("delta"):
+        if t.get("delta") is None:
             spot = float(t.get("spot", 550))
             T    = max(float(t.get("dte", 30)) / 365.0, 1 / 365.0)
             iv   = float(t.get("iv", 0.25) or 0.25)
             t["delta"] = _approx_delta(spot, t["strike"], T, iv, t["option_type"])
-        if not t.get("gamma"):
+        if t.get("gamma") is None:
             spot = float(t.get("spot", 550))
             T    = max(float(t.get("dte", 30)) / 365.0, 1 / 365.0)
             iv   = float(t.get("iv", 0.25) or 0.25)
