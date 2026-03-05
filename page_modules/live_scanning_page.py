@@ -580,28 +580,29 @@ def render(ticker_symbol, **kwargs):
                                 st.bar_chart(chart_vol, height=180)
 
                             with st.expander("🗓️ Datos históricos completos"):
-                                display_hist = hist_df_card.copy()
-                                cols_to_drop = [c for c in ["Dividends", "Stock Splits", "Capital Gains"] if c in display_hist.columns]
+                                _ht = hist_df_card.copy()
+                                cols_to_drop = [c for c in ["Dividends", "Stock Splits", "Capital Gains"] if c in _ht.columns]
                                 if cols_to_drop:
-                                    display_hist = display_hist.drop(columns=cols_to_drop)
-
-                                display_hist.index = display_hist.index.strftime("%Y-%m-%d %H:%M")
+                                    _ht = _ht.drop(columns=cols_to_drop)
+                                # Build Fecha column explicitly — avoids index name ambiguity
+                                try:
+                                    fecha_vals = _ht.index.strftime("%Y-%m-%d %H:%M")
+                                except Exception:
+                                    fecha_vals = _ht.index.astype(str)
+                                _ht = _ht.reset_index(drop=True)
+                                _ht.insert(0, "Fecha", fecha_vals)
                                 for col in ["Open", "High", "Low", "Close"]:
-                                    if col in display_hist.columns:
-                                        display_hist[col] = display_hist[col].apply(
-                                            lambda x: f"${x:.2f}" if pd.notna(x) else "-"
-                                        )
-                                if "Volume" in display_hist.columns:
-                                    display_hist["Volume"] = display_hist["Volume"].apply(
+                                    if col in _ht.columns:
+                                        _ht[col] = _ht[col].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "-")
+                                if "Volume" in _ht.columns:
+                                    _ht["Volume"] = _ht["Volume"].apply(
                                         lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "-"
                                     )
-                                _hist_tbl = display_hist.reset_index()
-                                if _hist_tbl.columns[0] != "Fecha":
-                                    _hist_tbl = _hist_tbl.rename(columns={_hist_tbl.columns[0]: "Fecha"})
-                                st.markdown(
-                                    render_pro_table(_hist_tbl, title="📅 Datos Históricos", max_height=420),
-                                    unsafe_allow_html=True,
-                                )
+                                _tbl_html = render_pro_table(_ht, title="📅 Datos Históricos del Contrato", max_height=420)
+                                if _tbl_html:
+                                    st.markdown(_tbl_html, unsafe_allow_html=True)
+                                else:
+                                    st.dataframe(_ht, use_container_width=True, hide_index=True)
                 else:
                     st.info("ℹ️ No se encontró el símbolo del contrato.")
 
