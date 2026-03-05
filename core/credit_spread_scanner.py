@@ -106,6 +106,30 @@ def _bsm_delta(
         return max(0.01, min(0.50, 0.50 - m * 3))
 
 
+def _bsm_greeks(
+    spot: float,
+    strike: float,
+    dte: int,
+    iv: float,
+    option_type: str = "put",
+) -> dict[str, float]:
+    """Calcula gamma y theta via BSM para un contrato individual.
+
+    Returns dict con claves: gamma, theta.  Ambos por unidad/día.
+    Gamma es idéntico para calls y puts; theta depende del tipo.
+    """
+    T = max(dte, 1) / DAYS_PER_YEAR
+    sigma = iv if iv > 0.01 else 0.25
+    try:
+        g = OptionGreeks(S=spot, K=strike, T=T, r=RISK_FREE_RATE, sigma=sigma)
+        return {
+            "gamma": g.gamma(),
+            "theta": g.theta().get(option_type, 0.0),
+        }
+    except Exception:
+        return {"gamma": 0.0, "theta": 0.0}
+
+
 def _pop_from_delta(delta: float) -> float:
     """Probabilidad de ganancia estimada = 1 - |delta| del strike vendido."""
     return round(1.0 - abs(delta), 4)
@@ -652,6 +676,24 @@ def _build_spreads_for_expiry(
                 pot_short = calculate_probability_of_touch(sold_delta)
                 delta_neto = round(abs(sold_delta) - abs(bought_delta), 4)
 
+                # ── Métricas Fase 2: Gamma, Theta, Liquidez ───────────────
+                _g_sold = _bsm_greeks(spot, sold_strike, dte, sold_iv, "put")
+                _g_bought = _bsm_greeks(spot, bought_strike, dte, bought_iv, "put")
+                # Vendemos el short, compramos el long → gamma neto = -gamma_sold + gamma_bought
+                gamma_neto = round(_g_bought["gamma"] - _g_sold["gamma"], 6)
+                # Theta neto: short nos beneficia (+), long nos cuesta (-)
+                theta_neto = round(-_g_sold["theta"] + _g_bought["theta"], 6)
+                decay_7d = round(theta_neto * 7.0, 2)
+                # Liquidity Score del short leg (0-100)
+                _ba_mid = (sold_bid + sold_ask) / 2 if sold_ask > 0 else 0.01
+                _ba_tight = (sold_ask - sold_bid) / _ba_mid if _ba_mid > 0 else 1.0
+                liq_score = (
+                    (40 if sold_oi > 1000 else sold_oi / 1000 * 40)
+                    + (30 if sold_vol > 200 else sold_vol / 200 * 30)
+                    + (30 if _ba_tight < 0.10 else max(0, 30 * (1 - _ba_tight)))
+                )
+                liq_score = round(min(100, max(0, liq_score)), 1)
+
                 row = {
                     "Ticker": ticker,
                     "Tipo": "Bull Put",
@@ -664,6 +706,9 @@ def _build_spreads_for_expiry(
                     "Delta Comprado": round(bought_delta, 4),
                     "Delta Neto": delta_neto,
                     "PoT Short": pot_short,
+                    "Gamma Neto": gamma_neto,
+                    "Theta Neto": theta_neto,
+                    "Decay 7d": decay_7d,
                     "POP %": round(pop * 100, 1),
                     "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
@@ -671,6 +716,9 @@ def _build_spreads_for_expiry(
                     "Retorno %": retorno_pct,
                     "IV %": round(sold_iv * 100, 1),
                     "Dist Strike %": dist_pct,
+                    "Vol Short": sold_vol,
+                    "OI Short": sold_oi,
+                    "Liq Score": liq_score,
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
@@ -779,6 +827,21 @@ def _build_spreads_for_expiry(
                 pot_short_bc = calculate_probability_of_touch(sold_delta)
                 delta_neto_bc = round(abs(sold_delta) - abs(bought_delta_bc), 4)
 
+                # ── Métricas Fase 2: Gamma, Theta, Liquidez ───────────────
+                _gc_sold = _bsm_greeks(spot, sold_strike, dte, sold_iv, "call")
+                _gc_bought = _bsm_greeks(spot, bought_strike, dte, bought_ivbc, "call")
+                gamma_neto_bc = round(_gc_bought["gamma"] - _gc_sold["gamma"], 6)
+                theta_neto_bc = round(-_gc_sold["theta"] + _gc_bought["theta"], 6)
+                decay_7d_bc = round(theta_neto_bc * 7.0, 2)
+                _ba_mid_c = (sold_bid + sold_ask) / 2 if sold_ask > 0 else 0.01
+                _ba_tight_c = (sold_ask - sold_bid) / _ba_mid_c if _ba_mid_c > 0 else 1.0
+                liq_score_bc = (
+                    (40 if sold_oi > 1000 else sold_oi / 1000 * 40)
+                    + (30 if sold_vol > 200 else sold_vol / 200 * 30)
+                    + (30 if _ba_tight_c < 0.10 else max(0, 30 * (1 - _ba_tight_c)))
+                )
+                liq_score_bc = round(min(100, max(0, liq_score_bc)), 1)
+
                 row = {
                     "Ticker": ticker,
                     "Tipo": "Bear Call",
@@ -791,6 +854,9 @@ def _build_spreads_for_expiry(
                     "Delta Comprado": round(bought_delta_bc, 4),
                     "Delta Neto": delta_neto_bc,
                     "PoT Short": pot_short_bc,
+                    "Gamma Neto": gamma_neto_bc,
+                    "Theta Neto": theta_neto_bc,
+                    "Decay 7d": decay_7d_bc,
                     "POP %": round(pop * 100, 1),
                     "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
@@ -798,6 +864,9 @@ def _build_spreads_for_expiry(
                     "Retorno %": retorno_pct,
                     "IV %": round(sold_iv * 100, 1),
                     "Dist Strike %": dist_pct,
+                    "Vol Short": sold_vol,
+                    "OI Short": sold_oi,
+                    "Liq Score": liq_score_bc,
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
@@ -1006,36 +1075,39 @@ def scan_credit_spreads(
         _ev_ajustado(r) for r in df.to_dict("records")
     ]
 
-    # ── Nuevo Score ponderado (Fase 1) ────────────────────────────────
-    # Componentes (todos normalizados a 0-1 antes de ponderar):
-    #   25% Income Score  |  20% Oportunidad  |  15% Anti-PoT
-    #   15% Anti-DeltaNeto  |  15% EV_ajustado  |  10% gamma (placeholder)
-    def _nuevo_score(row: dict) -> float:
-        inc  = (row.get("Income Score", 0) or 0) / 100.0
-        opp  = (row.get("Score Oportunidad", 0) or 0) / 100.0
-        pot  = (row.get("PoT Short", 50) or 50) / 100.0        # fracción 0-1
-        dn   = abs(row.get("Delta Neto", 0) or 0)             # idealmente < 0.20
-        ev_a = (row.get("EV Ajustado", 0) or 0)               # en %
-        # gamma_score: placeholder 0.5 (neutral) hasta implementar Fase 2
-        gamma = 0.5
+    # ── Nuevo Score ponderado (Fase 1 + Fase 2) ─────────────────────
+    # Pesos equilibrados Fase 1 + Fase 2:
+    #   20% Income | 15% Opp | 12% Anti-PoT | 10% Anti-ΔNeto
+    #   10% EV_aj  | 10% Anti-Γ | 13% Liquidez | 10% Theta/Decay
+    def _score_final(row: dict) -> float:
+        inc   = (row.get("Income Score", 0) or 0) / 100.0
+        opp   = (row.get("Score Oportunidad", 0) or 0) / 100.0
+        pot   = (row.get("PoT Short", 50) or 50) / 100.0
+        dn    = abs(row.get("Delta Neto", 0) or 0)
+        ev_a  = (row.get("EV Ajustado", 0) or 0)
+        gn    = abs(row.get("Gamma Neto", 0) or 0)
+        liq   = (row.get("Liq Score", 0) or 0) / 100.0
+        d7    = (row.get("Decay 7d", 0) or 0)
 
         raw = (
-            0.25 * inc
-            + 0.20 * opp
-            + 0.15 * (1.0 - pot)                   # penaliza PoT alto
-            + 0.15 * max(0.0, 1.0 - dn)            # penaliza delta neto alto
-            + 0.15 * min(1.0, ev_a / 15.0)         # normalizado sobre 15%
-            + 0.10 * gamma
+            0.20 * inc
+            + 0.15 * opp
+            + 0.12 * (1.0 - pot)                       # penaliza PoT alto
+            + 0.10 * max(0.0, 1.0 - dn)                # penaliza delta neto alto
+            + 0.10 * min(1.0, max(0.0, ev_a / 15.0))   # normalizado sobre 15%
+            + 0.10 * max(0.0, 1.0 - gn * 10.0)         # penaliza gamma neto alto
+            + 0.13 * liq                                # premia liquidez del short
+            + 0.10 * min(1.0, max(0.0, d7 / 10.0))     # premia buen theta decay
         )
         return round(raw * 100.0, 1)
 
-    df["Nuevo Score"] = [
-        _nuevo_score(r) for r in df.to_dict("records")
+    df["Score Final"] = [
+        _score_final(r) for r in df.to_dict("records")
     ]
 
-    # Ordenar por Nuevo Score > Score Oportunidad > Income Score > Retorno
+    # Ordenar por Score Final > Score Oportunidad > Income Score > Retorno
     df = df.sort_values(
-        ["Nuevo Score", "Score Oportunidad", "Income Score", "Retorno %"],
+        ["Score Final", "Score Oportunidad", "Income Score", "Retorno %"],
         ascending=[False, False, False, False],
     ).reset_index(drop=True)
 

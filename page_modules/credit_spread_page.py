@@ -189,7 +189,7 @@ def render(**kwargs) -> None:
               📌 <b>PoT Short</b> — Probability of Touch del strike vendido (≈ 2×|Δ|). PoT bajo = menor riesgo.<br>
               📌 <b>Δ Neto</b> — Delta neto del spread (|Δ short| − |Δ long|). Más bajo = spread más neutral.<br>
               📌 <b>EV Ajustado</b> — Expected Value como % del riesgo máximo. Positivo = edge estadístico.<br>
-              📌 <b>⭐ Nuevo Score</b> — Score ponderado: 25% Income + 20% Opp + 15% Anti-PoT + 15% Δ Neto + 15% EV + 10% γ
+              📌 <b>⭐ Score Final</b> — Ponderado Fase 1+2: 20% Income + 15% Opp + 12% Anti-PoT + 10% Δ Neto + 10% EV + 10% Anti-Γ + 13% Liquidez + 10% θ Decay
             </div>
             </div>
             """,
@@ -657,14 +657,14 @@ def render(**kwargs) -> None:
             )
         st.markdown("")
 
-    # ── Hero Cards — Nuevo Score + Score Oportunidad ──────────────────────
+    # ── Hero Cards — Score Final + Score Oportunidad ──────────────────────
     _hero_col1, _hero_col2 = st.columns(2)
 
-    # Nuevo Score (Fase 1) — card principal
+    # Score Final (Fase 1+2) — card principal
     with _hero_col1:
         _best_ns = (
-            df_filtered["Nuevo Score"].max()
-            if "Nuevo Score" in df_filtered.columns else 0
+            df_filtered["Score Final"].max()
+            if "Score Final" in df_filtered.columns else 0
         )
         _ns_label = "Excelente" if _best_ns >= 75 else ("Buena" if _best_ns >= 55 else "Baja")
         _ns_color = "#4ade80" if _best_ns >= 75 else ("#facc15" if _best_ns >= 55 else "#f87171")
@@ -677,7 +677,7 @@ def render(**kwargs) -> None:
                 <span style="font-size:2rem;">⭐</span>
                 <div>
                     <div style="color:#94a3b8;font-size:0.78rem;letter-spacing:.05em;">
-                        MEJOR NUEVO SCORE (PONDERADO)
+                        MEJOR SCORE FINAL (PONDERADO)
                     </div>
                     <div style="color:{_ns_color};font-size:1.5rem;font-weight:800;">
                         {_best_ns:.1f}/100
@@ -686,7 +686,7 @@ def render(**kwargs) -> None:
                         </span>
                     </div>
                     <div style="color:#64748b;font-size:0.7rem;margin-top:2px;">
-                        25% Income · 20% Opp · 15% Anti-PoT · 15% Δ Neto · 15% EV · 10% γ
+                        20% Inc · 15% Opp · 12% PoT · 10% ΔN · 10% EV · 10% Γ · 13% Liq · 10% θ
                     </div>
                 </div>
             </div>
@@ -746,17 +746,20 @@ def render(**kwargs) -> None:
         _avg_eva = df_filtered["EV Ajustado"].mean() if "EV Ajustado" in df_filtered.columns else 0
         st.metric("Ø EV Ajustado", f"{_avg_eva:+.1f}%")
     with mc8:
-        _avg_ns = df_filtered["Nuevo Score"].mean() if "Nuevo Score" in df_filtered.columns else 0
-        st.metric("Ø Nuevo Score", f"{_avg_ns:.1f}")
+        _avg_ns = df_filtered["Score Final"].mean() if "Score Final" in df_filtered.columns else 0
+        st.metric("Ø Score Final", f"{_avg_ns:.1f}")
 
     # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
     display_cols = [
-        "Ticker", "Tipo", "Nuevo Score", "Score Oportunidad", "Nivel",
+        "Ticker", "Tipo", "Score Final", "Score Oportunidad", "Nivel",
         "Income Score", "Calidad", "Spot",
         "Strike Vendido", "Strike Comprado",
-        "DTE", "Delta Vendido", "Delta Neto", "PoT Short", "POP %", "Prob OTM %", "Crédito",
+        "DTE", "Delta Vendido", "Delta Neto", "PoT Short",
+        "Gamma Neto", "Theta Neto", "Decay 7d",
+        "POP %", "Prob OTM %", "Crédito",
         "Riesgo Máx", "EV Ajustado", "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
         "IV Rank", "IV Pctil", "Tendencia",
+        "OI Short", "Vol Short", "Liq Score",
         "Liquidez", "Volumen", "OI", "Bid-Ask",
     ]
     display_cols = [c for c in display_cols if c in df_filtered.columns]
@@ -774,8 +777,8 @@ def render(**kwargs) -> None:
     # Column-specific config
     gb.configure_column("Ticker", pinned="left", width=80)
     gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
-    # ── Nuevo Score (Fase 1) ───────────────────────────────────────────
-    gb.configure_column("Nuevo Score", headerName="⭐ Nuevo Score", width=130,
+    # ── Score Final (Fase 1+2) ──────────────────────────────────────
+    gb.configure_column("Score Final", headerName="⭐ Score Final", width=130,
                         type=["numericColumn"],
                         cellStyle="""function(params) {
                             var v = params.value;
@@ -818,6 +821,27 @@ def render(**kwargs) -> None:
                             return {color:'#4ade80'};
                         }""",
                         valueFormatter="x.toFixed(1) + '%'")
+    # ── Fase 2: Gamma Neto, Theta Neto, Decay 7d ─────────────────
+    gb.configure_column("Gamma Neto", headerName="Γ Neto", width=85,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(4)")
+    gb.configure_column("Theta Neto", headerName="θ Neto", width=85,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 0) return {color:'#4ade80'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="x.toFixed(3)")
+    gb.configure_column("Decay 7d", headerName="Decay 7d", width=90,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 0.5) return {color:'#4ade80',fontWeight:'bold'};
+                            if (v > 0) return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="'$' + x.toFixed(2)")
     gb.configure_column("POP %", width=75, type=["numericColumn"],
                         cellStyle=_JS_POP_STYLE,
                         valueFormatter="x.toFixed(1) + '%'")
@@ -854,6 +878,20 @@ def render(**kwargs) -> None:
                         type=["numericColumn"], cellStyle=_JS_IVRANK_STYLE,
                         valueFormatter="x.toFixed(0) + '%'")
     gb.configure_column("Tendencia", width=90)
+    # ── Fase 2: Liquidez del short leg ───────────────────────────
+    gb.configure_column("OI Short", headerName="OI Short", width=90,
+                        type=["numericColumn"])
+    gb.configure_column("Vol Short", headerName="Vol Short", width=90,
+                        type=["numericColumn"])
+    gb.configure_column("Liq Score", headerName="Liq Score", width=95,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v >= 70) return {color:'#4ade80',fontWeight:'bold'};
+                            if (v >= 40) return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="x.toFixed(0)")
     gb.configure_column("Liquidez", width=85, type=["numericColumn"],
                         cellStyle=_JS_LIQUIDEZ_STYLE)
     gb.configure_column("Volumen", width=80, type=["numericColumn"])
@@ -984,16 +1022,20 @@ def render(**kwargs) -> None:
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
                 _iscore = row.get("Income Score", 0)
-                _nscore = row.get("Nuevo Score", 0)
+                _nscore = row.get("Score Final", 0)
                 _pot = row.get("PoT Short", 0)
                 _dn = row.get("Delta Neto", 0)
                 _eva = row.get("EV Ajustado", 0)
                 _ev_d = row.get("EV $", 0)
                 _ev_p = row.get("EV %", 0)
+                _gn = row.get("Gamma Neto", 0)
+                _liq = row.get("Liq Score", 0)
+                _d7 = row.get("Decay 7d", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 _ns_c = "#4ade80" if _nscore >= 75 else ("#facc15" if _nscore >= 55 else "#f87171")
                 _pot_c = "#4ade80" if _pot < 25 else ("#facc15" if _pot < 40 else "#f87171")
                 _ev_c = "#4ade80" if _ev_d >= 80 else ("#22d3ee" if _ev_d > 0 else "#f87171")
+                _liq_c = "#4ade80" if _liq >= 70 else ("#facc15" if _liq >= 40 else "#f87171")
                 _ev_badge = ev_label(_ev_d)
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #1e3a2f;'
@@ -1013,7 +1055,10 @@ def render(**kwargs) -> None:
                     f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
                     f'<span style="color:#64748b;">{_trend}</span><br>'
                     f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/c '
-                    f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span>'
+                    f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span><br>'
+                    f'<span style="color:#94a3b8;">Γ: {_gn:.4f}</span> · '
+                    f'<span style="color:#64748b;">θ 7d: ${_d7:.2f}</span> · '
+                    f'<span style="color:{_liq_c};">Liq: {_liq:.0f}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -1029,16 +1074,20 @@ def render(**kwargs) -> None:
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
                 _iscore = row.get("Income Score", 0)
-                _nscore = row.get("Nuevo Score", 0)
+                _nscore = row.get("Score Final", 0)
                 _pot = row.get("PoT Short", 0)
                 _dn = row.get("Delta Neto", 0)
                 _eva = row.get("EV Ajustado", 0)
                 _ev_d = row.get("EV $", 0)
                 _ev_p = row.get("EV %", 0)
+                _gn = row.get("Gamma Neto", 0)
+                _liq = row.get("Liq Score", 0)
+                _d7 = row.get("Decay 7d", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 _ns_c = "#4ade80" if _nscore >= 75 else ("#facc15" if _nscore >= 55 else "#f87171")
                 _pot_c = "#4ade80" if _pot < 25 else ("#facc15" if _pot < 40 else "#f87171")
                 _ev_c = "#4ade80" if _ev_d >= 80 else ("#22d3ee" if _ev_d > 0 else "#f87171")
+                _liq_c = "#4ade80" if _liq >= 70 else ("#facc15" if _liq >= 40 else "#f87171")
                 _ev_badge = ev_label(_ev_d)
                 st.markdown(
                     f'<div style="background:#0d1117;border:1px solid #3a1e1e;'
@@ -1058,7 +1107,10 @@ def render(**kwargs) -> None:
                     f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
                     f'<span style="color:#64748b;">{_trend}</span><br>'
                     f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/c '
-                    f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span>'
+                    f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span><br>'
+                    f'<span style="color:#94a3b8;">Γ: {_gn:.4f}</span> · '
+                    f'<span style="color:#64748b;">θ 7d: ${_d7:.2f}</span> · '
+                    f'<span style="color:{_liq_c};">Liq: {_liq:.0f}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
