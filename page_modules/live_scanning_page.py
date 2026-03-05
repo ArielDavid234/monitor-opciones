@@ -595,7 +595,13 @@ def render(ticker_symbol, **kwargs):
                                     display_hist["Volume"] = display_hist["Volume"].apply(
                                         lambda x: f"{int(x):,}" if pd.notna(x) and x > 0 else "-"
                                     )
-                                st.dataframe(display_hist, width="stretch", hide_index=False)
+                                _hist_tbl = display_hist.reset_index()
+                                if _hist_tbl.columns[0] != "Fecha":
+                                    _hist_tbl = _hist_tbl.rename(columns={_hist_tbl.columns[0]: "Fecha"})
+                                st.markdown(
+                                    render_pro_table(_hist_tbl, title="📅 Datos Históricos", max_height=420),
+                                    unsafe_allow_html=True,
+                                )
                 else:
                     st.info("ℹ️ No se encontró el símbolo del contrato.")
 
@@ -822,11 +828,14 @@ def render(ticker_symbol, **kwargs):
                 cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
                 cols_order = ["Flow_Type"] + [c for c in display_df.columns if c != "Flow_Type" and c not in cols_ocultar_df]
                 cols_order = [c for c in cols_order if c in display_df.columns]
-                st.dataframe(
-                    display_df[cols_order].sort_values("Volumen", ascending=False),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=600,
+                st.markdown(
+                    render_pro_table(
+                        display_df[cols_order].sort_values("Volumen", ascending=False),
+                        title="🔍 Options Flow",
+                        badge_count=f"{len(df_filtered):,} opciones",
+                        max_height=600,
+                    ),
+                    unsafe_allow_html=True,
                 )
                 st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
             else:
@@ -891,11 +900,14 @@ def render(ticker_symbol, **kwargs):
         cols_ocultar_df = [c for c in ["OI", "OI_Chg"] if c in display_df.columns]
         cols_order = ["Flow_Type"] + [c for c in display_df.columns if c != "Flow_Type" and c not in cols_ocultar_df]
         cols_order = [c for c in cols_order if c in display_df.columns]
-        st.dataframe(
-            display_df[cols_order].sort_values("Volumen", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-            height=500,
+        st.markdown(
+            render_pro_table(
+                display_df[cols_order].sort_values("Volumen", ascending=False),
+                title="🔍 Options Flow",
+                badge_count=f"{len(df_filtered):,} opciones",
+                max_height=500,
+            ),
+            unsafe_allow_html=True,
         )
         st.caption(f"Mostrando {len(df_filtered):,} de {len(datos_df):,} opciones")
 
@@ -997,9 +1009,14 @@ def render(ticker_symbol, **kwargs):
                            'Ultimo', 'Lado_F', 'IV_F', 'Moneyness', 'Prima Total', 'Liquidez']
             cols_disponibles = [c for c in cols_mostrar if c in display_scan.columns]
 
-            st.dataframe(
-                display_scan[cols_disponibles] if cols_disponibles else display_scan,
-                use_container_width=True, hide_index=True, height=400,
+            st.markdown(
+                render_pro_table(
+                    display_scan[cols_disponibles] if cols_disponibles else display_scan,
+                    title="📊 Opciones Escaneadas",
+                    badge_count=f"{len(display_scan):,}",
+                    max_height=400,
+                ),
+                unsafe_allow_html=True,
             )
 
             csv_enriquecido = pd.DataFrame(datos_enriquecidos).to_csv(index=False).encode("utf-8")

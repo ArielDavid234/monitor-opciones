@@ -306,7 +306,10 @@ def render_watchlist_preview(watchlist_dict, incluir_por_que=False):
             "Empresa": nombre,
             "Sector": sector,
         })
-    st.dataframe(pd.DataFrame(preview_data), use_container_width=True, hide_index=True, height=670)
+    st.markdown(
+        render_pro_table(pd.DataFrame(preview_data), title="📋 Watchlist", max_height=670),
+        unsafe_allow_html=True,
+    )
 
 
 def _rsi_label(rsi):

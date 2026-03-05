@@ -11,6 +11,7 @@ import streamlit as st
 import pandas as pd
 
 from core.container import get_container
+from ui.components import render_pro_table
 
 
 def render(**kwargs) -> None:
@@ -159,9 +160,12 @@ def render(**kwargs) -> None:
 
     # ── Tabla de usuarios ────────────────────────────────────────────────
     display_cols = [c for c in ["ID", "Nombre", "Rol", "Activo"] if c in df_display.columns]
-    st.dataframe(
-        df_display[display_cols],
-        use_container_width=True,
-        hide_index=True,
-        height=min(400, 40 + len(df_display) * 35),
+    st.markdown(
+        render_pro_table(
+            df_display[display_cols],
+            title="👥 Usuarios Registrados",
+            badge_count=f"{len(df_display)}",
+            max_height=min(400, 40 + len(df_display) * 35),
+        ),
+        unsafe_allow_html=True,
     )

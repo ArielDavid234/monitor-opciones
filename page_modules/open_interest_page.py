@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart
-from ui.components import render_metric_card, render_metric_row, render_oi_heatmap, render_bias_gauge
+from ui.components import render_metric_card, render_metric_row, render_oi_heatmap, render_bias_gauge, render_pro_table
 from core.scanner import get_oi_matrix, calculate_call_put_bias
 
 
@@ -168,11 +168,13 @@ def render(ticker_symbol, **kwargs):
                     inicio_idx, fin_idx = 1, n
 
                 df_pagina = df_show.iloc[inicio_idx - 1 : fin_idx]
-                st.dataframe(
-                    df_pagina,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=min(500, 35 * len(df_pagina) + 38),
+                st.markdown(
+                    render_pro_table(
+                        df_pagina,
+                        badge_count=f"{inicio_idx}-{fin_idx} de {n:,}",
+                        max_height=min(500, 35 * len(df_pagina) + 50),
+                    ),
+                    unsafe_allow_html=True,
                 )
                 st.caption(f"Mostrando {inicio_idx}-{fin_idx} de {n:,} contratos")
 
