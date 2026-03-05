@@ -27,6 +27,7 @@ from core.credit_spread_scanner import (
     opportunity_score_breakdown as _score_breakdown,
     compute_income_score as _income_score,
     compute_opportunity_score as _opp_score,
+    calculate_probability_of_touch,          # Fase 1 — PoT
 )
 
 logger = logging.getLogger(__name__)

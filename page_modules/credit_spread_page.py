@@ -697,11 +697,11 @@ def render(**kwargs) -> None:
 
     # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
     display_cols = [
-        "Ticker", "Tipo", "Score Oportunidad", "Nivel",
+        "Ticker", "Tipo", "Nuevo Score", "Score Oportunidad", "Nivel",
         "Income Score", "Calidad", "Spot",
         "Strike Vendido", "Strike Comprado",
-        "DTE", "Delta Vendido", "POP %", "Prob OTM %", "Crédito",
-        "Riesgo Máx", "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
+        "DTE", "Delta Vendido", "Delta Neto", "PoT Short", "POP %", "Prob OTM %", "Crédito",
+        "Riesgo Máx", "EV Ajustado", "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
         "IV Rank", "IV Pctil", "Tendencia",
         "Liquidez", "Volumen", "OI", "Bid-Ask",
     ]
@@ -720,6 +720,17 @@ def render(**kwargs) -> None:
     # Column-specific config
     gb.configure_column("Ticker", pinned="left", width=80)
     gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
+    # ── Nuevo Score (Fase 1) ───────────────────────────────────────────
+    gb.configure_column("Nuevo Score", headerName="⭐ Nuevo Score", width=130,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v >= 75) return {color:'#4ade80',fontWeight:'bold'};
+                            if (v >= 55) return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        sort="desc",
+                        valueFormatter="x.toFixed(1)")
     gb.configure_column("Score Oportunidad", headerName="Score de Oportunidad",
                         width=155, type=["numericColumn"],
                         cellStyle=_JS_OPP_SCORE_STYLE, sort="desc",
@@ -740,6 +751,19 @@ def render(**kwargs) -> None:
     gb.configure_column("DTE", width=60, type=["numericColumn"])
     gb.configure_column("Delta Vendido", width=95, type=["numericColumn"],
                         valueFormatter="x.toFixed(3)")
+    # ── Delta Neto y PoT Short (Fase 1) ──────────────────────────────
+    gb.configure_column("Delta Neto", headerName="Δ Neto", width=85,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(4)")
+    gb.configure_column("PoT Short", headerName="PoT Short", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v >= 40) return {color:'#f87171',fontWeight:'bold'};
+                            if (v >= 25) return {color:'#facc15'};
+                            return {color:'#4ade80'};
+                        }""",
+                        valueFormatter="x.toFixed(1) + '%'")
     gb.configure_column("POP %", width=75, type=["numericColumn"],
                         cellStyle=_JS_POP_STYLE,
                         valueFormatter="x.toFixed(1) + '%'")
@@ -751,6 +775,16 @@ def render(**kwargs) -> None:
     gb.configure_column("Riesgo Máx", width=95, type=["numericColumn"],
                         cellStyle=_JS_RISK_STYLE,
                         valueFormatter="'$' + x.toFixed(2)")
+    # ── EV Ajustado (Fase 1) ─────────────────────────────────────────
+    gb.configure_column("EV Ajustado", headerName="EV Aj. %", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 5)  return {color:'#4ade80',fontWeight:'bold'};
+                            if (v > 0)  return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
     gb.configure_column("Retorno %", width=95, type=["numericColumn"],
                         cellStyle=_JS_RETORNO_STYLE,
                         valueFormatter="x.toFixed(1) + '%'")

@@ -111,6 +111,28 @@ def _pop_from_delta(delta: float) -> float:
     return round(1.0 - abs(delta), 4)
 
 
+def calculate_probability_of_touch(delta: float) -> float:
+    """Probability of Touch (PoT) del strike vendido.
+
+    Fórmula institucional (tastytrade / desks de opciones):
+
+        PoT ≈ 2 × |Δ_short| × 100   (cap 99 %)
+
+    Ejemplo: delta_short = -0.15  →  PoT = min(30.0, 99.0) = 30.0 %
+
+    Un PoT alto significa que el precio tiene más probabilidad de
+    tocar el strike vendido antes del vencimiento, lo que es un riesgo
+    mayor para el vendedor del spread.
+
+    Args:
+        delta: delta del strike vendido (positivo o negativo).
+
+    Returns:
+        Probabilidad de toque en porcentaje (0.0 – 99.0).
+    """
+    return round(min(2.0 * abs(delta) * 100.0, 99.0), 1)
+
+
 def _bid_ask_spread(bid: float, ask: float) -> float:
     """Spread bid-ask en dólares."""
     if ask > 0 and bid >= 0:
@@ -624,6 +646,12 @@ def _build_spreads_for_expiry(
                 bought_vol = int(_safe_num(bought.get("volume", 0)))
                 bought_oi = int(_safe_num(bought.get("openInterest", 0)))
 
+                # ── Métricas Fase 1: PoT, Delta Comprado, Delta Neto ─────
+                bought_iv = float(_safe_num(bought.get("impliedVolatility", sold_iv)) or sold_iv)
+                bought_delta = _bsm_delta(spot, bought_strike, dte, bought_iv, "put")
+                pot_short = calculate_probability_of_touch(sold_delta)
+                delta_neto = round(abs(sold_delta) - abs(bought_delta), 4)
+
                 row = {
                     "Ticker": ticker,
                     "Tipo": "Bull Put",
@@ -633,6 +661,9 @@ def _build_spreads_for_expiry(
                     "DTE": dte,
                     "Expiración": exp_date,
                     "Delta Vendido": round(sold_delta, 4),
+                    "Delta Comprado": round(bought_delta, 4),
+                    "Delta Neto": delta_neto,
+                    "PoT Short": pot_short,
                     "POP %": round(pop * 100, 1),
                     "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
@@ -742,6 +773,12 @@ def _build_spreads_for_expiry(
                 bought_vol = int(_safe_num(bought.get("volume", 0)))
                 bought_oi = int(_safe_num(bought.get("openInterest", 0)))
 
+                # ── Métricas Fase 1: PoT, Delta Comprado, Delta Neto ─────
+                bought_ivbc = float(_safe_num(bought.get("impliedVolatility", sold_iv)) or sold_iv)
+                bought_delta_bc = _bsm_delta(spot, bought_strike, dte, bought_ivbc, "call")
+                pot_short_bc = calculate_probability_of_touch(sold_delta)
+                delta_neto_bc = round(abs(sold_delta) - abs(bought_delta_bc), 4)
+
                 row = {
                     "Ticker": ticker,
                     "Tipo": "Bear Call",
@@ -751,6 +788,9 @@ def _build_spreads_for_expiry(
                     "DTE": dte,
                     "Expiración": exp_date,
                     "Delta Vendido": round(sold_delta, 4),
+                    "Delta Comprado": round(bought_delta_bc, 4),
+                    "Delta Neto": delta_neto_bc,
+                    "PoT Short": pot_short_bc,
                     "POP %": round(pop * 100, 1),
                     "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
@@ -947,10 +987,56 @@ def scan_credit_spreads(
     if df.empty:
         return pd.DataFrame(), ticker_indicators
 
-    # Ordenar por Score Oportunidad > Income Score > Retorno
+    # ── EV Ajustado por capital en riesgo (Fase 1) ────────────────────
+    def _ev_ajustado(row: dict) -> float:
+        """EV como porcentaje del capital en riesgo.
+
+        EV = crédito × POP  -  riesgo × (1 - POP)
+        ev_ajustado = EV / riesgo_máx × 100
+        """
+        credit_ = row.get("Crédito", 0) or 0
+        risk_ = row.get("Riesgo Máx", 0) or 0
+        pop_ = (row.get("POP %", 0) or 0) / 100.0
+        if risk_ <= 0:
+            return 0.0
+        ev = credit_ * pop_ - risk_ * (1.0 - pop_)
+        return round(ev / risk_ * 100.0, 2)
+
+    df["EV Ajustado"] = [
+        _ev_ajustado(r) for r in df.to_dict("records")
+    ]
+
+    # ── Nuevo Score ponderado (Fase 1) ────────────────────────────────
+    # Componentes (todos normalizados a 0-1 antes de ponderar):
+    #   25% Income Score  |  20% Oportunidad  |  15% Anti-PoT
+    #   15% Anti-DeltaNeto  |  15% EV_ajustado  |  10% gamma (placeholder)
+    def _nuevo_score(row: dict) -> float:
+        inc  = (row.get("Income Score", 0) or 0) / 100.0
+        opp  = (row.get("Score Oportunidad", 0) or 0) / 100.0
+        pot  = (row.get("PoT Short", 50) or 50) / 100.0        # fracción 0-1
+        dn   = abs(row.get("Delta Neto", 0) or 0)             # idealmente < 0.20
+        ev_a = (row.get("EV Ajustado", 0) or 0)               # en %
+        # gamma_score: placeholder 0.5 (neutral) hasta implementar Fase 2
+        gamma = 0.5
+
+        raw = (
+            0.25 * inc
+            + 0.20 * opp
+            + 0.15 * (1.0 - pot)                   # penaliza PoT alto
+            + 0.15 * max(0.0, 1.0 - dn)            # penaliza delta neto alto
+            + 0.15 * min(1.0, ev_a / 15.0)         # normalizado sobre 15%
+            + 0.10 * gamma
+        )
+        return round(raw * 100.0, 1)
+
+    df["Nuevo Score"] = [
+        _nuevo_score(r) for r in df.to_dict("records")
+    ]
+
+    # Ordenar por Nuevo Score > Score Oportunidad > Income Score > Retorno
     df = df.sort_values(
-        ["Score Oportunidad", "Income Score", "Retorno %"],
-        ascending=[False, False, False],
+        ["Nuevo Score", "Score Oportunidad", "Income Score", "Retorno %"],
+        ascending=[False, False, False, False],
     ).reset_index(drop=True)
 
     return df, ticker_indicators
