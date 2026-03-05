@@ -57,6 +57,11 @@ from config.constants import (
     ALERT_MAX_RISK_PCT,
 )
 from core.option_greeks import OptionGreeks
+from core.backtester import (
+    compute_ev_real_adjusted,
+    _surface_edge,
+    compute_optimized_score,
+)
 from core.scanner import (
     _cached_options_dates,
     _cached_option_chain,
@@ -694,6 +699,14 @@ def _build_spreads_for_expiry(
                 )
                 liq_score = round(min(100, max(0, liq_score)), 1)
 
+                # ── Fase 3: EV Real Adjusted + Surface Edge ───────────────
+                ev_real_adj = compute_ev_real_adjusted(
+                    spot, sold_strike, dte, sold_iv, credit, max_risk, "put",
+                )
+                surface_edge = _surface_edge(
+                    spot, sold_strike, dte, sold_iv, round(pop * 100, 1), "put",
+                )
+
                 row = {
                     "Ticker": ticker,
                     "Tipo": "Bull Put",
@@ -719,6 +732,8 @@ def _build_spreads_for_expiry(
                     "Vol Short": sold_vol,
                     "OI Short": sold_oi,
                     "Liq Score": liq_score,
+                    "EV Real Adj": ev_real_adj,
+                    "Surface Edge": surface_edge,
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
@@ -842,6 +857,14 @@ def _build_spreads_for_expiry(
                 )
                 liq_score_bc = round(min(100, max(0, liq_score_bc)), 1)
 
+                # ── Fase 3: EV Real Adjusted + Surface Edge ───────────────
+                ev_real_adj_bc = compute_ev_real_adjusted(
+                    spot, sold_strike, dte, sold_iv, credit, max_risk, "call",
+                )
+                surface_edge_bc = _surface_edge(
+                    spot, sold_strike, dte, sold_iv, round(pop * 100, 1), "call",
+                )
+
                 row = {
                     "Ticker": ticker,
                     "Tipo": "Bear Call",
@@ -867,6 +890,8 @@ def _build_spreads_for_expiry(
                     "Vol Short": sold_vol,
                     "OI Short": sold_oi,
                     "Liq Score": liq_score_bc,
+                    "EV Real Adj": ev_real_adj_bc,
+                    "Surface Edge": surface_edge_bc,
                     "Volumen": sold_vol + bought_vol,
                     "OI": sold_oi + bought_oi,
                     "Bid-Ask": _bid_ask_spread(sold_bid, sold_ask),
@@ -1075,34 +1100,11 @@ def scan_credit_spreads(
         _ev_ajustado(r) for r in df.to_dict("records")
     ]
 
-    # ── Nuevo Score ponderado (Fase 1 + Fase 2) ─────────────────────
-    # Pesos equilibrados Fase 1 + Fase 2:
-    #   20% Income | 15% Opp | 12% Anti-PoT | 10% Anti-ΔNeto
-    #   10% EV_aj  | 10% Anti-Γ | 13% Liquidez | 10% Theta/Decay
-    def _score_final(row: dict) -> float:
-        inc   = (row.get("Income Score", 0) or 0) / 100.0
-        opp   = (row.get("Score Oportunidad", 0) or 0) / 100.0
-        pot   = (row.get("PoT Short", 50) or 50) / 100.0
-        dn    = abs(row.get("Delta Neto", 0) or 0)
-        ev_a  = (row.get("EV Ajustado", 0) or 0)
-        gn    = abs(row.get("Gamma Neto", 0) or 0)
-        liq   = (row.get("Liq Score", 0) or 0) / 100.0
-        d7    = (row.get("Decay 7d", 0) or 0)
-
-        raw = (
-            0.20 * inc
-            + 0.15 * opp
-            + 0.12 * (1.0 - pot)                       # penaliza PoT alto
-            + 0.10 * max(0.0, 1.0 - dn)                # penaliza delta neto alto
-            + 0.10 * min(1.0, max(0.0, ev_a / 15.0))   # normalizado sobre 15%
-            + 0.10 * max(0.0, 1.0 - gn * 10.0)         # penaliza gamma neto alto
-            + 0.13 * liq                                # premia liquidez del short
-            + 0.10 * min(1.0, max(0.0, d7 / 10.0))     # premia buen theta decay
-        )
-        return round(raw * 100.0, 1)
-
+    # ── Score Final Optimizado (Fase 3) ────────────────────────────────
+    # Usa EV Real Adj + Surface Edge + pesos optimizables por backtesting.
+    # compute_optimized_score vive en core/backtester.py
     df["Score Final"] = [
-        _score_final(r) for r in df.to_dict("records")
+        compute_optimized_score(r) for r in df.to_dict("records")
     ]
 
     # Ordenar por Score Final > Score Oportunidad > Income Score > Retorno

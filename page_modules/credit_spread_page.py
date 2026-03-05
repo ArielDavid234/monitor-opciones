@@ -18,6 +18,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 from core.container import get_container
 from core.optionkings_analytic import enrich_dataframe_with_ev, ev_label
+from core.backtester import Backtester, BacktestResult
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 
 logger = logging.getLogger(__name__)
@@ -189,7 +190,13 @@ def render(**kwargs) -> None:
               📌 <b>PoT Short</b> — Probability of Touch del strike vendido (≈ 2×|Δ|). PoT bajo = menor riesgo.<br>
               📌 <b>Δ Neto</b> — Delta neto del spread (|Δ short| − |Δ long|). Más bajo = spread más neutral.<br>
               📌 <b>EV Ajustado</b> — Expected Value como % del riesgo máximo. Positivo = edge estadístico.<br>
-              📌 <b>⭐ Score Final</b> — Ponderado Fase 1+2: 20% Income + 15% Opp + 12% Anti-PoT + 10% Δ Neto + 10% EV + 10% Anti-Γ + 13% Liquidez + 10% θ Decay
+              📌 <b>⭐ Score Final</b> — Optimizado Fase 3: 18% Income + 14% Opp + 13% Anti-PoT + 11% ΔN + 12% EV Real + 10% Anti-Γ + 12% Liq + 10% θ + 6% Surface Edge
+            </div>
+            <div style="margin-top:0.7rem;padding:6px 10px;background:#0d1117;border-left:3px solid #a78bfa;border-radius:4px;">
+              <b style="color:#a78bfa;">Métricas Fase 3 (nivel institucional):</b><br>
+              📌 <b>EV Real Adj</b> — EV calculado con la IV específica del strike (no genérica). Refleja la surface real.<br>
+              📌 <b>Surface Edge</b> — Diferencia entre la probabilidad implícita en la surface vs la POP genérica. Positivo = edge a favor.<br>
+              📌 <b>Backtest</b> — Simulación histórica: ¿cuántos spreads similares hubieran ganado en los últimos 60 días?
             </div>
             </div>
             """,
@@ -686,7 +693,7 @@ def render(**kwargs) -> None:
                         </span>
                     </div>
                     <div style="color:#64748b;font-size:0.7rem;margin-top:2px;">
-                        20% Inc · 15% Opp · 12% PoT · 10% ΔN · 10% EV · 10% Γ · 13% Liq · 10% θ
+                        18% Inc · 14% Opp · 13% PoT · 11% ΔN · 12% EV Real · 10% Γ · 12% Liq · 10% θ · 6% Surface
                     </div>
                 </div>
             </div>
@@ -757,7 +764,8 @@ def render(**kwargs) -> None:
         "DTE", "Delta Vendido", "Delta Neto", "PoT Short",
         "Gamma Neto", "Theta Neto", "Decay 7d",
         "POP %", "Prob OTM %", "Crédito",
-        "Riesgo Máx", "EV Ajustado", "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
+        "Riesgo Máx", "EV Ajustado", "EV Real Adj", "Surface Edge",
+        "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
         "IV Rank", "IV Pctil", "Tendencia",
         "OI Short", "Vol Short", "Liq Score",
         "Liquidez", "Volumen", "OI", "Bid-Ask",
@@ -860,6 +868,25 @@ def render(**kwargs) -> None:
                             var v = params.value;
                             if (v > 5)  return {color:'#4ade80',fontWeight:'bold'};
                             if (v > 0)  return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
+    # ── Fase 3: EV Real Adj + Surface Edge ─────────────────────
+    gb.configure_column("EV Real Adj", headerName="EV Real %", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 5)  return {color:'#a78bfa',fontWeight:'bold'};
+                            if (v > 0)  return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
+    gb.configure_column("Surface Edge", headerName="Srf Edge %", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 3)  return {color:'#4ade80',fontWeight:'bold'};
+                            if (v > 0)  return {color:'#22d3ee'};
                             return {color:'#f87171'};
                         }""",
                         valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
@@ -1116,3 +1143,101 @@ def render(**kwargs) -> None:
                 )
         else:
             st.caption("Sin resultados")
+
+    # ────────────────────────────────────────────────────────────────────────
+    #  FASE 3 — Panel de Backtesting Histórico
+    # ────────────────────────────────────────────────────────────────────────
+    st.markdown("---")
+    with st.expander("📊 Backtest Histórico (Fase 3)", expanded=False):
+        st.markdown(
+            '<p style="color:#94a3b8;font-size:0.85rem;">'
+            "Simula los spreads actuales contra precios históricos del subyacente "
+            "para estimar Win Rate, Profit Factor y Edge real.</p>",
+            unsafe_allow_html=True,
+        )
+        _bt_days = st.slider(
+            "Días de lookback", min_value=30, max_value=90, value=60, step=10,
+            key="bt_lookback",
+        )
+        _bt_btn = st.button(
+            "🔬 Ejecutar Backtest",
+            type="secondary",
+            use_container_width=True,
+            key="bt_run_btn",
+        )
+        if _bt_btn:
+            bt = Backtester(lookback_days=_bt_days)
+            _bt_results_map: dict[str, BacktestResult] = {}
+            spreads_by_ticker: dict[str, list[dict]] = {}
+            for r in df_filtered.to_dict("records"):
+                tk = r.get("Ticker", "")
+                spreads_by_ticker.setdefault(tk, []).append(r)
+
+            with st.spinner("Ejecutando backtest histórico..."):
+                for tk, sp_list in spreads_by_ticker.items():
+                    _bt_results_map[tk] = bt.run(tk, sp_list)
+
+            st.session_state["bt_results"] = _bt_results_map
+
+        _bt_results_map = st.session_state.get("bt_results")
+        if _bt_results_map:
+            _total_trades = sum(r.total_trades for r in _bt_results_map.values())
+            _total_wins = sum(r.wins for r in _bt_results_map.values())
+            _avg_wr = (_total_wins / _total_trades * 100.0) if _total_trades else 0
+            _avg_pf = (
+                sum(r.profit_factor for r in _bt_results_map.values() if r.total_trades > 0)
+                / max(1, sum(1 for r in _bt_results_map.values() if r.total_trades > 0))
+            )
+            _avg_edge = (
+                sum(r.edge for r in _bt_results_map.values() if r.total_trades > 0)
+                / max(1, sum(1 for r in _bt_results_map.values() if r.total_trades > 0))
+            )
+
+            _wr_c = "#4ade80" if _avg_wr >= 65 else ("#facc15" if _avg_wr >= 50 else "#f87171")
+            st.markdown(
+                f"""
+                <div style="background:linear-gradient(135deg,#0d1117,#1a1040);
+                            border:2px solid #a78bfa;border-radius:12px;
+                            padding:14px 20px;margin:0.5rem 0;">
+                    <h4 style="color:#a78bfa;margin:0 0 8px 0;">
+                        📊 Resultados del Backtest ({_total_trades} trades simulados)
+                    </h4>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;color:#cbd5e1;">
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">WIN RATE</div>
+                            <div style="color:{_wr_c};font-size:1.2rem;font-weight:700;">{_avg_wr:.1f}%</div>
+                        </div>
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">PROFIT FACTOR</div>
+                            <div style="color:#22d3ee;font-size:1.2rem;font-weight:700;">{_avg_pf:.2f}x</div>
+                        </div>
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">EDGE vs POP</div>
+                            <div style="color:{'#4ade80' if _avg_edge > 0 else '#f87171'};font-size:1.2rem;font-weight:700;">{_avg_edge:+.1f} pp</div>
+                        </div>
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">TICKERS</div>
+                            <div style="color:#94a3b8;font-size:1.2rem;font-weight:700;">{len(_bt_results_map)}</div>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            for tk, res in _bt_results_map.items():
+                if res.total_trades == 0:
+                    continue
+                _tk_wr_c = "#4ade80" if res.win_rate >= 65 else ("#facc15" if res.win_rate >= 50 else "#f87171")
+                st.markdown(
+                    f'<div style="background:#0d1117;border:1px solid #1e293b;border-radius:6px;'
+                    f'padding:6px 12px;margin-bottom:4px;font-size:0.82rem;">'
+                    f'<b style="color:#e2e8f0;">{tk}</b> — '
+                    f'<span style="color:{_tk_wr_c};">WR: {res.win_rate:.1f}%</span> · '
+                    f'<span style="color:#22d3ee;">PF: {res.profit_factor:.2f}x</span> · '
+                    f'<span style="color:#94a3b8;">Trades: {res.total_trades}</span> · '
+                    f'<span style="color:#94a3b8;">W/L: {res.wins}/{res.losses}</span> · '
+                    f'<span style="color:{"#4ade80" if res.edge > 0 else "#f87171"};">Edge: {res.edge:+.1f}pp</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
