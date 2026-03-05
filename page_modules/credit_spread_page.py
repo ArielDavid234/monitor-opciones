@@ -184,6 +184,13 @@ def render(**kwargs) -> None:
               🛑 Salir si la pérdida llega al <b>100%</b> del crédito<br>
               ⏰ Cerrar a los <b>21 DTE</b> si la posición sigue abierta
             </div>
+            <div style="margin-top:0.7rem;padding:6px 10px;background:#0d1117;border-left:3px solid #60a5fa;border-radius:4px;">
+              <b style="color:#60a5fa;">Métricas Fase 1 (nuevas):</b><br>
+              📌 <b>PoT Short</b> — Probability of Touch del strike vendido (≈ 2×|Δ|). PoT bajo = menor riesgo.<br>
+              📌 <b>Δ Neto</b> — Delta neto del spread (|Δ short| − |Δ long|). Más bajo = spread más neutral.<br>
+              📌 <b>EV Ajustado</b> — Expected Value como % del riesgo máximo. Positivo = edge estadístico.<br>
+              📌 <b>⭐ Nuevo Score</b> — Score ponderado: 25% Income + 20% Opp + 15% Anti-PoT + 15% Δ Neto + 15% EV + 10% γ
+            </div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -650,36 +657,74 @@ def render(**kwargs) -> None:
             )
         st.markdown("")
 
-    # ── Score de Oportunidad — card destacado ─────────────────────────────
-    _best_opp = (
-        df_filtered["Score Oportunidad"].max()
-        if "Score Oportunidad" in df_filtered.columns else 0
-    )
-    _best_opp_label = "Excelente" if _best_opp >= 80 else "Buena"
-    _best_opp_color = "#00ff00" if _best_opp >= 80 else "#ffaa00"
-    st.markdown(
-        f"""
-        <div style="background:linear-gradient(135deg,#0d1117,#1a2332);
-                    border:2px solid {_best_opp_color};border-radius:12px;
-                    padding:12px 20px;margin-bottom:1rem;display:flex;
-                    align-items:center;gap:16px;">
-            <span style="font-size:2rem;">🏆</span>
-            <div>
-                <div style="color:#94a3b8;font-size:0.78rem;">MEJOR SCORE DE OPORTUNIDAD</div>
-                <div style="color:{_best_opp_color};font-size:1.5rem;font-weight:800;">
-                    {_best_opp:.0f}/100
-                    <span style="font-size:0.9rem;font-weight:600;margin-left:8px;">
-                        ({_best_opp_label})
-                    </span>
+    # ── Hero Cards — Nuevo Score + Score Oportunidad ──────────────────────
+    _hero_col1, _hero_col2 = st.columns(2)
+
+    # Nuevo Score (Fase 1) — card principal
+    with _hero_col1:
+        _best_ns = (
+            df_filtered["Nuevo Score"].max()
+            if "Nuevo Score" in df_filtered.columns else 0
+        )
+        _ns_label = "Excelente" if _best_ns >= 75 else ("Buena" if _best_ns >= 55 else "Baja")
+        _ns_color = "#4ade80" if _best_ns >= 75 else ("#facc15" if _best_ns >= 55 else "#f87171")
+        st.markdown(
+            f"""
+            <div style="background:linear-gradient(135deg,#0d1117,#0f2a1e);
+                        border:2px solid {_ns_color};border-radius:12px;
+                        padding:12px 20px;margin-bottom:1rem;display:flex;
+                        align-items:center;gap:16px;">
+                <span style="font-size:2rem;">⭐</span>
+                <div>
+                    <div style="color:#94a3b8;font-size:0.78rem;letter-spacing:.05em;">
+                        MEJOR NUEVO SCORE (PONDERADO)
+                    </div>
+                    <div style="color:{_ns_color};font-size:1.5rem;font-weight:800;">
+                        {_best_ns:.1f}/100
+                        <span style="font-size:0.9rem;font-weight:600;margin-left:8px;">
+                            ({_ns_label})
+                        </span>
+                    </div>
+                    <div style="color:#64748b;font-size:0.7rem;margin-top:2px;">
+                        25% Income · 20% Opp · 15% Anti-PoT · 15% Δ Neto · 15% EV · 10% γ
+                    </div>
                 </div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # ── Métricas rápidas ─────────────────────────────────────────────────
-    mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
+    # Score de Oportunidad — card secundario
+    with _hero_col2:
+        _best_opp = (
+            df_filtered["Score Oportunidad"].max()
+            if "Score Oportunidad" in df_filtered.columns else 0
+        )
+        _best_opp_label = "Excelente" if _best_opp >= 80 else "Buena"
+        _best_opp_color = "#00ff00" if _best_opp >= 80 else "#ffaa00"
+        st.markdown(
+            f"""
+            <div style="background:linear-gradient(135deg,#0d1117,#1a2332);
+                        border:2px solid {_best_opp_color};border-radius:12px;
+                        padding:12px 20px;margin-bottom:1rem;display:flex;
+                        align-items:center;gap:16px;">
+                <span style="font-size:2rem;">🏆</span>
+                <div>
+                    <div style="color:#94a3b8;font-size:0.78rem;">MEJOR SCORE DE OPORTUNIDAD</div>
+                    <div style="color:{_best_opp_color};font-size:1.5rem;font-weight:800;">
+                        {_best_opp:.0f}/100
+                        <span style="font-size:0.9rem;font-weight:600;margin-left:8px;">
+                            ({_best_opp_label})
+                        </span>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ── Métricas rápidas (ampliadas Fase 1) ───────────────────────────────
+    mc1, mc2, mc3, mc4 = st.columns(4)
     with mc1:
         st.metric("Mejor Retorno %", f"{df_filtered['Retorno %'].max():.1f}%")
     with mc2:
@@ -688,12 +733,21 @@ def render(**kwargs) -> None:
         st.metric("Crédito Promedio", f"${df_filtered['Crédito'].mean():.2f}")
     with mc4:
         st.metric("DTE Promedio", f"{df_filtered['DTE'].mean():.0f}d")
+
+    mc5, mc6, mc7, mc8 = st.columns(4)
     with mc5:
-        best_score = df_filtered["Income Score"].max() if "Income Score" in df_filtered.columns else 0
-        st.metric("⭐ Income Score", f"{best_score:.0f}")
+        _avg_pot = df_filtered["PoT Short"].mean() if "PoT Short" in df_filtered.columns else 0
+        st.metric("Ø PoT Short", f"{_avg_pot:.1f}%",
+                  help="Prob. de que el precio toque el strike vendido antes del vencimiento")
     with mc6:
-        avg_opp = df_filtered["Score Oportunidad"].mean() if "Score Oportunidad" in df_filtered.columns else 0
-        st.metric("Ø Score Prom.", f"{avg_opp:.0f}")
+        _avg_dn = df_filtered["Delta Neto"].mean() if "Delta Neto" in df_filtered.columns else 0
+        st.metric("Ø Δ Neto", f"{_avg_dn:.3f}")
+    with mc7:
+        _avg_eva = df_filtered["EV Ajustado"].mean() if "EV Ajustado" in df_filtered.columns else 0
+        st.metric("Ø EV Ajustado", f"{_avg_eva:+.1f}%")
+    with mc8:
+        _avg_ns = df_filtered["Nuevo Score"].mean() if "Nuevo Score" in df_filtered.columns else 0
+        st.metric("Ø Nuevo Score", f"{_avg_ns:.1f}")
 
     # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
     display_cols = [
@@ -930,10 +984,15 @@ def render(**kwargs) -> None:
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
                 _iscore = row.get("Income Score", 0)
+                _nscore = row.get("Nuevo Score", 0)
+                _pot = row.get("PoT Short", 0)
+                _dn = row.get("Delta Neto", 0)
+                _eva = row.get("EV Ajustado", 0)
                 _ev_d = row.get("EV $", 0)
                 _ev_p = row.get("EV %", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
-                _sc_c = "#4ade80" if _iscore >= 80 else ("#fbbf24" if _iscore >= 60 else "#f87171")
+                _ns_c = "#4ade80" if _nscore >= 75 else ("#facc15" if _nscore >= 55 else "#f87171")
+                _pot_c = "#4ade80" if _pot < 25 else ("#facc15" if _pot < 40 else "#f87171")
                 _ev_c = "#4ade80" if _ev_d >= 80 else ("#22d3ee" if _ev_d > 0 else "#f87171")
                 _ev_badge = ev_label(_ev_d)
                 st.markdown(
@@ -943,16 +1002,18 @@ def render(**kwargs) -> None:
                     f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}P / '
                     f'Buy {row["Strike Comprado"]}P</span> '
                     f'<span style="color:#64748b;">({row["DTE"]}d)</span>'
-                    f'<span style="float:right;color:{_sc_c};font-weight:700;">Score: {_iscore:.0f}</span><br>'
+                    f'<span style="float:right;color:{_ns_c};font-weight:700;">⭐ {_nscore:.1f}</span><br>'
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
                     f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
                     f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span><br>'
+                    f'<span style="color:{_pot_c};">PoT: {_pot:.1f}%</span> · '
+                    f'<span style="color:#94a3b8;">Δ Neto: {_dn:.3f}</span> · '
                     f'<span style="color:#64748b;">Dist: {_dist:.1f}%</span> · '
                     f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
                     f'<span style="color:#64748b;">{_trend}</span><br>'
-                    f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/contrato '
-                    f'({_ev_p:+.1f}%) — {_ev_badge}</span>'
+                    f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/c '
+                    f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -968,10 +1029,15 @@ def render(**kwargs) -> None:
                 _ivr = row.get("IV Rank", 0)
                 _trend = row.get("Tendencia", "")
                 _iscore = row.get("Income Score", 0)
+                _nscore = row.get("Nuevo Score", 0)
+                _pot = row.get("PoT Short", 0)
+                _dn = row.get("Delta Neto", 0)
+                _eva = row.get("EV Ajustado", 0)
                 _ev_d = row.get("EV $", 0)
                 _ev_p = row.get("EV %", 0)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
-                _sc_c = "#4ade80" if _iscore >= 80 else ("#fbbf24" if _iscore >= 60 else "#f87171")
+                _ns_c = "#4ade80" if _nscore >= 75 else ("#facc15" if _nscore >= 55 else "#f87171")
+                _pot_c = "#4ade80" if _pot < 25 else ("#facc15" if _pot < 40 else "#f87171")
                 _ev_c = "#4ade80" if _ev_d >= 80 else ("#22d3ee" if _ev_d > 0 else "#f87171")
                 _ev_badge = ev_label(_ev_d)
                 st.markdown(
@@ -981,16 +1047,18 @@ def render(**kwargs) -> None:
                     f'<span style="color:#94a3b8;">Sell {row["Strike Vendido"]}C / '
                     f'Buy {row["Strike Comprado"]}C</span> '
                     f'<span style="color:#64748b;">({row["DTE"]}d)</span>'
-                    f'<span style="float:right;color:{_sc_c};font-weight:700;">Score: {_iscore:.0f}</span><br>'
+                    f'<span style="float:right;color:{_ns_c};font-weight:700;">⭐ {_nscore:.1f}</span><br>'
                     f'<span style="color:#00ff88;">Ret: {row["Retorno %"]:.1f}%</span> · '
                     f'<span style="color:#94a3b8;">POP: {row["POP %"]:.0f}%</span> · '
                     f'<span style="color:#fbbf24;">Cr: ${row["Crédito"]:.2f}</span> · '
                     f'<span style="color:#64748b;">Δ {row["Delta Vendido"]:.2f}</span><br>'
+                    f'<span style="color:{_pot_c};">PoT: {_pot:.1f}%</span> · '
+                    f'<span style="color:#94a3b8;">Δ Neto: {_dn:.3f}</span> · '
                     f'<span style="color:#64748b;">Dist: {_dist:.1f}%</span> · '
                     f'<span style="color:{_ivr_c};">IVR: {_ivr:.0f}%</span> · '
                     f'<span style="color:#64748b;">{_trend}</span><br>'
-                    f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/contrato '
-                    f'({_ev_p:+.1f}%) — {_ev_badge}</span>'
+                    f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/c '
+                    f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
