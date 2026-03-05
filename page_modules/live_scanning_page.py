@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from datetime import datetime
 
+from ui.plotly_professional_theme import apply_theme, COLORS
+
 from config.constants import AUTO_REFRESH_INTERVAL
 from core.scanner import ejecutar_escaneo, obtener_historial_contrato, obtener_precio_actual
 from core.clusters import detectar_compras_continuas
@@ -698,26 +700,25 @@ def render(ticker_symbol, **kwargs):
                 _net_fig = go.Figure()
                 _net_fig.add_trace(go.Bar(
                     x=["CALLS"], y=[_calls_prima],
-                    marker_color="#00ff88", name="Calls",
+                    marker_color=COLORS["positive"], name="Calls",
                     text=[f"${_calls_prima:,.0f}"], textposition="auto",
                     textfont=dict(color="#ffffff", size=12),
                 ))
                 _net_fig.add_trace(go.Bar(
                     x=["PUTS"], y=[_puts_prima],
-                    marker_color="#ef4444", name="Puts",
+                    marker_color=COLORS["negative"], name="Puts",
                     text=[f"${_puts_prima:,.0f}"], textposition="auto",
                     textfont=dict(color="#ffffff", size=12),
                 ))
-                _net_fig.update_layout(
-                    title=dict(text="Net Premium Flow", font=dict(color="#e2e8f0", size=14)),
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#94a3b8", family="Inter"),
-                    height=260, margin=dict(l=10, r=10, t=40, b=10),
-                    showlegend=False,
-                    yaxis=dict(gridcolor="rgba(51,65,85,0.4)", tickformat="$,.0f"),
-                    xaxis=dict(showgrid=False),
-                    bargap=0.35,
+                apply_theme(
+                    _net_fig,
+                    title="Net Premium Flow",
+                    height=260,
+                    margin=dict(l=10, r=10, t=40, b=10),
+                    yaxis_tickformat="$,.0f",
+                    xaxis_showgrid=False,
                 )
+                _net_fig.update_layout(bargap=0.35)
                 st.plotly_chart(_net_fig, use_container_width=True, config={"displayModeBar": False})
 
             # Clusters

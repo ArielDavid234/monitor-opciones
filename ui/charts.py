@@ -12,16 +12,22 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from ui.plotly_professional_theme import (
+    apply_theme, COLORS, DIVERGING_SCALE, SEQUENTIAL_BLUE, SEQUENTIAL_PURPLE,
+    pro_gauge_layout,
+)
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
 #                    PUT/CALL RATIO GAUGE
 # ============================================================================
 
+# Mantenido por compatibilidad con código legado que lo usa directamente.
 _DARK_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="white", family="Inter, sans-serif"),
+    plot_bgcolor=COLORS["bg"],
+    font=dict(color=COLORS["text"], family="Inter, system-ui, sans-serif"),
 )
 
 
@@ -40,41 +46,39 @@ def render_pcr_gauge(pc_ratio: float, title: str = "Put/Call Ratio") -> go.Figur
     else:
         label = "BAJISTA"
 
+    _bar_c = COLORS["positive"] if pc_ratio < 0.7 else (COLORS["warning"] if pc_ratio <= 1.0 else COLORS["negative"])
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=pc_ratio,
         domain={"x": [0, 1], "y": [0, 1]},
-        title={"text": f"{title} — {label}", "font": {"size": 15, "color": "white"}},
-        number={"font": {"size": 38, "color": "white"}, "valueformat": ".3f"},
+        title={"text": f"{title} — {label}", "font": {"size": 15, "color": COLORS["text"]}},
+        number={"font": {"size": 38, "color": _bar_c}, "valueformat": ".3f"},
         gauge={
             "axis": {
                 "range": [0, 2],
                 "tickwidth": 1,
-                "tickcolor": "#475569",
-                "tickfont": {"color": "#94a3b8", "size": 10},
+                "tickcolor": COLORS["faint"],
+                "tickfont": {"color": COLORS["muted"], "size": 10},
                 "dtick": 0.25,
             },
-            "bar": {"color": "#00ff88", "thickness": 0.25},
-            "bgcolor": "#0f172a",
-            "borderwidth": 0,
+            "bar": {"color": _bar_c, "thickness": 0.25},
+            "bgcolor": COLORS["bg"],
+            "borderwidth": 1,
+            "bordercolor": COLORS["faint"],
             "steps": [
-                {"range": [0, 0.7], "color": "rgba(16, 185, 129, 0.2)"},
-                {"range": [0.7, 1.0], "color": "rgba(245, 158, 11, 0.15)"},
-                {"range": [1.0, 1.5], "color": "rgba(239, 68, 68, 0.2)"},
-                {"range": [1.5, 2.0], "color": "rgba(239, 68, 68, 0.35)"},
+                {"range": [0, 0.7],   "color": "rgba(0,200,83,0.12)"},
+                {"range": [0.7, 1.0], "color": "rgba(255,214,0,0.10)"},
+                {"range": [1.0, 1.5], "color": "rgba(255,23,68,0.12)"},
+                {"range": [1.5, 2.0], "color": "rgba(255,23,68,0.22)"},
             ],
             "threshold": {
-                "line": {"color": "white", "width": 3},
-                "thickness": 0.8,
+                "line": {"color": COLORS["text"], "width": 3},
+                "thickness": 0.82,
                 "value": pc_ratio,
             },
         },
     ))
-    fig.update_layout(
-        **_DARK_LAYOUT,
-        height=280,
-        margin=dict(l=25, r=25, t=50, b=10),
-    )
+    fig.update_layout(**pro_gauge_layout(280), margin=dict(l=25, r=25, t=50, b=10))
     return fig
 
 
@@ -102,44 +106,45 @@ def render_iv_gauge(
     else:
         label = "IV ALTA"
 
+    _bar_c = COLORS["positive"] if iv_rank < 30 else (COLORS["warning"] if iv_rank <= 60 else COLORS["negative"])
     fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
         value=iv_rank,
         domain={"x": [0, 1], "y": [0, 1]},
-        title={"text": f"{title} — {label}", "font": {"size": 15, "color": "white"}},
-        number={"font": {"size": 38, "color": "white"}, "suffix": "%"},
+        title={"text": f"{title} — {label}", "font": {"size": 15, "color": COLORS["text"]}},
+        number={"font": {"size": 38, "color": _bar_c}, "suffix": "%"},
         delta={
             "reference": 50,
-            "increasing": {"color": "#ef4444"},
-            "decreasing": {"color": "#10b981"},
+            "increasing": {"color": COLORS["negative"]},
+            "decreasing": {"color": COLORS["positive"]},
             "suffix": " vs 50",
         },
         gauge={
             "axis": {
                 "range": [0, 100],
                 "tickwidth": 1,
-                "tickcolor": "#475569",
-                "tickfont": {"color": "#94a3b8", "size": 10},
+                "tickcolor": COLORS["faint"],
+                "tickfont": {"color": COLORS["muted"], "size": 10},
             },
-            "bar": {"color": "#3b82f6", "thickness": 0.25},
-            "bgcolor": "#0f172a",
-            "borderwidth": 0,
+            "bar": {"color": COLORS["accent"], "thickness": 0.25},
+            "bgcolor": COLORS["bg"],
+            "borderwidth": 1,
+            "bordercolor": COLORS["faint"],
             "steps": [
-                {"range": [0, 30], "color": "rgba(16, 185, 129, 0.2)"},
-                {"range": [30, 60], "color": "rgba(245, 158, 11, 0.15)"},
-                {"range": [60, 80], "color": "rgba(239, 68, 68, 0.2)"},
-                {"range": [80, 100], "color": "rgba(239, 68, 68, 0.35)"},
+                {"range": [0,  30], "color": "rgba(0,200,83,0.12)"},
+                {"range": [30, 60], "color": "rgba(255,214,0,0.08)"},
+                {"range": [60, 80], "color": "rgba(255,23,68,0.12)"},
+                {"range": [80, 100], "color": "rgba(255,23,68,0.22)"},
             ],
             "threshold": {
-                "line": {"color": "#f59e0b", "width": 3},
-                "thickness": 0.8,
+                "line": {"color": COLORS["warning"], "width": 3},
+                "thickness": 0.82,
                 "value": iv_percentile,
             },
         },
     ))
     fig.update_layout(
-        **_DARK_LAYOUT,
-        height=280,
+        **pro_gauge_layout(280),
         margin=dict(l=25, r=25, t=50, b=10),
         annotations=[
             dict(
@@ -147,7 +152,7 @@ def render_iv_gauge(
                 xref="paper", yref="paper",
                 x=0.5, y=-0.05,
                 showarrow=False,
-                font=dict(size=11, color="#94a3b8"),
+                font=dict(size=11, color=COLORS["muted"]),
             )
         ],
     )
@@ -210,12 +215,11 @@ def render_oi_heatmap(
 
     # Color scale
     if value_col == "IV":
-        colorscale = "YlOrRd"
+        colorscale = SEQUENTIAL_PURPLE
     elif value_col in ("Prima_Vol",):
-        colorscale = "Viridis"
+        colorscale = SEQUENTIAL_BLUE
     else:
-        colorscale = [[0, "#0f172a"], [0.25, "#1e3a5f"], [0.5, "#2563eb"],
-                       [0.75, "#7c3aed"], [1.0, "#f43f5e"]]
+        colorscale = SEQUENTIAL_BLUE
 
     fig = go.Figure(data=go.Heatmap(
         z=pivot.values,
@@ -224,34 +228,25 @@ def render_oi_heatmap(
         colorscale=colorscale,
         hoverongaps=False,
         hovertemplate=(
-            "Strike: %{y}<br>"
-            "Vencimiento: %{x}<br>"
-            f"{value_col}: " + "%{z:,.0f}<extra></extra>"
+            "<b>Strike:</b> %{y}<br>"
+            "<b>Vencimiento:</b> %{x}<br>"
+            f"<b>{value_col}:</b> " + "%{z:,.0f}<extra></extra>"
         ),
         colorbar=dict(
-            title=dict(text=value_col, font=dict(color="#94a3b8", size=11)),
-            tickfont=dict(color="#94a3b8", size=10),
+            title=dict(text=value_col, font=dict(color=COLORS["muted"], size=11)),
+            tickfont=dict(color=COLORS["muted"], size=10),
             bgcolor="rgba(0,0,0,0)",
         ),
     ))
 
-    fig.update_layout(
-        title=dict(text=title, font=dict(size=14, color="white")),
-        **_DARK_LAYOUT,
+    apply_theme(
+        fig, title=title,
         height=max(400, min(700, top_n * 18)),
         margin=dict(l=80, r=20, t=50, b=60),
-        xaxis=dict(
-            title="Vencimiento",
-            color="#94a3b8",
-            tickangle=-45,
-            tickfont=dict(size=10),
-        ),
-        yaxis=dict(
-            title="Strike",
-            color="#94a3b8",
-            tickfont=dict(size=10),
-        ),
+        xaxis_title="Vencimiento",
+        yaxis_title="Strike",
     )
+    fig.update_xaxes(tickangle=-45, tickfont=dict(size=10))
     return fig
 
 
@@ -318,44 +313,34 @@ def render_vol_surface(
         y=y_values,
         colorscale="Plasma",
         colorbar=dict(
-            title=dict(text="IV %", font=dict(color="#94a3b8", size=11)),
-            tickfont=dict(color="#94a3b8", size=10),
+            title=dict(text="IV %", font=dict(color=COLORS["muted"], size=11)),
+            tickfont=dict(color=COLORS["muted"], size=10),
         ),
         hovertemplate=(
-            "Vencimiento: %{text}<br>"
-            "Strike: $%{y:,.0f}<br>"
-            "IV: %{z:.1f}%<extra></extra>"
+            "<b>Vencimiento:</b> %{text}<br>"
+            "<b>Strike:</b> $%{y:,.0f}<br>"
+            "<b>IV:</b> %{z:.1f}%<extra></extra>"
         ),
         text=[[x_labels[j] for j in range(len(x_labels))] for _ in range(len(y_values))],
+        lighting=dict(ambient=0.7, diffuse=0.5, specular=0.2, roughness=0.5),
     )])
 
+    _scene_axis = dict(backgroundcolor=COLORS["bg"], gridcolor=COLORS["faint"],
+                       color=COLORS["muted"], showspikes=False)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=14, color="white")),
-        **_DARK_LAYOUT,
+        title=dict(text=title, font=dict(size=14, color=COLORS["text"])),
+        paper_bgcolor=COLORS["bg"],
+        plot_bgcolor=COLORS["bg"],
         height=550,
         margin=dict(l=0, r=0, t=50, b=0),
+        font=dict(family="Inter, system-ui, sans-serif", color=COLORS["text"]),
         scene=dict(
-            xaxis=dict(
-                title="Vencimiento",
-                tickvals=list(range(len(x_labels))),
-                ticktext=x_labels,
-                backgroundcolor="#0f172a",
-                gridcolor="#1e293b",
-                color="#94a3b8",
-            ),
-            yaxis=dict(
-                title="Strike ($)",
-                backgroundcolor="#0f172a",
-                gridcolor="#1e293b",
-                color="#94a3b8",
-            ),
-            zaxis=dict(
-                title="IV (%)",
-                backgroundcolor="#0f172a",
-                gridcolor="#1e293b",
-                color="#94a3b8",
-            ),
+            xaxis={**_scene_axis, "title": "Vencimiento",
+                   "tickvals": list(range(len(x_labels))), "ticktext": x_labels},
+            yaxis={**_scene_axis, "title": "Strike ($)"},
+            zaxis={**_scene_axis, "title": "IV (%)"},
             camera=dict(eye=dict(x=1.5, y=-1.5, z=0.9)),
+            bgcolor=COLORS["bg"],
         ),
     )
     return fig
@@ -455,31 +440,13 @@ def render_monte_carlo_chart(
     )
 
     title_text = f"🎲 Monte Carlo — {ticker} ({num_sims:,} simulaciones, {days} días)"
-    fig.update_layout(
-        title=dict(text=title_text, font=dict(size=14, color="white")),
-        **_DARK_LAYOUT,
-        height=450,
+    apply_theme(
+        fig, title=title_text, height=450,
         margin=dict(l=60, r=20, t=50, b=40),
-        xaxis=dict(
-            title="Día",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        yaxis=dict(
-            title="Precio ($)",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom", y=1.02,
-            xanchor="right", x=1,
-            font=dict(size=10, color="#94a3b8"),
-        ),
+        xaxis_title="Día", yaxis_title="Precio ($)",
+        show_legend=True, legend_h=True,
+        hovermode="x unified",
     )
-
     return fig
 
 
@@ -552,39 +519,24 @@ def render_anomaly_scatter(
     ))
 
     n_anomalies = df["is_anomaly"].sum()
-    fig.update_layout(
-        title=dict(
-            text=f"{title} ({n_anomalies} anomalías detectadas)",
-            font=dict(size=14, color="white"),
-        ),
-        **_DARK_LAYOUT,
+    apply_theme(
+        fig,
+        title=f"{title} ({n_anomalies} anomalías detectadas)",
         height=420,
         margin=dict(l=60, r=20, t=50, b=50),
-        xaxis=dict(
-            title="Volumen",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-            type="log",
-        ),
-        yaxis=dict(
-            title="Prima ($)",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-            type="log",
-        ),
-        annotations=[
-            dict(
-                text="🔴 Anomalía  |  🔵 Normal",
-                xref="paper", yref="paper",
-                x=0.5, y=-0.12,
-                showarrow=False,
-                font=dict(size=11, color="#94a3b8"),
-            )
-        ],
+        xaxis_title="Volumen",
+        yaxis_title="Prima ($)",
     )
-
+    fig.update_xaxes(type="log")
+    fig.update_yaxes(type="log")
+    fig.add_annotation(
+        text=f"<span style='color:{COLORS['negative']};'>●</span> Anomalía  "
+             f"<span style='color:{COLORS['accent']};'>●</span> Normal",
+        xref="paper", yref="paper",
+        x=0.5, y=-0.13,
+        showarrow=False,
+        font=dict(size=11, color=COLORS["muted"]),
+    )
     return fig
 
 
@@ -708,39 +660,19 @@ def render_iv_forecast_chart(
     r2_color = "#10b981" if r2 >= 0.5 else "#f59e0b" if r2 >= 0.2 else "#ef4444"
     r2_label = "bueno" if r2 >= 0.5 else "moderado" if r2 >= 0.2 else "bajo"
 
-    fig.update_layout(
-        title=dict(
-            text=(
-                f"Forecast IV — {ticker} "
-                f"(R²={r2:.3f} <span style='color:{r2_color}'>{r2_label}</span>)"
-            ),
-            font=dict(size=14, color="white"),
+    apply_theme(
+        fig,
+        title=(
+            f"Forecast IV — {ticker} "
+            f"(R²={r2:.3f} — {r2_label})"
         ),
-        **_DARK_LAYOUT,
         height=420,
         margin=dict(l=60, r=20, t=50, b=50),
-        xaxis=dict(
-            title="Fecha",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        yaxis=dict(
-            title="Volatilidad (%)",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(size=10, color="#94a3b8"),
-        ),
+        xaxis_title="Fecha",
+        yaxis_title="Volatilidad (%)",
+        show_legend=True, legend_h=True,
+        hovermode="x unified",
     )
-
     return fig
 
 
@@ -844,36 +776,19 @@ def render_mc_option_paths(
     )
 
     tipo_label = "CALL" if otype == "call" else "PUT"
-    fig.update_layout(
-        title=dict(
-            text=(
-                f"🎲 MC {tipo_label} ${params['K']:,.0f} — {ticker} "
-                f"({params['n_sims']:,} sims, σ={params['sigma']*100:.1f}%)"
-            ),
-            font=dict(size=14, color="white"),
+    apply_theme(
+        fig,
+        title=(
+            f"🎲 MC {tipo_label} ${params['K']:,.0f} — {ticker} "
+            f"({params['n_sims']:,} sims, σ={params['sigma']*100:.1f}%)"
         ),
-        **_DARK_LAYOUT,
         height=450,
         margin=dict(l=60, r=20, t=50, b=40),
-        xaxis=dict(
-            title="Paso temporal",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        yaxis=dict(
-            title="Precio Subyacente ($)",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02,
-            xanchor="right", x=1,
-            font=dict(size=10, color="#94a3b8"),
-        ),
+        xaxis_title="Paso temporal",
+        yaxis_title="Precio Subyacente ($)",
+        show_legend=True, legend_h=True,
+        hovermode="x unified",
     )
-
     return fig
 
 
@@ -961,35 +876,19 @@ def render_mc_payoff_histogram(
             annotation_position="top right",
         )
 
-    fig.update_layout(
-        title=dict(
-            text=(
-                f"📊 Distribución Payoffs — {tipo_label} ${params['K']:,.0f} {ticker} "
-                f"(MC ${mc_result['mc_price']:.2f})"
-            ),
-            font=dict(size=14, color="white"),
+    apply_theme(
+        fig,
+        title=(
+            f"📊 Distribución Payoffs — {tipo_label} ${params['K']:,.0f} {ticker} "
+            f"(MC ${mc_result['mc_price']:.2f})"
         ),
-        **_DARK_LAYOUT,
         height=380,
         margin=dict(l=60, r=20, t=50, b=50),
-        xaxis=dict(
-            title="Payoff al Vencimiento ($)",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        yaxis=dict(
-            title="Frecuencia (paths)",
-            color="#94a3b8",
-            showgrid=True,
-            gridcolor="rgba(148,163,184,0.08)",
-        ),
-        barmode="overlay",
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02,
-            xanchor="right", x=1,
-            font=dict(size=10, color="#94a3b8"),
-        ),
+        xaxis_title="Payoff al Vencimiento ($)",
+        yaxis_title="Frecuencia (paths)",
+        show_legend=True,
+        legend_h=True,
     )
+    fig.update_layout(barmode="overlay")
 
     return fig

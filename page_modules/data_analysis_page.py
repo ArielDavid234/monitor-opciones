@@ -18,6 +18,7 @@ from ui.charts import (
     render_pcr_gauge, render_iv_gauge, render_oi_heatmap,
     render_vol_surface, render_monte_carlo_chart, render_anomaly_scatter,
 )
+from ui.plotly_professional_theme import apply_theme, COLORS, pro_gauge_layout
 from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
 
 logger = logging.getLogger(__name__)
@@ -142,10 +143,7 @@ def render(ticker_symbol, **kwargs):
             },
         ))
         fig_gauge.update_layout(
-            paper_bgcolor="#1e293b",
-            plot_bgcolor="#1e293b",
-            font={"color": "white", "family": "Inter, sans-serif"},
-            height=400,
+            **pro_gauge_layout(400),
             margin=dict(l=30, r=30, t=60, b=10),
         )
         st.plotly_chart(fig_gauge, use_container_width=True)
@@ -328,30 +326,22 @@ def render(ticker_symbol, **kwargs):
                     yanchor="bottom",
                 )
 
-                fig_niveles.update_layout(
+                apply_theme(
+                    fig_niveles,
+                    title=f"Niveles de Soporte (🟢) y Resistencia (🔴)  —  Precio actual: <b>${precio_actual:,.2f}</b>",
                     height=max(420, 40 * len(todos_niveles) + 80),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(15,23,42,0.8)",
-                    font=dict(color="#94a3b8", family="Inter", size=12),
-                    xaxis=dict(
-                        title="Volumen Total",
-                        gridcolor="rgba(51,65,85,0.4)",
-                        color="#94a3b8",
-                        tickformat=",",
-                    ),
+                    margin=dict(l=20, r=20, t=40, b=40),
+                    xaxis_title="Volumen Total",
+                    xaxis_tickformat=",",
+                )
+                fig_niveles.update_layout(
+                    bargap=0.25,
                     yaxis=dict(
                         title="",
-                        gridcolor="rgba(51,65,85,0.2)",
-                        color="#e2e8f0",
-                        tickfont=dict(size=11),
+                        color=COLORS["text"],
+                        tickfont=dict(size=11, color=COLORS["text"]),
+                        gridcolor=COLORS["faint"],
                         autorange="reversed",
-                    ),
-                    margin=dict(l=20, r=20, t=40, b=40),
-                    bargap=0.25,
-                    title=dict(
-                        text=f"Niveles de Soporte (🟢) y Resistencia (🔴)  —  Precio actual: <b>${precio_actual:,.2f}</b>",
-                        font=dict(color="#e2e8f0", size=14),
-                        x=0,
                     ),
                 )
 

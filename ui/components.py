@@ -1,7 +1,4 @@
-"""
-Componentes reutilizables de UI para el Monitor de Opciones.
-Funciones de formateo, renderizado de tarjetas y helpers de Streamlit.
-"""
+"""\nComponentes reutilizables de UI para el Monitor de Opciones.\nFunciones de formateo, renderizado de tarjetas y helpers de Streamlit.\n"""
 import time
 import logging
 import streamlit as st
@@ -14,6 +11,7 @@ from typing import Optional
 
 from config.constants import ANALYSIS_SLEEP_RANGE
 from core.projections import analizar_proyeccion_empresa
+from ui.plotly_professional_theme import apply_theme, COLORS
 
 logger = logging.getLogger(__name__)
 
@@ -526,17 +524,31 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
                         ))
 
                         fig.update_layout(
-                            template='plotly_dark',
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor=COLORS["bg"],
                             height=380,
                             margin=dict(l=0, r=0, t=30, b=0),
-                            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
-                                        font=dict(size=10)),
-                            xaxis=dict(showgrid=False, color='#64748b'),
-                            yaxis=dict(title='Precio ($)', showgrid=True, gridcolor='#1e293b', color='#94a3b8'),
-                            yaxis2=dict(overlaying='y', side='right', showgrid=False, showticklabels=False,
-                                        range=[0, max(tecnico["chart_volume"]) * 4] if tecnico["chart_volume"] else [0, 1]),
+                            showlegend=True,
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                                        xanchor="right", x=1, font=dict(size=10,
+                                        color=COLORS["muted"])),
+                            font=dict(family="Inter, system-ui, sans-serif",
+                                      color=COLORS["text"], size=12),
+                            hoverlabel=dict(bgcolor=COLORS["surface"],
+                                            bordercolor=COLORS["faint"],
+                                            font=dict(family="Inter, system-ui, sans-serif",
+                                                      size=12, color=COLORS["text"])),
+                            xaxis=dict(showgrid=False, color=COLORS["muted"],
+                                       tickfont=dict(size=10, color=COLORS["muted"])),
+                            yaxis=dict(title=dict(text="Precio ($)",
+                                                   font=dict(size=11, color=COLORS["muted"])),
+                                       showgrid=True, gridcolor=COLORS["faint"],
+                                       color=COLORS["muted"]),
+                            yaxis2=dict(overlaying="y", side="right", showgrid=False,
+                                        showticklabels=False,
+                                        range=[0, max(tecnico["chart_volume"]) * 4]
+                                        if tecnico["chart_volume"] else [0, 1]),
+                            hovermode="x unified",
                         )
                         st.plotly_chart(fig, use_container_width=True, key=f"chart_{sym}")
 
