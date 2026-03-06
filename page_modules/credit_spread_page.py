@@ -19,9 +19,9 @@ from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 from core.container import get_container
 from core.optionkings_analytic import enrich_dataframe_with_ev, ev_label
 from core.backtester import Backtester, BacktestResult
-from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
+from utils.state import save_page_data, load_page_data
 
-logger = logging.getLogger(__name__)
+from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 
 # ── Tickers populares por defecto ────────────────────────────────────────
 _DEFAULT_TICKERS = ["SPY", "QQQ", "IWM", "NVDA", "AAPL", "TSLA", "AMD"]
@@ -361,11 +361,30 @@ def render(**kwargs) -> None:
         alerts_df = _cs_service.get_alerts(df, account_size=account_size)
         st.session_state["cs_alerts"] = alerts_df
 
+        # ── Guardar snapshot de filtros para mostrar al volver a la página ─
+        save_page_data("cs", {
+            "filters": {
+                "tickers": selected_tickers,
+                "min_pop": min_pop_pct,
+                "max_dte": max_dte,
+                "min_credit": min_credit,
+                "tipo": tipo_filter,
+                "min_iv_rank": min_iv_rank,
+                "trend_align": filter_by_trend,
+                "filter_ev": filter_by_ev,
+                "strict": strict_mode,
+                "account_size": account_size,
+            }
+        })
+
     # ── Mostrar resultados ───────────────────────────────────────────────
-    df: pd.DataFrame | None = st.session_state.get("cs_results")
-    scan_time: str | None = st.session_state.get("cs_scan_time")
-    ticker_indicators: dict = st.session_state.get("cs_ticker_indicators", {})
-    alerts_df: pd.DataFrame | None = st.session_state.get("cs_alerts")
+    # Leer desde session_state (persistido entre navegaciones de página)
+    _cs_state = load_page_data("cs", ["results", "scan_time", "ticker_indicators", "alerts", "filters"])
+    df: pd.DataFrame | None = _cs_state["results"]
+    scan_time: str | None = _cs_state["scan_time"]
+    ticker_indicators: dict = _cs_state["ticker_indicators"] or {}
+    alerts_df: pd.DataFrame | None = _cs_state["alerts"]
+    cs_filters_saved: dict = _cs_state["filters"] or {}
 
     # ────────────────────────────────────────────────────────────────────────
     #  SISTEMA DE ALERTAS — Panel de alertas (10 reglas)

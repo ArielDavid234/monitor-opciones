@@ -28,6 +28,8 @@ def render(ticker_symbol, **kwargs):
         _fetch_barchart_oi(sim_bc, progress_bar=progress_bar)
         _inyectar_oi_chg_barchart()
         progress_bar.empty()
+        # Registrar ticker del OI cargado para rastrear caché
+        st.session_state["oi_last_ticker"] = sim_bc
 
     # Mostrar error
     if st.session_state.barchart_error:

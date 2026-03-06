@@ -203,6 +203,8 @@ def render(ticker_symbol, **kwargs):
                 st.session_state.last_perfil = perfil
                 st.session_state.scan_error = None
                 st.session_state.fechas_escaneadas = fechas
+                # Registrar el ticker del scan para rastrear caché por ticker
+                st.session_state["live_last_ticker"] = ticker_symbol
 
                 if st.session_state.datos_anteriores:
                     st.session_state.oi_cambios = calcular_cambios_oi(

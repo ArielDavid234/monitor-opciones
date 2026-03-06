@@ -20,6 +20,8 @@ import time
 
 import streamlit as st
 
+import time
+
 from core.oka_sentiment_v2 import compute_oka_index
 from ui.oka_components import render_oka_page
 
@@ -32,27 +34,59 @@ _OKA_TICKERS = [
 ]
 _DEFAULT_TICKER = "SPY"
 
-# TTL del cache: 30 segundos (igual que el botón de refresco)
+# TTL del cache por sesión: 30 segundos (idéntico al botón de refresco)
 _CACHE_TTL = 30
 
 
-@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
-def _cached_oka(symbol: str, gamma: bool, lookback: int) -> dict:
-    """Versión cacheada de compute_oka_index (TTL=30s).
+def _get_oka_data(symbol: str, gamma: bool, lookback: int,
+                  force_refresh: bool = False) -> dict:
+    """Obtiene datos OKA desde session_state o recalcula si el TTL expiró.
+
+    Reemplaza el antiguo @st.cache_data global: la caché vive en el
+    session_state del usuario, por lo que no se comparte entre sesiones
+    diferentes en un despliegue multi-tenant.
 
     Args:
-        symbol:   ticker subyacente.
-        gamma:    activar gamma weighting.
-        lookback: ventana en minutos.
+        symbol:        ticker subyacente.
+        gamma:         activar gamma weighting.
+        lookback:      ventana en minutos.
+        force_refresh: ignorar caché y forzar recalculo.
 
     Returns:
         dict resultado del pipeline completo.
     """
-    return compute_oka_index(
+    now = time.time()
+    last_refresh = st.session_state.get("oka_last_refresh") or 0
+
+    # Verificar si los parámetros son los mismos que el último cálculo
+    mismos_params = (
+        st.session_state.get("oka_last_symbol") == symbol
+        and st.session_state.get("oka_last_lookback") == lookback
+        and st.session_state.get("oka_last_gamma") == gamma
+    )
+    ttl_vigente = (now - last_refresh) < _CACHE_TTL
+
+    # Usar caché si no se fuerza refresco, los parámetros coinciden y el TTL no expiró
+    if (
+        not force_refresh
+        and mismos_params
+        and ttl_vigente
+        and st.session_state.get("oka_last_result") is not None
+    ):
+        return st.session_state["oka_last_result"]
+
+    # Calcular y guardar en session_state
+    result = compute_oka_index(
         symbol=symbol,
         gamma_weighting=gamma,
         lookback_minutes=lookback,
     )
+    st.session_state["oka_last_result"] = result
+    st.session_state["oka_last_symbol"] = symbol
+    st.session_state["oka_last_lookback"] = lookback
+    st.session_state["oka_last_gamma"] = gamma
+    st.session_state["oka_last_refresh"] = now
+    return result
 
 
 def render(**kwargs) -> None:
@@ -141,17 +175,14 @@ def render(**kwargs) -> None:
             help="Refresca automáticamente cada 30 segundos.",
         )
 
-    # Invalidar cache si el usuario pulsa "Actualizar"
-    if do_refresh:
-        st.cache_data.clear()
-
-    # ── Obtener datos ─────────────────────────────────────────────────────
+    # ── Obtener datos (caché por sesión con TTL=30s) ─────────────────────
     with st.spinner("Analizando flujo institucional…"):
         try:
-            result = _cached_oka(
-                symbol   = str(symbol),
-                gamma    = bool(gamma_on),
-                lookback = int(lookback),
+            result = _get_oka_data(
+                symbol        = str(symbol),
+                gamma         = bool(gamma_on),
+                lookback      = int(lookback),
+                force_refresh = do_refresh,
             )
         except Exception as exc:
             logger.error("Error en compute_oka_index: %s", exc, exc_info=True)

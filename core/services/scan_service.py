@@ -57,6 +57,10 @@ class ScanService:
         "rango_resultado",
         "rango_error",
         "scan_error",
+        # Claves de metadatos de página — se anulan al cambiar de ticker
+        "live_last_ticker",
+        "oi_last_ticker",
+        "rng_last_ticker",
     )
 
     def get_price(self, ticker: str) -> Optional[float]:

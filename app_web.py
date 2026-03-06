@@ -69,7 +69,7 @@ if st.session_state.pop("_show_welcome_splash", False):
 # ============================================================================
 #                    IMPORTS DE PÁGINAS + SESSION STATE
 # ============================================================================
-from utils.state import initialize_session_state  # noqa: E402
+from utils.state import initialize_session_state, persist_shared_state  # noqa: E402
 from page_modules import (  # noqa: E402
     live_scanning_page, open_interest_page, data_analysis_page,
     range_page, favorites_page, watchlist_page, important_companies_page,
@@ -130,6 +130,9 @@ ticker_symbol = st.text_input(
 if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
     _scan_svc.reset_for_ticker(ticker_symbol)
     st.rerun()
+
+# Validar coherencia del estado entre páginas (no limpia, solo asegura consistencia)
+persist_shared_state(ticker_symbol)
 
 # ============================================================================
 #                    PAGE DISPATCH
