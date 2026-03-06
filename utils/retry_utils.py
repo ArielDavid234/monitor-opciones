@@ -202,7 +202,7 @@ class CircuitBreaker:
 # Se importan desde otros módulos:
 #   from utils.retry_utils import cb_yfinance, cb_alpha_vantage, cb_barchart
 
-cb_yfinance = CircuitBreaker(max_failures=6, reset_timeout=300, name="yfinance")
+cb_yfinance = CircuitBreaker(max_failures=8, reset_timeout=180, name="yfinance")
 cb_alpha_vantage = CircuitBreaker(max_failures=4, reset_timeout=300, name="alpha_vantage")
 cb_barchart = CircuitBreaker(max_failures=5, reset_timeout=300, name="barchart")
 
@@ -249,9 +249,9 @@ def _is_retriable_yfinance_error(exc: BaseException) -> bool:
 # ============================================================================
 
 def retry_yfinance(
-    max_attempts: int = 4,
-    min_wait: float = 2,
-    max_wait: float = 40,
+    max_attempts: int = 5,
+    min_wait: float = 3,
+    max_wait: float = 60,
 ):
     """Decorador de retry para llamadas a Yahoo Finance / yfinance.
 

@@ -180,7 +180,19 @@ def render(ticker_symbol, **kwargs):
                 logger.error("Error crítico en escaneo: %s", e)
 
             if error:
-                st.session_state.scan_error = error
+                # Si el error es de rate-limit pero ya tenemos datos de un scan anterior,
+                # mostrar advertencia leve en lugar de bloquear la UI completamente
+                _is_rl = any(
+                    kw in str(error).lower()
+                    for kw in ["429", "rate limit", "too many requests"]
+                )
+                if _is_rl and st.session_state.get("datos_completos"):
+                    st.session_state.scan_error = (
+                        "⚠️ Límite de solicitudes de Yahoo Finance alcanzado. "
+                        "Mostrando datos del escáner anterior. Intenta de nuevo en 1-2 minutos."
+                    )
+                else:
+                    st.session_state.scan_error = error
                 st.session_state.scanning_active = False
             else:
                 st.session_state.alertas_actuales = alertas

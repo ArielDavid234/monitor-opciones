@@ -112,10 +112,32 @@ def ttl_cache(ttl_seconds=300, maxsize=128):
 
 @ttl_cache(ttl_seconds=300, maxsize=64)
 def _cached_options_dates(ticker_sym):
-    """Obtiene y cachea las fechas de expiración por 5 min."""
-    session, _ = crear_sesion_nueva()
-    ticker = yf.Ticker(ticker_sym, session=session)
-    return tuple(ticker.options)  # tuple para ser hashable
+    """Obtiene y cachea las fechas de expiración con retry interno anti-rate-limit."""
+    last_exc = None
+    for _attempt in range(4):
+        if _attempt > 0:
+            # Backoff escalonado: 4s, 10s, 20s entre reintentos
+            _wait = uniform(3.0, 5.0) * _attempt
+            logger.warning(
+                "_cached_options_dates: reintento %d/4 para %s — esperando %.1fs",
+                _attempt + 1, ticker_sym, _wait,
+            )
+            time.sleep(_wait)
+        try:
+            session, _ = crear_sesion_nueva()
+            ticker = yf.Ticker(ticker_sym, session=session)
+            return tuple(ticker.options)  # tuple para ser hashable
+        except Exception as _e:
+            last_exc = _e
+            _msg = str(_e).lower()
+            # Solo reintentar en errores transitorios (rate-limit, timeout, etc.)
+            if not any(kw in _msg for kw in [
+                "429", "rate limit", "too many", "timeout", "timed out",
+                "connection", "503", "502", "504",
+            ]):
+                raise  # Error no retriable (ej. ticker inválido) — salir ya
+            logger.warning("Error transitorio obteniendo fechas (%s): %s", ticker_sym, _e)
+    raise last_exc
 
 
 @ttl_cache(ttl_seconds=300, maxsize=256)
@@ -426,9 +448,11 @@ def _fetch_single_chain(ticker_sym, exp_date, max_retries=3):
         return exp_date, None, str(e)
 
 
-@retry_yfinance(max_attempts=4, min_wait=2, max_wait=40)
+@retry_yfinance(max_attempts=5, min_wait=4, max_wait=60)
 def _yf_fetch_chain_attempt(ticker_sym, exp_date):
-    """Fetch interno de cadena con retry automático (tenacity)."""
+    """Fetch interno de cadena con retry automático (tenacity) y jitter anti-flood."""
+    # Pausa aleatoria antes de cada intento — esparce requests simultáneos
+    time.sleep(uniform(0.5, 1.8))
     session, perfil = _get_pooled_session()
     try:
         ticker = yf.Ticker(ticker_sym, session=session)
@@ -524,20 +548,29 @@ def ejecutar_escaneo(
     chains_map = {}  # {exp_date: chain_data}
     
     if paralelo and len(dates_to_scan) > 2:
-        # Modo paralelo: fetch múltiples fechas simultáneamente
-        logger.info("Escaneo paralelo activado para %d fechas", len(dates_to_scan))
-        with ThreadPoolExecutor(max_workers=min(4, len(dates_to_scan))) as executor:
-            future_to_date = {
-                executor.submit(fetch_with_cache, ticker_sym, exp_date): exp_date
-                for exp_date in dates_to_scan
-            }
-            
+        # Modo paralelo: máx 2 workers simultáneos para no saturar Yahoo Finance
+        logger.info("Escaneo paralelo activado para %d fechas (max_workers=2)", len(dates_to_scan))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_to_date = {}
+            for _i, _exp in enumerate(dates_to_scan):
+                # Escalonar envíos: pequeña pausa entre cada submit
+                # evita que Yahoo vea un pico de N requests simultáneos
+                if _i > 0:
+                    time.sleep(uniform(0.8, 1.5))
+                _f = executor.submit(fetch_with_cache, ticker_sym, _exp)
+                future_to_date[_f] = _exp
+
             for future in as_completed(future_to_date):
                 exp_date, chain_data, error = future.result()
                 if chain_data:
                     chains_map[exp_date] = chain_data
                 elif error:
-                    logger.warning("Error fetch paralelo %s: %s", exp_date, error)
+                    # Solo loguear si no es rate-limit (ya fue reintentado por tenacity)
+                    _rl = any(kw in str(error).lower() for kw in ["429", "rate limit", "too many"])
+                    if _rl:
+                        logger.info("Rate-limit en %s (agotados reintentos) — fecha omitida", exp_date)
+                    else:
+                        logger.warning("Error fetch paralelo %s: %s", exp_date, error)
     else:
         # Modo secuencial — usa _fetch_single_chain que ya tiene tenacity retry
         for idx, exp_date in enumerate(dates_to_scan):
