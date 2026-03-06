@@ -57,6 +57,7 @@ class ScanService:
         "rango_resultado",
         "rango_error",
         "scan_error",
+        "last_full_scan",   # resetear al cambiar ticker para que auto-trigger no choque con cooldown
         # Claves de metadatos de página — se anulan al cambiar de ticker
         "live_last_ticker",
         "oi_last_ticker",

@@ -145,102 +145,106 @@ def render(ticker_symbol, **kwargs):
     if scan_btn or auto_trigger:
         ahora = datetime.now()
 
+        # Cooldown: previene saturar Yahoo Finance — usa flag en lugar de
+        # st.stop() para que los datos previos sigan renderizándose abajo.
+        _can_scan = True
         if st.session_state.get("last_full_scan") is not None:
             try:
                 transcurrido = (ahora - st.session_state.last_full_scan).total_seconds()
                 if transcurrido < cooldown_segundos:
                     segundos_faltan = int(cooldown_segundos - transcurrido)
                     st.warning(f"⏳ Espera {segundos_faltan} segundos entre escaneos completos para evitar el rate-limit de Yahoo.")
-                    st.stop()
+                    _can_scan = False
             except TypeError:
                 # last_full_scan tiene tipo inesperado; ignorar cooldown y resetear
                 st.session_state.last_full_scan = None
 
-        st.session_state.last_full_scan = ahora
-        st.session_state.scanning_active = True
+        if _can_scan:
+            st.session_state.last_full_scan = ahora
+            st.session_state.scanning_active = True
 
-        if st.session_state.datos_completos:
-            st.session_state.datos_anteriores = st.session_state.datos_completos.copy()
+            if st.session_state.datos_completos:
+                st.session_state.datos_anteriores = st.session_state.datos_completos.copy()
 
-        with st.spinner("Cargando..."):
-            try:
-                alertas, datos, error, perfil, fechas = ejecutar_escaneo(
-                    ticker_symbol,
-                    umbral_vol,
-                    umbral_oi,
-                    umbral_prima,
-                    0,
-                    csv_carpeta,
-                    guardar_csv,
-                    paralelo=True,
-                )
-            except Exception as e:
-                error = str(e)
-                alertas, datos, perfil, fechas = [], [], None, []
-                logger.error("Error crítico en escaneo: %s", e)
-
-            if error:
-                # Si el error es de rate-limit pero ya tenemos datos de un scan anterior,
-                # mostrar advertencia leve en lugar de bloquear la UI completamente
-                _is_rl = any(
-                    kw in str(error).lower()
-                    for kw in ["429", "rate limit", "too many requests"]
-                )
-                if _is_rl and st.session_state.get("datos_completos"):
-                    st.session_state.scan_error = (
-                        "⚠️ Límite de solicitudes de Yahoo Finance alcanzado. "
-                        "Mostrando datos del escáner anterior. Intenta de nuevo en 1-2 minutos."
-                    )
-                else:
-                    st.session_state.scan_error = error
-                st.session_state.scanning_active = False
-            else:
-                st.session_state.alertas_actuales = alertas
-                st.session_state.datos_completos = datos
-                st.session_state.scan_count += 1
-                st.session_state.last_scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                # ── Registrar scan en estadísticas de usuario ──────────
+            with st.spinner("Cargando..."):
                 try:
-                    from core.container import get_container as _gc
-                    _cu = _gc().auth.get_current_user()
-                    if _cu:
-                        _gc().user_service.increment_scan_count(_cu["id"])
-                except Exception as _track_err:
-                    logger.warning("Error tracking scan: %s", _track_err)
-
-                precio, _err_precio = obtener_precio_actual(ticker_symbol)
-                if precio is not None:
-                    st.session_state.precio_subyacente = precio
-                st.session_state.last_perfil = perfil
-                st.session_state.scan_error = None
-                st.session_state.fechas_escaneadas = fechas
-                # Registrar el ticker del scan para rastrear caché por ticker
-                st.session_state["live_last_ticker"] = ticker_symbol
-
-                if st.session_state.datos_anteriores:
-                    st.session_state.oi_cambios = calcular_cambios_oi(
-                        datos, st.session_state.datos_anteriores
+                    alertas, datos, error, perfil, fechas = ejecutar_escaneo(
+                        ticker_symbol,
+                        umbral_vol,
+                        umbral_oi,
+                        umbral_prima,
+                        0,
+                        csv_carpeta,
+                        guardar_csv,
+                        paralelo=True,
                     )
+                except Exception as e:
+                    error = str(e)
+                    alertas, datos, perfil, fechas = [], [], None, []
+                    logger.error("Error crítico en escaneo: %s", e)
 
-                for d in st.session_state.datos_completos:
-                    d["OI_Chg"] = 0
-                for a in st.session_state.alertas_actuales:
-                    a["OI_Chg"] = 0
+                if error:
+                    # Si el error es de rate-limit pero ya tenemos datos de un scan anterior,
+                    # mostrar advertencia leve en lugar de bloquear la UI completamente
+                    _is_rl = any(
+                        kw in str(error).lower()
+                        for kw in ["429", "rate limit", "too many requests"]
+                    )
+                    if _is_rl and st.session_state.get("datos_completos"):
+                        st.session_state.scan_error = (
+                            "⚠️ Límite de solicitudes de Yahoo Finance alcanzado. "
+                            "Mostrando datos del escáner anterior. Intenta de nuevo en 1-2 minutos."
+                        )
+                    else:
+                        st.session_state.scan_error = error
+                    st.session_state.scanning_active = False
+                else:
+                    st.session_state.alertas_actuales = alertas
+                    st.session_state.datos_completos = datos
+                    st.session_state.scan_count += 1
+                    st.session_state.last_scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                progress_bar = st.progress(0, text="Cargando datos...")
-                _fetch_barchart_oi(ticker_symbol, progress_bar=progress_bar)
-                progress_bar.empty()
+                    # ── Registrar scan en estadísticas de usuario ──────────
+                    try:
+                        from core.container import get_container as _gc
+                        _cu = _gc().auth.get_current_user()
+                        if _cu:
+                            _gc().user_service.increment_scan_count(_cu["id"])
+                    except Exception as _track_err:
+                        logger.warning("Error tracking scan: %s", _track_err)
 
-                _inyectar_oi_chg_barchart()
+                    precio, _err_precio = obtener_precio_actual(ticker_symbol)
+                    if precio is not None:
+                        st.session_state.precio_subyacente = precio
+                    st.session_state.last_perfil = perfil
+                    st.session_state.scan_error = None
+                    st.session_state.fechas_escaneadas = fechas
+                    # Registrar el ticker del scan para rastrear caché por ticker
+                    st.session_state["live_last_ticker"] = ticker_symbol
 
-                clusters = detectar_compras_continuas(alertas, umbral_prima)
-                st.session_state.clusters_detectados = clusters
-                st.session_state.scan_error = None
+                    if st.session_state.datos_anteriores:
+                        st.session_state.oi_cambios = calcular_cambios_oi(
+                            datos, st.session_state.datos_anteriores
+                        )
 
-        if not st.session_state.scan_error:
-            st.session_state.scanning_active = False
-            st.rerun()
+                    for d in st.session_state.datos_completos:
+                        d["OI_Chg"] = 0
+                    for a in st.session_state.alertas_actuales:
+                        a["OI_Chg"] = 0
+
+                    progress_bar = st.progress(0, text="Cargando datos...")
+                    _fetch_barchart_oi(ticker_symbol, progress_bar=progress_bar)
+                    progress_bar.empty()
+
+                    _inyectar_oi_chg_barchart()
+
+                    clusters = detectar_compras_continuas(alertas, umbral_prima)
+                    st.session_state.clusters_detectados = clusters
+                    st.session_state.scan_error = None
+
+            if not st.session_state.scan_error:
+                st.session_state.scanning_active = False
+                st.rerun()
 
     st.session_state.auto_scan = auto_scan
 
