@@ -190,11 +190,20 @@ def render(ticker_symbol, **kwargs):
                         kw in str(error).lower()
                         for kw in ["429", "rate limit", "too many requests"]
                     )
-                    if _is_rl and st.session_state.get("datos_completos"):
-                        st.session_state.scan_error = (
-                            "⚠️ Límite de solicitudes de Yahoo Finance alcanzado. "
-                            "Mostrando datos del escáner anterior. Intenta de nuevo en 1-2 minutos."
-                        )
+                    if _is_rl:
+                        if auto_trigger:
+                            # Auto-trigger silencioso: no mostrar error, solo loguear
+                            logger.info("Auto-trigger rate-limited — omitiendo sin error visible")
+                        elif st.session_state.get("datos_completos"):
+                            st.session_state.scan_error = (
+                                "⚠️ Límite de solicitudes de Yahoo Finance alcanzado. "
+                                "Mostrando datos del escáner anterior. Intenta de nuevo en 1-2 minutos."
+                            )
+                        else:
+                            st.session_state.scan_error = (
+                                "⚠️ Yahoo Finance está limitando las solicitudes. "
+                                "Espera 1-2 minutos antes de escanear."
+                            )
                     else:
                         st.session_state.scan_error = error
                     st.session_state.scanning_active = False
@@ -249,7 +258,15 @@ def render(ticker_symbol, **kwargs):
     st.session_state.auto_scan = auto_scan
 
     if st.session_state.get("scan_error"):
-        st.error(f"❌ Error en el escaneo: {st.session_state.scan_error}")
+        _scan_err = st.session_state.scan_error
+        _err_is_rl = any(
+            kw in str(_scan_err).lower()
+            for kw in ["429", "rate limit", "too many", "límite de solicitudes", "espera"]
+        )
+        if _err_is_rl:
+            st.warning(f"{_scan_err}")
+        else:
+            st.error(f"❌ Error en el escaneo: {_scan_err}")
         if st.button("✖ Descartar error", key="dismiss_scan_error"):
             st.session_state.scan_error = None
             st.rerun()

@@ -406,7 +406,6 @@ def _yf_fetch_contract_history(contract_symbol):
     Si falla, tenacity espera con backoff exponencial + jitter random
     antes del siguiente intento.
     """
-    rl_yfinance.acquire()
     session, perfil = _get_pooled_session()
     try:
         contract = yf.Ticker(contract_symbol, session=session)
@@ -484,7 +483,6 @@ def _maybe_raise_rate_limit(exc: Exception) -> None:
 @retry_yfinance(max_attempts=3, min_wait=3, max_wait=30)
 def _yf_fetch_options_dates(ticker_sym):
     """Fetch directo de fechas de expiración con retry (tenacity)."""
-    rl_yfinance.acquire()
     session, perfil = crear_sesion_nueva()
     try:
         ticker = yf.Ticker(ticker_sym, session=session)

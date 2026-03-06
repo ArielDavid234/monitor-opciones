@@ -18,7 +18,7 @@ import streamlit as st
 import yfinance as yf
 
 from core.scanner import crear_sesion_nueva
-from utils.retry_utils import cb_yfinance, retry_yfinance, rl_yfinance
+from utils.retry_utils import cb_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,6 @@ def calcular_iv_rank_percentile(
 
     try:
         cb_yfinance.check()
-        rl_yfinance.acquire()
         session, _ = crear_sesion_nueva()
         ticker = yf.Ticker(symbol, session=session)
 
@@ -89,7 +88,6 @@ def calcular_iv_rank_percentile(
         # Si no se pasó IV actual, intentar obtenerla de la cadena ATM
         if iv_actual is None:
             try:
-                rl_yfinance.acquire()
                 expirations = ticker.options
                 if expirations:
                     # Tomar la primera expiración
@@ -196,7 +194,6 @@ def get_historical_iv(
     """
     try:
         cb_yfinance.check()
-        rl_yfinance.acquire()
         session, _ = crear_sesion_nueva()
         ticker = yf.Ticker(symbol, session=session)
 
@@ -212,7 +209,6 @@ def get_historical_iv(
 
         # VIX como proxy de IV de mercado
         try:
-            rl_yfinance.acquire()
             vix = yf.Ticker("^VIX", session=session)
             vix_hist = vix.history(period=period)
             vix_close = vix_hist["Close"].reindex(hist.index, method="ffill")

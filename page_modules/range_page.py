@@ -11,7 +11,7 @@ from datetime import datetime
 from core.scanner import crear_sesion_nueva, obtener_precio_actual
 from core.expected_move import calcular_expected_move, calcular_em_straddle
 from ui.components import render_pro_table
-from utils.retry_utils import cb_yfinance, rl_yfinance, RateLimitError
+from utils.retry_utils import cb_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ def render(ticker_symbol, **kwargs):
     if not fechas_exp_disponibles:
         try:
             cb_yfinance.check()
-            rl_yfinance.acquire()
             session_rango, _ = crear_sesion_nueva()
             ticker_rango = yf.Ticker(ticker_symbol, session=session_rango)
             fechas_exp_disponibles = list(ticker_rango.options)
@@ -65,7 +64,6 @@ def render(ticker_symbol, **kwargs):
     with st.spinner("Cargando..."):
         try:
             cb_yfinance.check()
-            rl_yfinance.acquire()
             session_em, _ = crear_sesion_nueva()
             ticker_em = yf.Ticker(ticker_symbol, session=session_em)
 
@@ -124,7 +122,6 @@ def render(ticker_symbol, **kwargs):
                     })
 
                     if idx < len(fechas_exp_disponibles) - 1:
-                        rl_yfinance.acquire()
                         time.sleep(0.3)
 
                 except Exception as e:

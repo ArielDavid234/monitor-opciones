@@ -21,10 +21,7 @@ import logging
 import time
 from typing import Optional
 
-import streamlit as st
 import yfinance as yf
-
-from utils.retry_utils import cb_yfinance, rl_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +93,6 @@ _METADATA: dict[str, dict] = {
 # Función principal
 # ============================================================================
 
-@st.cache_data(ttl=86400, show_spinner="Construyendo watchlist...")
 def construir_watchlist_consolidadas(
     n: int = 18,
     fallback: Optional[dict] = None,
@@ -123,8 +119,6 @@ def construir_watchlist_consolidadas(
 
     try:
         # Descarga en batch para eficiencia (una sola llamada)
-        cb_yfinance.check()
-        rl_yfinance.acquire()
         tickers_str = " ".join(_CANDIDATOS)
         data = yf.download(
             tickers_str,
@@ -135,27 +129,40 @@ def construir_watchlist_consolidadas(
         )
 
         # Consultar market cap individualmente (no viene en download)
-        for sym in _CANDIDATOS:
+        _consecutive_failures = 0
+        for idx, sym in enumerate(_CANDIDATOS):
             try:
-                rl_yfinance.acquire()
                 t = yf.Ticker(sym)
                 info = t.fast_info  # mucho más rápido que .info
                 mc = getattr(info, "market_cap", None)
                 if mc and mc > 0:
                     market_caps[sym] = mc
+                    _consecutive_failures = 0
                 else:
                     # Fallback: estimar desde precio × shares
                     mc2 = getattr(info, "shares", None)
                     price = getattr(info, "last_price", None)
                     if mc2 and price:
                         market_caps[sym] = mc2 * price
+                        _consecutive_failures = 0
+                # Pequeña pausa entre calls para no saturar Yahoo
+                if idx < len(_CANDIDATOS) - 1:
+                    time.sleep(0.3)
             except Exception as e:
-                logger.debug("No se pudo obtener market cap de %s: %s", sym, e)
+                _msg = str(e).lower()
+                if any(kw in _msg for kw in ["429", "rate limit", "too many"]):
+                    _consecutive_failures += 1
+                    logger.warning("Rate limit en market cap %s (%d consecutivos)", sym, _consecutive_failures)
+                    if _consecutive_failures >= 3:
+                        logger.warning("Abortando loop de market caps por rate limit sostenido")
+                        break
+                    time.sleep(2.0)  # esperar antes de reintentar
+                else:
+                    logger.debug("No se pudo obtener market cap de %s: %s", sym, e)
                 continue
 
     except Exception as e:
         logger.warning("Error en descarga batch yfinance: %s", e)
-        cb_yfinance.record_failure()
 
     if not market_caps:
         logger.warning("No se obtuvo ningún market cap — usando watchlist estática.")
@@ -314,7 +321,6 @@ _METADATA_EMERGENTES: dict[str, dict] = {
 }
 
 
-@st.cache_data(ttl=86400, show_spinner="Construyendo watchlist emergentes...")
 def construir_watchlist_emergentes(
     n: int = 18,
     fallback: Optional[dict] = None,
@@ -341,9 +347,9 @@ def construir_watchlist_emergentes(
     scores: dict[str, float] = {}
     market_caps: dict[str, float] = {}
 
-    for sym in _CANDIDATOS_EMERGENTES:
+    _consecutive_failures = 0
+    for idx, sym in enumerate(_CANDIDATOS_EMERGENTES):
         try:
-            rl_yfinance.acquire()
             fi = yf.Ticker(sym).fast_info
             mc = getattr(fi, "market_cap", None) or 0.0
             yc = getattr(fi, "year_change", None)  # fracción, ej: 0.45 = +45%
@@ -356,8 +362,20 @@ def construir_watchlist_emergentes(
 
             market_caps[sym] = mc
             scores[sym] = momentum  # ranking principal: momentum 52w
+            _consecutive_failures = 0
+            if idx < len(_CANDIDATOS_EMERGENTES) - 1:
+                time.sleep(0.3)
         except Exception as exc:
-            logger.debug("No se pudo obtener datos de %s: %s", sym, exc)
+            _msg = str(exc).lower()
+            if any(kw in _msg for kw in ["429", "rate limit", "too many"]):
+                _consecutive_failures += 1
+                logger.warning("Rate limit en emergentes %s (%d consecutivos)", sym, _consecutive_failures)
+                if _consecutive_failures >= 3:
+                    logger.warning("Abortando loop de emergentes por rate limit sostenido")
+                    break
+                time.sleep(2.0)
+            else:
+                logger.debug("No se pudo obtener datos de %s: %s", sym, exc)
 
     if not scores:
         logger.warning("No se obtuvieron scores emergentes — usando watchlist estática.")
