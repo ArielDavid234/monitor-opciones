@@ -20,6 +20,7 @@ from core.container import get_container
 from core.optionkings_analytic import enrich_dataframe_with_ev, ev_label
 from core.backtester import Backtester, BacktestResult
 from utils.state import save_page_data, load_page_data
+from ui.plotly_professional_theme import COLORS
 
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
 
@@ -991,7 +992,7 @@ def render(**kwargs) -> None:
 
     # ── Indicadores por ticker: IV Rank / Percentile + Tendencia ─────────
     if ticker_indicators:
-        _trend_colors = {"Alcista": "#22c55e", "Bajista": "#ef4444", "Neutral": "#94a3b8"}
+        _trend_colors = {"Alcista": COLORS["positive"], "Bajista": COLORS["negative"], "Neutral": COLORS["muted"]}
         _trend_icons = {"Alcista": "📈", "Bajista": "📉", "Neutral": "➡️"}
 
         # Tarjetas horizontales por ticker

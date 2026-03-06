@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from ui.plotly_professional_theme import COLORS, pro_gauge_layout
+
 try:
     import plotly.graph_objects as go
     _PLOTLY_OK = True
@@ -64,8 +66,8 @@ def render_okaindex_gauge(result: dict) -> None:
         },
         delta={
             "reference": 50,
-            "increasing": {"color": "#22c55e"},
-            "decreasing": {"color": "#ef4444"},
+            "increasing": {"color": COLORS["positive"]},
+            "decreasing": {"color": COLORS["negative"]},
             "valueformat": ".1f",
         },
         gauge={
@@ -73,22 +75,22 @@ def render_okaindex_gauge(result: dict) -> None:
                 "range": [0, 100],
                 "tickvals": [0, 30, 45, 55, 70, 100],
                 "ticktext": ["0", "30", "45", "55", "70", "100"],
-                "tickfont": {"size": 11, "color": "#64748b"},
-                "tickcolor": "#334155",
+                "tickfont": {"size": 11, "color": COLORS["muted"]},
+                "tickcolor": COLORS["faint"],
             },
             "bar": {"color": text_color, "thickness": 0.28},
-            "bgcolor": "#0d1117",
+            "bgcolor": COLORS["bg"],
             "borderwidth": 1,
-            "bordercolor": "#1e293b",
+            "bordercolor": COLORS["faint"],
             "steps": [
-                {"range": [0,  30], "color": "#3b0a0a"},   # Bearish Extreme
-                {"range": [30, 45], "color": "#450a0a"},   # Bearish
-                {"range": [45, 55], "color": "#1e293b"},   # Neutral
-                {"range": [55, 70], "color": "#052e16"},   # Bullish
-                {"range": [70, 100], "color": "#14532d"},  # Bullish Extreme
+                {"range": [0,  30], "color": "rgba(255,23,68,0.12)"},
+                {"range": [30, 45], "color": "rgba(255,23,68,0.08)"},
+                {"range": [45, 55], "color": COLORS["faint"]},
+                {"range": [55, 70], "color": "rgba(0,200,83,0.08)"},
+                {"range": [70, 100], "color": "rgba(0,200,83,0.12)"},
             ],
             "threshold": {
-                "line": {"color": "#fbbf24", "width": 3},
+                "line": {"color": COLORS["warning"], "width": 3},
                 "thickness": 0.85,
                 "value": 50,
             },
@@ -96,19 +98,17 @@ def render_okaindex_gauge(result: dict) -> None:
         title={
             "text": (
                 f"OKA Sentiment Index v2<br>"
-                f"<span style='font-size:14px;color:#64748b;'>"
+                f"<span style='font-size:14px;color:{COLORS['muted']};'>"
                 f"{symbol} | {timestamp[:16] if timestamp else '—'}"
                 f"{'  ·  Gamma ON' if gamma_on else ''}"
                 f"</span>"
             ),
-            "font": {"size": 20, "color": "#e2e8f0"},
+            "font": {"size": 20, "color": COLORS["text"]},
         },
     ))
 
     fig.update_layout(
-        paper_bgcolor="#0d1117",
-        plot_bgcolor="#0d1117",
-        height=380,
+        **pro_gauge_layout(380),
         margin=dict(l=30, r=30, t=60, b=20),
     )
 
@@ -246,7 +246,7 @@ def render_flow_bars(result: dict) -> None:
     fig.add_trace(go.Bar(
         x=[bull_pct], y=["Flujo"],
         orientation="h",
-        marker_color="#22c55e",
+        marker_color=COLORS["positive"],
         name=f"Bullish {bull_pct:.1f}%",
         text=f"Bullish<br>{bull_pct:.1f}%",
         textposition="inside",
@@ -258,18 +258,18 @@ def render_flow_bars(result: dict) -> None:
         fig.add_trace(go.Bar(
             x=[neut_pct], y=["Flujo"],
             orientation="h",
-            marker_color="#475569",
+            marker_color=COLORS["neutral"],
             name=f"Neutral {neut_pct:.1f}%",
             text=f"Neutro {neut_pct:.1f}%",
             textposition="inside",
             insidetextanchor="middle",
-            textfont=dict(color="#94a3b8", size=10),
+            textfont=dict(color=COLORS["muted"], size=10),
             hovertemplate=f"Neutral: {neut_pct:.1f}%<extra></extra>",
         ))
     fig.add_trace(go.Bar(
         x=[bear_pct], y=["Flujo"],
         orientation="h",
-        marker_color="#ef4444",
+        marker_color=COLORS["negative"],
         name=f"Bearish {bear_pct:.1f}%",
         text=f"Bearish<br>{bear_pct:.1f}%",
         textposition="inside",
@@ -282,8 +282,8 @@ def render_flow_bars(result: dict) -> None:
         barmode="stack",
         xaxis=dict(visible=False, range=[0, 100]),
         yaxis=dict(visible=False),
-        paper_bgcolor="#0d1117",
-        plot_bgcolor="#0d1117",
+        paper_bgcolor=COLORS["bg"],
+        plot_bgcolor=COLORS["bg"],
         height=68,
         margin=dict(l=0, r=0, t=0, b=0),
         showlegend=False,

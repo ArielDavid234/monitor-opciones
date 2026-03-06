@@ -21,7 +21,7 @@ Modos soportados:
     "standard"     → calls +1, puts -1
                      (convención de muchos dashboards públicos)
 
-Dependencias: pandas, numpy, scipy, matplotlib (solo para plot), datetime.
+Dependencias: pandas, numpy, scipy, plotly, datetime.
 """
 
 from __future__ import annotations

@@ -18,6 +18,7 @@ from __future__ import annotations
 import streamlit as st
 
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
+from ui.plotly_professional_theme import apply_theme, COLORS, pro_gauge_layout
 
 try:
     import plotly.graph_objects as go
@@ -53,18 +54,18 @@ def _score_gauge(score: float, grade_color: str) -> "go.Figure":  # type: ignore
             "axis": {
                 "range": [0, 100],
                 "tickwidth": 1,
-                "tickcolor": "#475569",
-                "tickfont": {"color": "#64748b", "size": 10},
+                "tickcolor": COLORS["faint"],
+                "tickfont": {"color": COLORS["muted"], "size": 10},
                 "dtick": 25,
             },
             "bar": {"color": grade_color, "thickness": 0.28},
-            "bgcolor": "#0d1117",
+            "bgcolor": COLORS["bg"],
             "borderwidth": 1,
-            "bordercolor": "#1e293b",
+            "bordercolor": COLORS["faint"],
             "steps": [
-                {"range": [0,  50], "color": "#1a0a0a"},     # zona roja
-                {"range": [50, 75], "color": "#1a1400"},     # zona amarilla
-                {"range": [75, 100], "color": "#081a0e"},    # zona verde
+                {"range": [0,  50], "color": "rgba(255,23,68,0.08)"},
+                {"range": [50, 75], "color": "rgba(255,214,0,0.06)"},
+                {"range": [75, 100], "color": "rgba(0,200,83,0.08)"},
             ],
             "threshold": {
                 "line": {"color": grade_color, "width": 3},
@@ -74,11 +75,8 @@ def _score_gauge(score: float, grade_color: str) -> "go.Figure":  # type: ignore
         },
     ))
     fig.update_layout(
-        paper_bgcolor="#0d1117",
-        plot_bgcolor="#0d1117",
-        font={"family": "Inter, sans-serif"},
+        **pro_gauge_layout(200),
         margin=dict(l=15, r=15, t=20, b=10),
-        height=200,
     )
     return fig
 
@@ -371,9 +369,9 @@ def render_account_summary_card(mgmt: dict) -> None:
     prob_3      = mgmt.get("prob_3", 0)
     cap_riesgo  = mgmt.get("capital_riesgo", 0)
 
-    riesgo_color = "#22c55e" if riesgo_pct < 2 else ("#fbbf24" if riesgo_pct < 4 else "#ef4444")
-    dd2_color    = "#22c55e" if dd_2_pct < 5  else ("#fbbf24" if dd_2_pct < 10  else "#ef4444")
-    dd3_color    = "#fbbf24" if dd_3_pct < 8  else "#ef4444"
+    riesgo_color = COLORS["positive"] if riesgo_pct < 2 else (COLORS["warning"] if riesgo_pct < 4 else COLORS["negative"])
+    dd2_color    = COLORS["positive"] if dd_2_pct < 5  else (COLORS["warning"] if dd_2_pct < 10  else COLORS["negative"])
+    dd3_color    = COLORS["warning"] if dd_3_pct < 8  else COLORS["negative"]
 
     st.markdown(
         f"""
@@ -460,7 +458,7 @@ def render_drawdown_chart(mgmt: dict) -> None:
     amounts    = [mgmt.get("dd_1",0), mgmt.get("dd_2",0), mgmt.get("dd_3",0), mgmt.get("dd_4",0)]
     pcts       = [mgmt.get("dd_1_pct",0), mgmt.get("dd_2_pct",0), mgmt.get("dd_3_pct",0), mgmt.get("dd_4_pct",0)]
     probs      = [mgmt.get("prob_1",0), mgmt.get("prob_2",0), mgmt.get("prob_3",0), mgmt.get("prob_4",0)]
-    bar_colors = ["#22c55e", "#fbbf24", "#f97316", "#ef4444"]
+    bar_colors = [COLORS["positive"], COLORS["warning"], "#f97316", COLORS["negative"]]
 
     custom_text = [
         f"${a:,.0f}<br>{p:.1f}% cuenta<br>P={pr:.2f}%"
@@ -473,9 +471,9 @@ def render_drawdown_chart(mgmt: dict) -> None:
         y=amounts,
         text=custom_text,
         textposition="outside",
-        textfont={"size": 10, "color": "#e2e8f0"},
+        textfont={"size": 10, "color": COLORS["text"]},
         marker_color=bar_colors,
-        marker_line=dict(color="#0d1117", width=1),
+        marker_line=dict(color=COLORS["bg"], width=1),
         hovertemplate=(
             "<b>%{x}</b><br>"
             "Drawdown: $%{y:,.0f}<br>"
@@ -496,29 +494,26 @@ def render_drawdown_chart(mgmt: dict) -> None:
         )
 
     fig.update_layout(
-        paper_bgcolor="#0d1117",
-        plot_bgcolor="#0d1117",
-        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
+        **pro_gauge_layout(220),
         margin=dict(l=0, r=0, t=30, b=0),
-        height=220,
         title={
             "text": "📉 Impacto de Pérdidas Consecutivas",
-            "font": {"size": 12, "color": "#94a3b8"},
+            "font": {"size": 12, "color": COLORS["muted"]},
             "x": 0,
             "xanchor": "left",
             "pad": {"l": 4},
         },
         xaxis=dict(
             showgrid=False, zeroline=False,
-            tickfont={"size": 10, "color": "#94a3b8"},
+            tickfont={"size": 10, "color": COLORS["muted"]},
         ),
         yaxis=dict(
             showgrid=True,
-            gridcolor="#1e293b",
+            gridcolor=COLORS["faint"],
             gridwidth=1,
             zeroline=False,
             tickprefix="$",
-            tickfont={"size": 9, "color": "#64748b"},
+            tickfont={"size": 9, "color": COLORS["muted"]},
         ),
         bargap=0.3,
     )
@@ -579,7 +574,7 @@ def render_account_management_sidebar() -> tuple[float, float]:
 
     # Feedback visual inmediato: capital en riesgo
     capital_riesgo = account_size * risk_pct / 100
-    riesgo_color = "#22c55e" if risk_pct <= 2 else ("#fbbf24" if risk_pct <= 3.5 else "#ef4444")
+    riesgo_color = COLORS["positive"] if risk_pct <= 2 else (COLORS["warning"] if risk_pct <= 3.5 else COLORS["negative"])
     st.markdown(
         f'<div style="background:#0d1117;border-radius:6px;padding:6px 10px;'
         f'font-size:0.78rem;text-align:center;margin-bottom:6px;">'
@@ -627,14 +622,14 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
 
     # Paleta de colores por umbral
     if win_rate >= 70:
-        wr_color = "#22c55e"
+        wr_color = COLORS["positive"]
     elif win_rate >= 50:
-        wr_color = "#fbbf24"
+        wr_color = COLORS["warning"]
     else:
-        wr_color = "#ef4444"
+        wr_color = COLORS["negative"]
 
-    avg_color    = "#22c55e" if avg_return >= 0 else "#ef4444"
-    streak_color = "#ef4444" if worst_streak >= 5 else ("#fbbf24" if worst_streak >= 3 else "#22c55e")
+    avg_color    = COLORS["positive"] if avg_return >= 0 else COLORS["negative"]
+    streak_color = COLORS["negative"] if worst_streak >= 5 else (COLORS["warning"] if worst_streak >= 3 else COLORS["positive"])
     dd_pct_est   = (max_drawdown / max(credit_d * n_sim, 1)) * 100  # orientativo
 
     # ── Header ────────────────────────────────────────────────────────────
@@ -701,31 +696,30 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
                     "font": {"size": 34, "color": gauge_color, "family": "monospace"},
                 },
                 delta={"reference": 50, "valueformat": ".1f",
-                       "increasing": {"color": "#22c55e"},
-                       "decreasing": {"color": "#ef4444"}},
+                       "increasing": {"color": COLORS["positive"]},
+                       "decreasing": {"color": COLORS["negative"]}},
                 gauge={
-                    "axis": {"range": [0, 100], "tickcolor": "#475569",
-                             "tickfont": {"size": 9, "color": "#475569"}},
+                    "axis": {"range": [0, 100], "tickcolor": COLORS["faint"],
+                             "tickfont": {"size": 9, "color": COLORS["faint"]}},
                     "bar":  {"color": gauge_color, "thickness": 0.25},
-                    "bgcolor": "#0d1117",
-                    "bordercolor": "#1e293b",
+                    "bgcolor": COLORS["bg"],
+                    "bordercolor": COLORS["faint"],
                     "steps": [
-                        {"range": [0,  50], "color": "#1a0a0a"},
-                        {"range": [50, 70], "color": "#1a1500"},
-                        {"range": [70, 100], "color": "#0a1a0a"},
+                        {"range": [0,  50], "color": "rgba(255,23,68,0.08)"},
+                        {"range": [50, 70], "color": "rgba(255,214,0,0.06)"},
+                        {"range": [70, 100], "color": "rgba(0,200,83,0.08)"},
                     ],
                     "threshold": {
-                        "line": {"color": "#fbbf24", "width": 2},
+                        "line": {"color": COLORS["warning"], "width": 2},
                         "thickness": 0.75,
                         "value": 50,
                     },
                 },
                 title={"text": "Escenarios<br>Ganadores",
-                       "font": {"size": 12, "color": "#94a3b8"}},
+                       "font": {"size": 12, "color": COLORS["muted"]}},
             ))
             fig_gauge.update_layout(
-                paper_bgcolor="#0d1117",
-                height=220,
+                **pro_gauge_layout(220),
                 margin=dict(l=10, r=10, t=30, b=10),
             )
             st.plotly_chart(fig_gauge, use_container_width=True,
@@ -740,27 +734,27 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
             if neg_vals:
                 fig_hist.add_trace(go.Histogram(
                     x=neg_vals, name="Pérdida",
-                    nbinsx=25, marker_color="#ef4444", opacity=0.85,
+                    nbinsx=25, marker_color=COLORS["negative"], opacity=0.85,
                 ))
             if pos_vals:
                 fig_hist.add_trace(go.Histogram(
                     x=pos_vals, name="Ganancia",
-                    nbinsx=25, marker_color="#22c55e", opacity=0.85,
+                    nbinsx=25, marker_color=COLORS["positive"], opacity=0.85,
                 ))
 
             # Líneas de referencia
             fig_hist.add_vline(
-                x=0, line_width=2, line_dash="dash", line_color="#fbbf24",
+                x=0, line_width=2, line_dash="dash", line_color=COLORS["warning"],
                 annotation_text="Break-even",
-                annotation_font=dict(color="#fbbf24", size=10),
+                annotation_font=dict(color=COLORS["warning"], size=10),
                 annotation_yref="paper", annotation_y=1.02,
             )
             if abs(avg_return) > 1:
                 fig_hist.add_vline(
                     x=avg_return, line_width=1.5, line_dash="dot",
-                    line_color="#a78bfa",
+                    line_color=COLORS["purple"],
                     annotation_text=f"Prom ${avg_return:.0f}",
-                    annotation_font=dict(color="#a78bfa", size=9),
+                    annotation_font=dict(color=COLORS["purple"], size=9),
                     annotation_yref="paper", annotation_y=0.85,
                 )
 
@@ -768,16 +762,16 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
                 title=dict(
                     text=f"Distribución PnL — {win_rate:.0f}% escenarios ganadores "
                          f"| {len(pos_vals)}/{n_sim}",
-                    font=dict(size=11, color="#e2e8f0"),
+                    font=dict(size=11, color=COLORS["text"]),
                 ),
                 barmode="overlay",
-                xaxis=dict(title="PnL / contrato ($)", color="#94a3b8",
-                           gridcolor="#1e293b", zerolinecolor="#334155"),
-                yaxis=dict(title="Frecuencia",        color="#94a3b8",
-                           gridcolor="#1e293b"),
-                paper_bgcolor="#0d1117",
-                plot_bgcolor="#0d1117",
-                legend=dict(font=dict(color="#94a3b8", size=10),
+                xaxis=dict(title="PnL / contrato ($)", color=COLORS["muted"],
+                           gridcolor=COLORS["faint"], zerolinecolor=COLORS["faint"]),
+                yaxis=dict(title="Frecuencia",        color=COLORS["muted"],
+                           gridcolor=COLORS["faint"]),
+                paper_bgcolor=COLORS["bg"],
+                plot_bgcolor=COLORS["bg"],
+                legend=dict(font=dict(color=COLORS["muted"], size=10),
                             bgcolor="rgba(0,0,0,0)", orientation="h",
                             x=0, y=1.15),
                 height=220,

@@ -482,7 +482,7 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
                             y=tecnico["chart_close"],
                             mode='lines',
                             name='Precio',
-                            line=dict(color='#00ff88', width=2),
+                            line=dict(color=COLORS['positive'], width=2),
                         ))
                         # SMA 20
                         sma20_clean = [v for v in tecnico["chart_sma20"] if v is not None]
@@ -493,7 +493,7 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
                                 y=sma20_clean,
                                 mode='lines',
                                 name='SMA 20',
-                                line=dict(color='#3b82f6', width=1, dash='dash'),
+                                line=dict(color=COLORS['accent'], width=1, dash='dash'),
                             ))
                         # SMA 50
                         sma50_clean = [v for v in tecnico["chart_sma50"] if v is not None]
@@ -504,7 +504,7 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
                                 y=sma50_clean,
                                 mode='lines',
                                 name='SMA 50',
-                                line=dict(color='#f59e0b', width=1, dash='dash'),
+                                line=dict(color=COLORS['warning'], width=1, dash='dash'),
                             ))
 
                         # Volumen como barras en eje secundario
@@ -512,11 +512,11 @@ def render_analisis_completo(resultados, watchlist_dict, es_emergente=False):
                         closes = tecnico["chart_close"]
                         for i, v in enumerate(closes):
                             if i == 0:
-                                vol_colors.append('rgba(59,130,246,0.5)')
+                                vol_colors.append(f'{COLORS["accent"]}80')
                             elif v >= closes[i - 1]:
-                                vol_colors.append('rgba(34,197,94,0.5)')
+                                vol_colors.append(f'{COLORS["positive"]}80')
                             else:
-                                vol_colors.append('rgba(239,68,68,0.5)')
+                                vol_colors.append(f'{COLORS["negative"]}80')
                         fig.add_trace(go.Bar(
                             x=tecnico["chart_dates"],
                             y=tecnico["chart_volume"],
