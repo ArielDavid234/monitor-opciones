@@ -143,6 +143,408 @@ function(params) {
 """)
 
 
+
+
+# ── Cached scanner ─────────────────────────────────────────────────────
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_scan(
+    tickers_tuple: tuple,
+    min_pop: float,
+    max_dte: int,
+    min_credit: float,
+    strict: bool,
+) -> tuple:
+    """Versión cacheada del scanner sin progress_callback. TTL = 5 min.
+
+    Los resultados se reutilizan si los mismos parámetros se usan dentro de
+    la ventana de caché, evitando llamadas repetidas a yfinance.
+    """
+    from core.credit_spread_scanner import scan_credit_spreads as _scan_fn
+    return _scan_fn(
+        tickers=list(tickers_tuple),
+        min_pop=min_pop,
+        max_dte=max_dte,
+        min_credit=min_credit,
+        progress_callback=None,
+        strict=strict,
+    )
+
+
+# ── AgGrid + score breakdown fragment ──────────────────────────────────
+@st.fragment
+def _render_aggrid_fragment() -> None:
+    """Fragment: tabla AgGrid interactiva + desglose de score.
+
+    Re-ejecuta SÓLO cuando el usuario selecciona una fila en la tabla.
+    No re-ejecuta en cambios de filtros externos ni al navegar por el sidebar.
+    """
+    df_show: pd.DataFrame | None = st.session_state.get("_cs_aggrid_df")
+    if df_show is None or df_show.empty:
+        return
+
+    gb = GridOptionsBuilder.from_dataframe(df_show)
+    gb.configure_default_column(
+        resizable=True,
+        sortable=True,
+        filter=True,
+        wrapHeaderText=True,
+        autoHeaderHeight=True,
+    )
+
+    # Column-specific config
+    gb.configure_column("Ticker", pinned="left", width=80)
+    gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
+    # ── Score Final (Fase 1+2) ──────────────────────────────────────
+    gb.configure_column("Score Final", headerName="⭐ Score Final", width=130,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v >= 75) return {color:'#4ade80',fontWeight:'bold'};
+                            if (v >= 55) return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        sort="desc",
+                        valueFormatter="x.toFixed(1)")
+    gb.configure_column("Score Oportunidad", headerName="Score de Oportunidad",
+                        width=155, type=["numericColumn"],
+                        cellStyle=_JS_OPP_SCORE_STYLE, sort="desc",
+                        valueFormatter="x.toFixed(0)")
+    gb.configure_column("Nivel", headerName="Nivel", width=100,
+                        cellStyle=_JS_OPP_LABEL_STYLE)
+    gb.configure_column("Income Score", headerName="Income Score", width=115,
+                        type=["numericColumn"], cellStyle=_JS_INCOME_SCORE_STYLE,
+                        valueFormatter="x.toFixed(0)")
+    gb.configure_column("Calidad", headerName="Calidad", width=130,
+                        cellStyle=_JS_CALIDAD_STYLE)
+    gb.configure_column("Spot", width=80, type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("Strike Vendido", width=100, type=["numericColumn"],
+                        valueFormatter="x.toFixed(1)")
+    gb.configure_column("Strike Comprado", width=110, type=["numericColumn"],
+                        valueFormatter="x.toFixed(1)")
+    gb.configure_column("DTE", width=60, type=["numericColumn"])
+    gb.configure_column("Delta Vendido", width=95, type=["numericColumn"],
+                        valueFormatter="x.toFixed(3)")
+    # ── Delta Neto y PoT Short (Fase 1) ──────────────────────────────
+    gb.configure_column("Delta Neto", headerName="Δ Neto", width=85,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(4)")
+    gb.configure_column("PoT Short", headerName="PoT Short", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v >= 40) return {color:'#f87171',fontWeight:'bold'};
+                            if (v >= 25) return {color:'#facc15'};
+                            return {color:'#4ade80'};
+                        }""",
+                        valueFormatter="x.toFixed(1) + '%'")
+    # ── Fase 2: Gamma Neto, Theta Neto, Decay 7d ─────────────────
+    gb.configure_column("Gamma Neto", headerName="Γ Neto", width=85,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(4)")
+    gb.configure_column("Theta Neto", headerName="θ Neto", width=85,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 0) return {color:'#4ade80'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="x.toFixed(3)")
+    gb.configure_column("Decay 7d", headerName="Decay 7d", width=90,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 0.5) return {color:'#4ade80',fontWeight:'bold'};
+                            if (v > 0) return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("POP %", width=75, type=["numericColumn"],
+                        cellStyle=_JS_POP_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Prob OTM %", width=95, type=["numericColumn"],
+                        cellStyle=_JS_POP_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Crédito", width=80, type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("Riesgo Máx", width=95, type=["numericColumn"],
+                        cellStyle=_JS_RISK_STYLE,
+                        valueFormatter="'$' + x.toFixed(2)")
+    # ── EV Ajustado (Fase 1) ─────────────────────────────────────────
+    gb.configure_column("EV Ajustado", headerName="EV Aj. %", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 5)  return {color:'#4ade80',fontWeight:'bold'};
+                            if (v > 0)  return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
+    # ── Fase 3: EV Real Adj + Surface Edge ─────────────────────
+    gb.configure_column("EV Real Adj", headerName="EV Real %", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 5)  return {color:'#a78bfa',fontWeight:'bold'};
+                            if (v > 0)  return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
+    gb.configure_column("Surface Edge", headerName="Srf Edge %", width=100,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v > 3)  return {color:'#4ade80',fontWeight:'bold'};
+                            if (v > 0)  return {color:'#22d3ee'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
+    gb.configure_column("Retorno %", width=95, type=["numericColumn"],
+                        cellStyle=_JS_RETORNO_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Dist Strike %", headerName="Dist Strike %", width=105,
+                        type=["numericColumn"], cellStyle=_JS_DIST_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("IV %", width=70, type=["numericColumn"],
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("IV Rank", width=80, type=["numericColumn"],
+                        cellStyle=_JS_IVRANK_STYLE,
+                        valueFormatter="x.toFixed(0) + '%'")
+    gb.configure_column("IV Pctil", headerName="IV Pctil", width=80,
+                        type=["numericColumn"], cellStyle=_JS_IVRANK_STYLE,
+                        valueFormatter="x.toFixed(0) + '%'")
+    gb.configure_column("Tendencia", width=90)
+    # ── Fase 2: Liquidez del short leg ───────────────────────────
+    gb.configure_column("OI Short", headerName="OI Short", width=90,
+                        type=["numericColumn"])
+    gb.configure_column("Vol Short", headerName="Vol Short", width=90,
+                        type=["numericColumn"])
+    gb.configure_column("Liq Score", headerName="Liq Score", width=95,
+                        type=["numericColumn"],
+                        cellStyle="""function(params) {
+                            var v = params.value;
+                            if (v >= 70) return {color:'#4ade80',fontWeight:'bold'};
+                            if (v >= 40) return {color:'#facc15'};
+                            return {color:'#f87171'};
+                        }""",
+                        valueFormatter="x.toFixed(0)")
+    gb.configure_column("Liquidez", width=85, type=["numericColumn"],
+                        cellStyle=_JS_LIQUIDEZ_STYLE)
+    gb.configure_column("Volumen", width=80, type=["numericColumn"])
+    gb.configure_column("OI", headerName="Open Interest", width=100,
+                        type=["numericColumn"])
+    gb.configure_column("Bid-Ask", width=80, type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
+    gb.configure_column("EV $", headerName="EV $ /contrato", width=120,
+                        type=["numericColumn"], cellStyle=_JS_EV_DOLLAR_STYLE,
+                        valueFormatter="(x >= 0 ? '+' : '') + '$' + x.toFixed(2)",
+                        sort="desc")
+    gb.configure_column("EV %", headerName="EV % capital", width=110,
+                        type=["numericColumn"], cellStyle=_JS_EV_PCT_STYLE,
+                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
+
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
+
+    grid_options = gb.build()
+
+    # Inyectar estilos dark-theme para AgGrid
+    _AGGRID_CSS = {
+        ".ag-root-wrapper": {
+            "background-color": "#0d1117 !important",
+            "border": "1px solid #1e293b !important",
+            "border-radius": "10px !important",
+        },
+        ".ag-header": {
+            "background-color": "#161b22 !important",
+            "color": "#94a3b8 !important",
+            "border-bottom": "1px solid #1e293b !important",
+        },
+        ".ag-header-cell-text": {
+            "color": "#94a3b8 !important",
+            "font-weight": "600 !important",
+            "font-size": "0.78rem !important",
+        },
+        ".ag-row": {
+            "background-color": "#0d1117 !important",
+            "color": "#e2e8f0 !important",
+            "border-bottom": "1px solid #1e293b !important",
+            "font-size": "0.82rem !important",
+        },
+        ".ag-row-hover": {
+            "background-color": "#1e293b !important",
+        },
+        ".ag-row-selected": {
+            "background-color": "#1e3a5f !important",
+            "border-left": "3px solid #00ff00 !important",
+        },
+        ".ag-cell": {
+            "border-right": "none !important",
+        },
+    }
+
+    grid_response = AgGrid(
+        df_show,
+        gridOptions=grid_options,
+        custom_css=_AGGRID_CSS,
+        height=min(620, 56 + len(df_show) * 35),
+        theme="alpine",
+        allow_unsafe_jscode=True,
+        fit_columns_on_grid_load=False,
+    )
+
+    # ── Desglose del Score (al hacer clic en una fila) ───────────────────
+    _selected = getattr(grid_response, "selected_rows", None)
+    _sel_row = None
+    if _selected is not None:
+        if isinstance(_selected, pd.DataFrame) and not _selected.empty:
+            _sel_row = _selected.iloc[0].to_dict()
+        elif isinstance(_selected, list) and len(_selected) > 0:
+            _sel_row = dict(_selected[0])
+
+    if _sel_row and "Score Oportunidad" in df_show.columns:
+        _bd = get_container().credit_spread_service.score_breakdown(_sel_row)
+        _total = sum(b["puntos"] for b in _bd)
+        _lbl = "Excelente" if _total >= 80 else "Buena"
+        _lbl_c = "#00ff00" if _total >= 80 else "#ffaa00"
+        _tkr = _sel_row.get("Ticker", "")
+        _tipo = _sel_row.get("Tipo", "")
+        _bd_html = (
+            '<div style="background:#0d1117;border:1px solid #1e293b;'
+            'border-radius:12px;padding:16px 20px;margin-top:1rem;">'
+            f'<h4 style="color:#e2e8f0;margin:0 0 12px 0;">'
+            f'🔍 Desglose Score — <b style="color:{_lbl_c};">'
+            f'{_tkr} {_tipo} → {_total}/100 ({_lbl})</b></h4>'
+        )
+        for _b in _bd:
+            _ico = "✅" if _b["cumple"] else "❌"
+            _pc = "#4ade80" if _b["cumple"] else "#f87171"
+            _bd_html += (
+                f'<div style="display:flex;justify-content:space-between;'
+                f'align-items:center;padding:8px 0;'
+                f'border-bottom:1px solid #1e293b;font-size:0.85rem;">'
+                f'<span style="flex:2;">{_ico} '
+                f'<b style="color:#e2e8f0;">{_b["criterio"]}</b></span>'
+                f'<span style="flex:2;color:#94a3b8;">{_b["detalle"]}</span>'
+                f'<span style="width:90px;text-align:right;color:{_pc};'
+                f'font-weight:700;">+{_b["puntos"]}/{_b["maximo"]} pts</span>'
+                f'</div>'
+            )
+        _bd_html += '</div>'
+        st.markdown(_bd_html, unsafe_allow_html=True)
+
+
+# ── Backtester fragment ─────────────────────────────────────────────────
+@st.fragment
+def _render_backtester_fragment() -> None:
+    """Fragment: panel de Backtest Histórico (Fase 3).
+
+    Re-ejecuta SÓLO al presionar '🔬 Ejecutar Backtest'.
+    No re-ejecuta en cambios de filtros, selección de fila ni navegación de sidebar.
+    """
+    df_filtered: pd.DataFrame | None = st.session_state.get("_cs_bt_df")
+    if df_filtered is None or df_filtered.empty:
+        return
+
+    # ────────────────────────────────────────────────────────────────────────
+    #  FASE 3 — Panel de Backtesting Histórico
+    # ────────────────────────────────────────────────────────────────────────
+    st.markdown("---")
+    with st.expander("📊 Backtest Histórico (Fase 3)", expanded=False):
+        st.markdown(
+            '<p style="color:#94a3b8;font-size:0.85rem;">'
+            "Simula los spreads actuales contra precios históricos del subyacente "
+            "para estimar Win Rate, Profit Factor y Edge real.</p>",
+            unsafe_allow_html=True,
+        )
+        _bt_days = st.slider(
+            "Días de lookback", min_value=30, max_value=90, value=60, step=10,
+            key="bt_lookback",
+        )
+        _bt_btn = st.button(
+            "🔬 Ejecutar Backtest",
+            type="secondary",
+            use_container_width=True,
+            key="bt_run_btn",
+        )
+        if _bt_btn:
+            bt = Backtester(lookback_days=_bt_days)
+            _bt_results_map: dict[str, BacktestResult] = {}
+            spreads_by_ticker: dict[str, list[dict]] = {}
+            for r in df_filtered.to_dict("records"):
+                tk = r.get("Ticker", "")
+                spreads_by_ticker.setdefault(tk, []).append(r)
+
+            with st.spinner("Ejecutando backtest histórico..."):
+                for tk, sp_list in spreads_by_ticker.items():
+                    _bt_results_map[tk] = bt.run(tk, sp_list)
+
+            st.session_state["bt_results"] = _bt_results_map
+
+        _bt_results_map = st.session_state.get("bt_results")
+        if _bt_results_map:
+            _total_trades = sum(r.total_trades for r in _bt_results_map.values())
+            _total_wins = sum(r.wins for r in _bt_results_map.values())
+            _avg_wr = (_total_wins / _total_trades * 100.0) if _total_trades else 0
+            _avg_pf = (
+                sum(r.profit_factor for r in _bt_results_map.values() if r.total_trades > 0)
+                / max(1, sum(1 for r in _bt_results_map.values() if r.total_trades > 0))
+            )
+            _avg_edge = (
+                sum(r.edge for r in _bt_results_map.values() if r.total_trades > 0)
+                / max(1, sum(1 for r in _bt_results_map.values() if r.total_trades > 0))
+            )
+
+            _wr_c = "#4ade80" if _avg_wr >= 65 else ("#facc15" if _avg_wr >= 50 else "#f87171")
+            st.markdown(
+                f"""
+                <div style="background:linear-gradient(135deg,#0d1117,#1a1040);
+                            border:2px solid #a78bfa;border-radius:12px;
+                            padding:14px 20px;margin:0.5rem 0;">
+                    <h4 style="color:#a78bfa;margin:0 0 8px 0;">
+                        📊 Resultados del Backtest ({_total_trades} trades simulados)
+                    </h4>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;color:#cbd5e1;">
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">WIN RATE</div>
+                            <div style="color:{_wr_c};font-size:1.2rem;font-weight:700;">{_avg_wr:.1f}%</div>
+                        </div>
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">PROFIT FACTOR</div>
+                            <div style="color:#22d3ee;font-size:1.2rem;font-weight:700;">{_avg_pf:.2f}x</div>
+                        </div>
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">EDGE vs POP</div>
+                            <div style="color:{'#4ade80' if _avg_edge > 0 else '#f87171'};font-size:1.2rem;font-weight:700;">{_avg_edge:+.1f} pp</div>
+                        </div>
+                        <div>
+                            <div style="color:#64748b;font-size:0.75rem;">TICKERS</div>
+                            <div style="color:#94a3b8;font-size:1.2rem;font-weight:700;">{len(_bt_results_map)}</div>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            for tk, res in _bt_results_map.items():
+                if res.total_trades == 0:
+                    continue
+                _tk_wr_c = "#4ade80" if res.win_rate >= 65 else ("#facc15" if res.win_rate >= 50 else "#f87171")
+                st.markdown(
+                    f'<div style="background:#0d1117;border:1px solid #1e293b;border-radius:6px;'
+                    f'padding:6px 12px;margin-bottom:4px;font-size:0.82rem;">'
+                    f'<b style="color:#e2e8f0;">{tk}</b> — '
+                    f'<span style="color:{_tk_wr_c};">WR: {res.win_rate:.1f}%</span> · '
+                    f'<span style="color:#22d3ee;">PF: {res.profit_factor:.2f}x</span> · '
+                    f'<span style="color:#94a3b8;">Trades: {res.total_trades}</span> · '
+                    f'<span style="color:#94a3b8;">W/L: {res.wins}/{res.losses}</span> · '
+                    f'<span style="color:{"#4ade80" if res.edge > 0 else "#f87171"};">Edge: {res.edge:+.1f}pp</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+
+
 def render(**kwargs) -> None:
     """Renderiza la página de Venta de Prima — Credit Spread Scanner."""
     _cs_service = get_container().credit_spread_service
@@ -379,12 +781,11 @@ def render(**kwargs) -> None:
 
     # ── Mostrar resultados ───────────────────────────────────────────────
     # Leer desde session_state (persistido entre navegaciones de página)
-    _cs_state = load_page_data("cs", ["results", "scan_time", "ticker_indicators", "alerts", "filters"])
+    _cs_state = load_page_data("cs", ["results", "scan_time", "ticker_indicators", "alerts"])
     df: pd.DataFrame | None = _cs_state["results"]
     scan_time: str | None = _cs_state["scan_time"]
     ticker_indicators: dict = _cs_state["ticker_indicators"] or {}
     alerts_df: pd.DataFrame | None = _cs_state["alerts"]
-    cs_filters_saved: dict = _cs_state["filters"] or {}
 
     # ────────────────────────────────────────────────────────────────────────
     #  SISTEMA DE ALERTAS — Panel de alertas (10 reglas)
@@ -792,255 +1193,10 @@ def render(**kwargs) -> None:
     display_cols = [c for c in display_cols if c in df_filtered.columns]
     df_show = df_filtered[display_cols].reset_index(drop=True)
 
-    gb = GridOptionsBuilder.from_dataframe(df_show)
-    gb.configure_default_column(
-        resizable=True,
-        sortable=True,
-        filter=True,
-        wrapHeaderText=True,
-        autoHeaderHeight=True,
-    )
+    # ── Fragment: AgGrid + desglose de score ─────────────────────────────
+    st.session_state["_cs_aggrid_df"] = df_show
+    _render_aggrid_fragment()
 
-    # Column-specific config
-    gb.configure_column("Ticker", pinned="left", width=80)
-    gb.configure_column("Tipo", width=95, cellStyle=_JS_TIPO_STYLE)
-    # ── Score Final (Fase 1+2) ──────────────────────────────────────
-    gb.configure_column("Score Final", headerName="⭐ Score Final", width=130,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v >= 75) return {color:'#4ade80',fontWeight:'bold'};
-                            if (v >= 55) return {color:'#facc15'};
-                            return {color:'#f87171'};
-                        }""",
-                        sort="desc",
-                        valueFormatter="x.toFixed(1)")
-    gb.configure_column("Score Oportunidad", headerName="Score de Oportunidad",
-                        width=155, type=["numericColumn"],
-                        cellStyle=_JS_OPP_SCORE_STYLE, sort="desc",
-                        valueFormatter="x.toFixed(0)")
-    gb.configure_column("Nivel", headerName="Nivel", width=100,
-                        cellStyle=_JS_OPP_LABEL_STYLE)
-    gb.configure_column("Income Score", headerName="Income Score", width=115,
-                        type=["numericColumn"], cellStyle=_JS_INCOME_SCORE_STYLE,
-                        valueFormatter="x.toFixed(0)")
-    gb.configure_column("Calidad", headerName="Calidad", width=130,
-                        cellStyle=_JS_CALIDAD_STYLE)
-    gb.configure_column("Spot", width=80, type=["numericColumn"],
-                        valueFormatter="'$' + x.toFixed(2)")
-    gb.configure_column("Strike Vendido", width=100, type=["numericColumn"],
-                        valueFormatter="x.toFixed(1)")
-    gb.configure_column("Strike Comprado", width=110, type=["numericColumn"],
-                        valueFormatter="x.toFixed(1)")
-    gb.configure_column("DTE", width=60, type=["numericColumn"])
-    gb.configure_column("Delta Vendido", width=95, type=["numericColumn"],
-                        valueFormatter="x.toFixed(3)")
-    # ── Delta Neto y PoT Short (Fase 1) ──────────────────────────────
-    gb.configure_column("Delta Neto", headerName="Δ Neto", width=85,
-                        type=["numericColumn"],
-                        valueFormatter="x.toFixed(4)")
-    gb.configure_column("PoT Short", headerName="PoT Short", width=100,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v >= 40) return {color:'#f87171',fontWeight:'bold'};
-                            if (v >= 25) return {color:'#facc15'};
-                            return {color:'#4ade80'};
-                        }""",
-                        valueFormatter="x.toFixed(1) + '%'")
-    # ── Fase 2: Gamma Neto, Theta Neto, Decay 7d ─────────────────
-    gb.configure_column("Gamma Neto", headerName="Γ Neto", width=85,
-                        type=["numericColumn"],
-                        valueFormatter="x.toFixed(4)")
-    gb.configure_column("Theta Neto", headerName="θ Neto", width=85,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v > 0) return {color:'#4ade80'};
-                            return {color:'#f87171'};
-                        }""",
-                        valueFormatter="x.toFixed(3)")
-    gb.configure_column("Decay 7d", headerName="Decay 7d", width=90,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v > 0.5) return {color:'#4ade80',fontWeight:'bold'};
-                            if (v > 0) return {color:'#facc15'};
-                            return {color:'#f87171'};
-                        }""",
-                        valueFormatter="'$' + x.toFixed(2)")
-    gb.configure_column("POP %", width=75, type=["numericColumn"],
-                        cellStyle=_JS_POP_STYLE,
-                        valueFormatter="x.toFixed(1) + '%'")
-    gb.configure_column("Prob OTM %", width=95, type=["numericColumn"],
-                        cellStyle=_JS_POP_STYLE,
-                        valueFormatter="x.toFixed(1) + '%'")
-    gb.configure_column("Crédito", width=80, type=["numericColumn"],
-                        valueFormatter="'$' + x.toFixed(2)")
-    gb.configure_column("Riesgo Máx", width=95, type=["numericColumn"],
-                        cellStyle=_JS_RISK_STYLE,
-                        valueFormatter="'$' + x.toFixed(2)")
-    # ── EV Ajustado (Fase 1) ─────────────────────────────────────────
-    gb.configure_column("EV Ajustado", headerName="EV Aj. %", width=100,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v > 5)  return {color:'#4ade80',fontWeight:'bold'};
-                            if (v > 0)  return {color:'#facc15'};
-                            return {color:'#f87171'};
-                        }""",
-                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
-    # ── Fase 3: EV Real Adj + Surface Edge ─────────────────────
-    gb.configure_column("EV Real Adj", headerName="EV Real %", width=100,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v > 5)  return {color:'#a78bfa',fontWeight:'bold'};
-                            if (v > 0)  return {color:'#facc15'};
-                            return {color:'#f87171'};
-                        }""",
-                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
-    gb.configure_column("Surface Edge", headerName="Srf Edge %", width=100,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v > 3)  return {color:'#4ade80',fontWeight:'bold'};
-                            if (v > 0)  return {color:'#22d3ee'};
-                            return {color:'#f87171'};
-                        }""",
-                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
-    gb.configure_column("Retorno %", width=95, type=["numericColumn"],
-                        cellStyle=_JS_RETORNO_STYLE,
-                        valueFormatter="x.toFixed(1) + '%'")
-    gb.configure_column("Dist Strike %", headerName="Dist Strike %", width=105,
-                        type=["numericColumn"], cellStyle=_JS_DIST_STYLE,
-                        valueFormatter="x.toFixed(1) + '%'")
-    gb.configure_column("IV %", width=70, type=["numericColumn"],
-                        valueFormatter="x.toFixed(1) + '%'")
-    gb.configure_column("IV Rank", width=80, type=["numericColumn"],
-                        cellStyle=_JS_IVRANK_STYLE,
-                        valueFormatter="x.toFixed(0) + '%'")
-    gb.configure_column("IV Pctil", headerName="IV Pctil", width=80,
-                        type=["numericColumn"], cellStyle=_JS_IVRANK_STYLE,
-                        valueFormatter="x.toFixed(0) + '%'")
-    gb.configure_column("Tendencia", width=90)
-    # ── Fase 2: Liquidez del short leg ───────────────────────────
-    gb.configure_column("OI Short", headerName="OI Short", width=90,
-                        type=["numericColumn"])
-    gb.configure_column("Vol Short", headerName="Vol Short", width=90,
-                        type=["numericColumn"])
-    gb.configure_column("Liq Score", headerName="Liq Score", width=95,
-                        type=["numericColumn"],
-                        cellStyle="""function(params) {
-                            var v = params.value;
-                            if (v >= 70) return {color:'#4ade80',fontWeight:'bold'};
-                            if (v >= 40) return {color:'#facc15'};
-                            return {color:'#f87171'};
-                        }""",
-                        valueFormatter="x.toFixed(0)")
-    gb.configure_column("Liquidez", width=85, type=["numericColumn"],
-                        cellStyle=_JS_LIQUIDEZ_STYLE)
-    gb.configure_column("Volumen", width=80, type=["numericColumn"])
-    gb.configure_column("OI", headerName="Open Interest", width=100,
-                        type=["numericColumn"])
-    gb.configure_column("Bid-Ask", width=80, type=["numericColumn"],
-                        valueFormatter="'$' + x.toFixed(2)")
-    gb.configure_column("EV $", headerName="EV $ /contrato", width=120,
-                        type=["numericColumn"], cellStyle=_JS_EV_DOLLAR_STYLE,
-                        valueFormatter="(x >= 0 ? '+' : '') + '$' + x.toFixed(2)",
-                        sort="desc")
-    gb.configure_column("EV %", headerName="EV % capital", width=110,
-                        type=["numericColumn"], cellStyle=_JS_EV_PCT_STYLE,
-                        valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
-
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
-
-    grid_options = gb.build()
-
-    # Inyectar estilos dark-theme para AgGrid
-    _AGGRID_CSS = {
-        ".ag-root-wrapper": {
-            "background-color": "#0d1117 !important",
-            "border": "1px solid #1e293b !important",
-            "border-radius": "10px !important",
-        },
-        ".ag-header": {
-            "background-color": "#161b22 !important",
-            "color": "#94a3b8 !important",
-            "border-bottom": "1px solid #1e293b !important",
-        },
-        ".ag-header-cell-text": {
-            "color": "#94a3b8 !important",
-            "font-weight": "600 !important",
-            "font-size": "0.78rem !important",
-        },
-        ".ag-row": {
-            "background-color": "#0d1117 !important",
-            "color": "#e2e8f0 !important",
-            "border-bottom": "1px solid #1e293b !important",
-            "font-size": "0.82rem !important",
-        },
-        ".ag-row-hover": {
-            "background-color": "#1e293b !important",
-        },
-        ".ag-row-selected": {
-            "background-color": "#1e3a5f !important",
-            "border-left": "3px solid #00ff00 !important",
-        },
-        ".ag-cell": {
-            "border-right": "none !important",
-        },
-    }
-
-    grid_response = AgGrid(
-        df_show,
-        gridOptions=grid_options,
-        custom_css=_AGGRID_CSS,
-        height=min(620, 56 + len(df_show) * 35),
-        theme="alpine",
-        allow_unsafe_jscode=True,
-        fit_columns_on_grid_load=False,
-    )
-
-    # ── Desglose del Score (al hacer clic en una fila) ───────────────────
-    _selected = getattr(grid_response, "selected_rows", None)
-    _sel_row = None
-    if _selected is not None:
-        if isinstance(_selected, pd.DataFrame) and not _selected.empty:
-            _sel_row = _selected.iloc[0].to_dict()
-        elif isinstance(_selected, list) and len(_selected) > 0:
-            _sel_row = dict(_selected[0])
-
-    if _sel_row and "Score Oportunidad" in df_show.columns:
-        _bd = _cs_service.score_breakdown(_sel_row)
-        _total = sum(b["puntos"] for b in _bd)
-        _lbl = "Excelente" if _total >= 80 else "Buena"
-        _lbl_c = "#00ff00" if _total >= 80 else "#ffaa00"
-        _tkr = _sel_row.get("Ticker", "")
-        _tipo = _sel_row.get("Tipo", "")
-        _bd_html = (
-            '<div style="background:#0d1117;border:1px solid #1e293b;'
-            'border-radius:12px;padding:16px 20px;margin-top:1rem;">'
-            f'<h4 style="color:#e2e8f0;margin:0 0 12px 0;">'
-            f'🔍 Desglose Score — <b style="color:{_lbl_c};">'
-            f'{_tkr} {_tipo} → {_total}/100 ({_lbl})</b></h4>'
-        )
-        for _b in _bd:
-            _ico = "✅" if _b["cumple"] else "❌"
-            _pc = "#4ade80" if _b["cumple"] else "#f87171"
-            _bd_html += (
-                f'<div style="display:flex;justify-content:space-between;'
-                f'align-items:center;padding:8px 0;'
-                f'border-bottom:1px solid #1e293b;font-size:0.85rem;">'
-                f'<span style="flex:2;">{_ico} '
-                f'<b style="color:#e2e8f0;">{_b["criterio"]}</b></span>'
-                f'<span style="flex:2;color:#94a3b8;">{_b["detalle"]}</span>'
-                f'<span style="width:90px;text-align:right;color:{_pc};'
-                f'font-weight:700;">+{_b["puntos"]}/{_b["maximo"]} pts</span>'
-                f'</div>'
-            )
-        _bd_html += '</div>'
-        st.markdown(_bd_html, unsafe_allow_html=True)
 
     # ── Exportar CSV ─────────────────────────────────────────────────────
     st.markdown("")
@@ -1163,100 +1319,6 @@ def render(**kwargs) -> None:
         else:
             st.caption("Sin resultados")
 
-    # ────────────────────────────────────────────────────────────────────────
-    #  FASE 3 — Panel de Backtesting Histórico
-    # ────────────────────────────────────────────────────────────────────────
-    st.markdown("---")
-    with st.expander("📊 Backtest Histórico (Fase 3)", expanded=False):
-        st.markdown(
-            '<p style="color:#94a3b8;font-size:0.85rem;">'
-            "Simula los spreads actuales contra precios históricos del subyacente "
-            "para estimar Win Rate, Profit Factor y Edge real.</p>",
-            unsafe_allow_html=True,
-        )
-        _bt_days = st.slider(
-            "Días de lookback", min_value=30, max_value=90, value=60, step=10,
-            key="bt_lookback",
-        )
-        _bt_btn = st.button(
-            "🔬 Ejecutar Backtest",
-            type="secondary",
-            use_container_width=True,
-            key="bt_run_btn",
-        )
-        if _bt_btn:
-            bt = Backtester(lookback_days=_bt_days)
-            _bt_results_map: dict[str, BacktestResult] = {}
-            spreads_by_ticker: dict[str, list[dict]] = {}
-            for r in df_filtered.to_dict("records"):
-                tk = r.get("Ticker", "")
-                spreads_by_ticker.setdefault(tk, []).append(r)
-
-            with st.spinner("Ejecutando backtest histórico..."):
-                for tk, sp_list in spreads_by_ticker.items():
-                    _bt_results_map[tk] = bt.run(tk, sp_list)
-
-            st.session_state["bt_results"] = _bt_results_map
-
-        _bt_results_map = st.session_state.get("bt_results")
-        if _bt_results_map:
-            _total_trades = sum(r.total_trades for r in _bt_results_map.values())
-            _total_wins = sum(r.wins for r in _bt_results_map.values())
-            _avg_wr = (_total_wins / _total_trades * 100.0) if _total_trades else 0
-            _avg_pf = (
-                sum(r.profit_factor for r in _bt_results_map.values() if r.total_trades > 0)
-                / max(1, sum(1 for r in _bt_results_map.values() if r.total_trades > 0))
-            )
-            _avg_edge = (
-                sum(r.edge for r in _bt_results_map.values() if r.total_trades > 0)
-                / max(1, sum(1 for r in _bt_results_map.values() if r.total_trades > 0))
-            )
-
-            _wr_c = "#4ade80" if _avg_wr >= 65 else ("#facc15" if _avg_wr >= 50 else "#f87171")
-            st.markdown(
-                f"""
-                <div style="background:linear-gradient(135deg,#0d1117,#1a1040);
-                            border:2px solid #a78bfa;border-radius:12px;
-                            padding:14px 20px;margin:0.5rem 0;">
-                    <h4 style="color:#a78bfa;margin:0 0 8px 0;">
-                        📊 Resultados del Backtest ({_total_trades} trades simulados)
-                    </h4>
-                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;color:#cbd5e1;">
-                        <div>
-                            <div style="color:#64748b;font-size:0.75rem;">WIN RATE</div>
-                            <div style="color:{_wr_c};font-size:1.2rem;font-weight:700;">{_avg_wr:.1f}%</div>
-                        </div>
-                        <div>
-                            <div style="color:#64748b;font-size:0.75rem;">PROFIT FACTOR</div>
-                            <div style="color:#22d3ee;font-size:1.2rem;font-weight:700;">{_avg_pf:.2f}x</div>
-                        </div>
-                        <div>
-                            <div style="color:#64748b;font-size:0.75rem;">EDGE vs POP</div>
-                            <div style="color:{'#4ade80' if _avg_edge > 0 else '#f87171'};font-size:1.2rem;font-weight:700;">{_avg_edge:+.1f} pp</div>
-                        </div>
-                        <div>
-                            <div style="color:#64748b;font-size:0.75rem;">TICKERS</div>
-                            <div style="color:#94a3b8;font-size:1.2rem;font-weight:700;">{len(_bt_results_map)}</div>
-                        </div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            for tk, res in _bt_results_map.items():
-                if res.total_trades == 0:
-                    continue
-                _tk_wr_c = "#4ade80" if res.win_rate >= 65 else ("#facc15" if res.win_rate >= 50 else "#f87171")
-                st.markdown(
-                    f'<div style="background:#0d1117;border:1px solid #1e293b;border-radius:6px;'
-                    f'padding:6px 12px;margin-bottom:4px;font-size:0.82rem;">'
-                    f'<b style="color:#e2e8f0;">{tk}</b> — '
-                    f'<span style="color:{_tk_wr_c};">WR: {res.win_rate:.1f}%</span> · '
-                    f'<span style="color:#22d3ee;">PF: {res.profit_factor:.2f}x</span> · '
-                    f'<span style="color:#94a3b8;">Trades: {res.total_trades}</span> · '
-                    f'<span style="color:#94a3b8;">W/L: {res.wins}/{res.losses}</span> · '
-                    f'<span style="color:{"#4ade80" if res.edge > 0 else "#f87171"};">Edge: {res.edge:+.1f}pp</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+    # ── Fragment: backtester histórico ──────────────────────────────────────
+    st.session_state["_cs_bt_df"] = df_filtered
+    _render_backtester_fragment()
