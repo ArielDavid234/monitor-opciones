@@ -388,3 +388,79 @@ def notify_circuit_open(breaker: CircuitBreaker) -> None:
         f"Reintentando automáticamente en ~{max(remaining, 0)}s.",
         icon="🔌",
     )
+
+
+# ============================================================================
+#   RATE LIMITER GLOBAL — controla requests/segundo a Yahoo Finance
+# ============================================================================
+
+class TokenBucketRateLimiter:
+    """Token-bucket rate limiter thread-safe.
+
+    Permite hasta *rate* solicitudes por *per* segundos, con burst
+    inicial igual a *rate*. Cada llamada a :meth:`acquire` bloquea
+    (``time.sleep``) hasta que un token esté disponible.
+
+    Ejemplo::
+
+        limiter = TokenBucketRateLimiter(rate=5, per=60)  # 5 req/min
+        limiter.acquire()  # bloquea si no hay tokens
+        # … hacer request …
+    """
+
+    def __init__(self, rate: int = 5, per: float = 60.0, name: str = "default"):
+        self._rate = rate
+        self._per = per
+        self._name = name
+        self._tokens = float(rate)
+        self._last_refill = time.monotonic()
+        self._lock = threading.Lock()
+        self._min_interval = 0.5  # mínimo 0.5 s entre requests
+
+    def acquire(self, timeout: float = 30.0) -> bool:
+        """Espera hasta que un token esté disponible.
+
+        Returns True si se obtuvo token, False si se agotó *timeout*.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                self._refill()
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return True
+                wait = (1.0 - self._tokens) * (self._per / self._rate)
+            wait = min(wait, self._min_interval)
+            if time.monotonic() + wait > deadline:
+                logger.warning("RateLimiter [%s]: timeout esperando token", self._name)
+                return False
+            time.sleep(wait)
+
+    def _refill(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._last_refill
+        self._tokens = min(float(self._rate), self._tokens + elapsed * (self._rate / self._per))
+        self._last_refill = now
+
+
+# ── Instancias globales de rate limiter ──
+rl_yfinance = TokenBucketRateLimiter(rate=5, per=60.0, name="yfinance")
+rl_scraping = TokenBucketRateLimiter(rate=3, per=60.0, name="scraping")
+
+
+def retry_scraping(
+    max_attempts: int = 3,
+    min_wait: float = 2,
+    max_wait: float = 30,
+):
+    """Decorador de retry para web-scraping (Investing.com, Yahoo Calendar, etc.).
+
+    Esperas moderadas con jitter para evitar bloqueos de scrapers.
+    """
+    return retry(
+        retry=retry_if_exception(_is_retriable_yfinance_error),
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_random_exponential(multiplier=1.5, min=min_wait, max=max_wait),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )

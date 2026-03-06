@@ -18,9 +18,13 @@ para garantizar calidad, pero el *ranking* es 100% dinámico.
 """
 
 import logging
+import time
 from typing import Optional
 
+import streamlit as st
 import yfinance as yf
+
+from utils.retry_utils import cb_yfinance, rl_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +96,7 @@ _METADATA: dict[str, dict] = {
 # Función principal
 # ============================================================================
 
+@st.cache_data(ttl=86400, show_spinner="Construyendo watchlist...")
 def construir_watchlist_consolidadas(
     n: int = 18,
     fallback: Optional[dict] = None,
@@ -118,6 +123,8 @@ def construir_watchlist_consolidadas(
 
     try:
         # Descarga en batch para eficiencia (una sola llamada)
+        cb_yfinance.check()
+        rl_yfinance.acquire()
         tickers_str = " ".join(_CANDIDATOS)
         data = yf.download(
             tickers_str,
@@ -130,6 +137,7 @@ def construir_watchlist_consolidadas(
         # Consultar market cap individualmente (no viene en download)
         for sym in _CANDIDATOS:
             try:
+                rl_yfinance.acquire()
                 t = yf.Ticker(sym)
                 info = t.fast_info  # mucho más rápido que .info
                 mc = getattr(info, "market_cap", None)
@@ -147,6 +155,7 @@ def construir_watchlist_consolidadas(
 
     except Exception as e:
         logger.warning("Error en descarga batch yfinance: %s", e)
+        cb_yfinance.record_failure()
 
     if not market_caps:
         logger.warning("No se obtuvo ningún market cap — usando watchlist estática.")
@@ -305,6 +314,7 @@ _METADATA_EMERGENTES: dict[str, dict] = {
 }
 
 
+@st.cache_data(ttl=86400, show_spinner="Construyendo watchlist emergentes...")
 def construir_watchlist_emergentes(
     n: int = 18,
     fallback: Optional[dict] = None,
@@ -333,6 +343,7 @@ def construir_watchlist_emergentes(
 
     for sym in _CANDIDATOS_EMERGENTES:
         try:
+            rl_yfinance.acquire()
             fi = yf.Ticker(sym).fast_info
             mc = getattr(fi, "market_cap", None) or 0.0
             yc = getattr(fi, "year_change", None)  # fracción, ej: 0.45 = +45%

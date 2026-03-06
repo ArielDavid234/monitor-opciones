@@ -38,6 +38,7 @@ from infrastructure.caching import get_cache as _get_cache
 from utils.retry_utils import (
     retry_yfinance, cb_yfinance, RateLimitError, CircuitOpenError,
     notify_retry_exhausted, notify_circuit_open,
+    rl_yfinance,
 )
 from tenacity import RetryError
 
@@ -405,6 +406,7 @@ def _yf_fetch_contract_history(contract_symbol):
     Si falla, tenacity espera con backoff exponencial + jitter random
     antes del siguiente intento.
     """
+    rl_yfinance.acquire()
     session, perfil = _get_pooled_session()
     try:
         contract = yf.Ticker(contract_symbol, session=session)
@@ -453,6 +455,7 @@ def _yf_fetch_chain_attempt(ticker_sym, exp_date):
     """Fetch interno de cadena con retry automático (tenacity) y jitter anti-flood."""
     # Pausa aleatoria antes de cada intento — esparce requests simultáneos
     time.sleep(uniform(0.5, 1.8))
+    rl_yfinance.acquire()
     session, perfil = _get_pooled_session()
     try:
         ticker = yf.Ticker(ticker_sym, session=session)
@@ -481,6 +484,7 @@ def _maybe_raise_rate_limit(exc: Exception) -> None:
 @retry_yfinance(max_attempts=3, min_wait=3, max_wait=30)
 def _yf_fetch_options_dates(ticker_sym):
     """Fetch directo de fechas de expiración con retry (tenacity)."""
+    rl_yfinance.acquire()
     session, perfil = crear_sesion_nueva()
     try:
         ticker = yf.Ticker(ticker_sym, session=session)

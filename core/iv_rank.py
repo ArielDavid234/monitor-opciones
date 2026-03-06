@@ -14,9 +14,11 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+import streamlit as st
 import yfinance as yf
 
 from core.scanner import crear_sesion_nueva
+from utils.retry_utils import cb_yfinance, retry_yfinance, rl_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ def _calcular_iv_historica(df_hist: pd.DataFrame, window: int = 20) -> pd.Series
     return hv
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def calcular_iv_rank_percentile(
     symbol: str,
     iv_actual: Optional[float] = None,
@@ -64,6 +67,8 @@ def calcular_iv_rank_percentile(
     }
 
     try:
+        cb_yfinance.check()
+        rl_yfinance.acquire()
         session, _ = crear_sesion_nueva()
         ticker = yf.Ticker(symbol, session=session)
 
@@ -84,6 +89,7 @@ def calcular_iv_rank_percentile(
         # Si no se pasó IV actual, intentar obtenerla de la cadena ATM
         if iv_actual is None:
             try:
+                rl_yfinance.acquire()
                 expirations = ticker.options
                 if expirations:
                     # Tomar la primera expiración
@@ -137,6 +143,7 @@ def calcular_iv_rank_percentile(
         )
     except Exception as e:
         logger.error(f"{symbol}: Error calculando IV Rank: {e}")
+        cb_yfinance.record_failure()
 
     return result
 
@@ -159,6 +166,7 @@ def iv_rank_label(iv_rank: float) -> tuple:
 #        DATOS HISTÓRICOS DE IV  (para predicción de volatilidad)
 # ============================================================================
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_historical_iv(
     symbol: str,
     period: str = "1y",
@@ -187,6 +195,8 @@ def get_historical_iv(
         pd.DataFrame con las columnas descritas, o DataFrame vacío si falla.
     """
     try:
+        cb_yfinance.check()
+        rl_yfinance.acquire()
         session, _ = crear_sesion_nueva()
         ticker = yf.Ticker(symbol, session=session)
 
@@ -202,6 +212,7 @@ def get_historical_iv(
 
         # VIX como proxy de IV de mercado
         try:
+            rl_yfinance.acquire()
             vix = yf.Ticker("^VIX", session=session)
             vix_hist = vix.history(period=period)
             vix_close = vix_hist["Close"].reindex(hist.index, method="ffill")

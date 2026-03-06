@@ -18,6 +18,8 @@ import requests
 from bs4 import BeautifulSoup
 from curl_cffi import requests as curl_requests
 
+from utils.retry_utils import retry_scraping, rl_scraping, RateLimitError
+
 logger = logging.getLogger(__name__)
 
 # Cache de eventos (renovar cada 6 horas)
@@ -55,10 +57,12 @@ def _save_cache(events):
         logger.error("Error guardando cache de eventos: %s", e)
 
 
+@retry_scraping(max_attempts=3, min_wait=2, max_wait=30)
 def _fetch_investing_calendar():
     """Obtiene eventos del calendario económico de Investing.com."""
     events = []
     try:
+        rl_scraping.acquire()
         # Usar curl_cffi para evitar bloqueos
         session = curl_requests.Session(impersonate="chrome120")
         
@@ -74,6 +78,8 @@ def _fetch_investing_calendar():
         }
         
         response = session.get(url, headers=headers, timeout=30)
+        if response.status_code == 429:
+            raise RateLimitError("Rate limit (429) en Investing.com")
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -176,22 +182,26 @@ def _parse_investing_date(date_str):
         return None
 
 
+@retry_scraping(max_attempts=3, min_wait=2, max_wait=30)
 def _fetch_yahoo_earnings():
     """Obtiene calendario de earnings de Yahoo Finance."""
     events = []
     try:
+        rl_scraping.acquire()
         # Obtener earnings calendar de los próximos 30 días
         today = datetime.now()
         end_date = today + timedelta(days=30)
         
         # Usar requests directo para Yahoo Finance
-        url = f"https://finance.yahoo.com/calendar/earnings"
+        url = "https://finance.yahoo.com/calendar/earnings"
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
         response = requests.get(url, headers=headers, timeout=20)
+        if response.status_code == 429:
+            raise RateLimitError("Rate limit (429) en Yahoo Finance earnings")
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
