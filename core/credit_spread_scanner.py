@@ -1106,7 +1106,7 @@ def get_fast_market_data(tickers: list[str]) -> dict[str, dict]:
     """
     import time as _time
     from random import uniform as _uniform
-    from utils.retry_utils import cb_yfinance, rl_yfinance
+    from utils.retry_utils import cb_yfinance
 
     results: dict[str, dict] = {}
 
@@ -1116,9 +1116,6 @@ def get_fast_market_data(tickers: list[str]) -> dict[str, dict]:
             if cb_yfinance.is_open:
                 logger.warning("get_fast_market_data: circuit breaker abierto — abortando batch")
                 break
-
-            # Respetar rate limiter
-            rl_yfinance.acquire(timeout=15)
 
             # Precio actual (usa cache TTL interno de 5 min)
             spot, err = obtener_precio_actual(ticker)

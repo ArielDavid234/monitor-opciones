@@ -202,7 +202,7 @@ class CircuitBreaker:
 # Se importan desde otros módulos:
 #   from utils.retry_utils import cb_yfinance, cb_alpha_vantage, cb_barchart
 
-cb_yfinance = CircuitBreaker(max_failures=8, reset_timeout=180, name="yfinance")
+cb_yfinance = CircuitBreaker(max_failures=4, reset_timeout=120, name="yfinance")
 cb_alpha_vantage = CircuitBreaker(max_failures=4, reset_timeout=300, name="alpha_vantage")
 cb_barchart = CircuitBreaker(max_failures=5, reset_timeout=300, name="barchart")
 
@@ -444,7 +444,7 @@ class TokenBucketRateLimiter:
 
 
 # ── Instancias globales de rate limiter ──
-rl_yfinance = TokenBucketRateLimiter(rate=30, per=60.0, name="yfinance")
+rl_yfinance = TokenBucketRateLimiter(rate=10, per=60.0, name="yfinance")
 rl_scraping = TokenBucketRateLimiter(rate=3, per=60.0, name="scraping")
 
 

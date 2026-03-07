@@ -85,26 +85,6 @@ def calcular_iv_rank_percentile(
 
         result["hv_20d"] = round(float(hv_series.iloc[-1]), 2)
 
-        # Si no se pasó IV actual, intentar obtenerla de la cadena ATM
-        if iv_actual is None:
-            try:
-                expirations = ticker.options
-                if expirations:
-                    # Tomar la primera expiración
-                    chain = ticker.option_chain(expirations[0])
-                    spot = hist["Close"].iloc[-1]
-                    # Buscar call ATM
-                    calls = chain.calls
-                    if not calls.empty and "impliedVolatility" in calls.columns:
-                        calls = calls.copy()
-                        calls["dist"] = abs(calls["strike"] - spot)
-                        atm = calls.nsmallest(1, "dist")
-                        if not atm.empty:
-                            iv_actual = float(atm["impliedVolatility"].iloc[0]) * 100
-                            result["fuente"] = "chain"
-            except Exception as e:
-                logger.debug(f"{symbol}: No se pudo obtener IV de cadena: {e}")
-
         # Si aún no hay IV, usar HV actual como proxy
         if iv_actual is None or iv_actual <= 0:
             iv_actual = result["hv_20d"]
