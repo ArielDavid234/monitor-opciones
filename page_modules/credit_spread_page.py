@@ -800,6 +800,7 @@ def render(**kwargs) -> None:
                 min_pop=min_pop_pct / 100.0,
                 max_dte=max_dte,
                 min_credit=min_credit,
+                strict=any(strict_rules.values()),
                 strict_rules=strict_rules,
                 account_size=account_size,
                 progress_callback=_progress_cb,

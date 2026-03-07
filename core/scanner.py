@@ -321,8 +321,10 @@ BROWSER_PROFILES = [
 
 
 # ── Session pool: reutiliza sesiones TLS para evitar handshakes repetidos ──
+import threading as _threading
 _SESSION_POOL: list = []     # [(session, perfil), ...]
 _SESSION_POOL_SIZE = 4       # Máximo de sesiones pre-creadas
+_SESSION_POOL_LOCK = _threading.Lock()
 
 
 def crear_sesion_nueva():
@@ -352,15 +354,17 @@ def _get_pooled_session():
     Reutilizar sesiones evita el costo del TLS handshake (~200-500ms)
     en cada llamada a yfinance. El pool rota perfiles para anti-ban.
     """
-    if _SESSION_POOL:
-        return _SESSION_POOL.pop()
+    with _SESSION_POOL_LOCK:
+        if _SESSION_POOL:
+            return _SESSION_POOL.pop()
     return crear_sesion_nueva()
 
 
 def _return_session(session, perfil):
     """Devuelve una sesión al pool si no está lleno."""
-    if len(_SESSION_POOL) < _SESSION_POOL_SIZE:
-        _SESSION_POOL.append((session, perfil))
+    with _SESSION_POOL_LOCK:
+        if len(_SESSION_POOL) < _SESSION_POOL_SIZE:
+            _SESSION_POOL.append((session, perfil))
     # Si el pool está lleno, la sesión se descarta (GC)
 
 

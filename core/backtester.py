@@ -227,7 +227,7 @@ class Backtester:
             return BacktestResult()
 
         wr = wins / total * 100.0
-        avg_pop = pop_sum / len(spreads) if spreads else 70.0
+        avg_pop = pop_sum / total if total else 70.0
         pf = gross_profit / max(gross_loss, 0.01)
         avg_p = (gross_profit - gross_loss) / total
 
