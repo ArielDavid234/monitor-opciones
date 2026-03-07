@@ -142,10 +142,7 @@ def render(ticker_symbol, **kwargs):
                 },
             },
         ))
-        fig_gauge.update_layout(
-            **pro_gauge_layout(400),
-            margin=dict(l=30, r=30, t=60, b=10),
-        )
+        fig_gauge.update_layout(**{**pro_gauge_layout(400), "margin": dict(l=30, r=30, t=60, b=10)})
         st.plotly_chart(fig_gauge, use_container_width=True)
 
         _gauge_color = "#00ff88" if gauge_lbl == "ALCISTA" else "#ef4444" if gauge_lbl == "BAJISTA" else "#f59e0b"

@@ -78,7 +78,7 @@ def render_pcr_gauge(pc_ratio: float, title: str = "Put/Call Ratio") -> go.Figur
             },
         },
     ))
-    fig.update_layout(**pro_gauge_layout(280), margin=dict(l=25, r=25, t=50, b=10))
+    fig.update_layout(**{**pro_gauge_layout(280), "margin": dict(l=25, r=25, t=50, b=10)})
     return fig
 
 
