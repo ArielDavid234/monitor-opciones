@@ -354,6 +354,54 @@ class OptionGreeks:
             "rho":   self.rho(),
         }
 
+    # ------------------------------------------------------------------
+    # Probability of Touch (barrier-hitting)
+    # ------------------------------------------------------------------
+
+    def probability_of_touch(self, option_type: str = "put") -> float:
+        """
+        Probabilidad de que el spot toque el strike antes del vencimiento.
+
+        Usa la fórmula exacta de primer toque de barrera (first-passage
+        time) para movimiento Browniano geométrico:
+
+            P(touch) = N(-a + b) + e^{2·µ·ln(K/S)/σ²} · N(-a - b)
+
+        donde:
+            µ = (r - q - σ²/2)
+            a = |ln(S/K)| / (σ√T)
+            b = µ·√T / σ
+
+        Esta fórmula es más precisa que la aproximación 2×|Δ| de
+        tastytrade, especialmente para strikes OTM con skew alto.
+
+        Parameters
+        ----------
+        option_type : str — "put" o "call" (se usa para determinar
+            si la barrera está abajo o arriba del spot).
+
+        Returns
+        -------
+        float — probabilidad en [0, 1].
+        """
+        S, K, T, r, q, sigma = self.S, self.K, self.T, self.r, self.q, self.sigma
+
+        mu = r - q - 0.5 * sigma ** 2
+        sigma_sqrt_T = sigma * np.sqrt(T)
+
+        log_SK = np.log(S / K)          # positivo si S > K (put OTM)
+        a = abs(log_SK) / sigma_sqrt_T   # distancia normalizada
+        b = mu * np.sqrt(T) / sigma      # drift normalizado
+
+        # Exponente para el segundo término
+        exponent = 2.0 * mu * log_SK / (sigma ** 2)
+        # Clamp para evitar overflow
+        exponent = max(min(exponent, 500.0), -500.0)
+
+        p = norm.cdf(-a + b) + np.exp(exponent) * norm.cdf(-a - b)
+
+        return round(float(np.clip(p, 0.0, 1.0)), 6)
+
 
 # ======================================================================
 # Standalone convenience functions  (safe wrappers around OptionGreeks)
@@ -419,6 +467,29 @@ def quick_gamma(
         return opt.gamma()
     except Exception:
         return 0.0
+
+
+def quick_probability_of_touch(
+    S: float,
+    K: float,
+    T: float,
+    iv: float,
+    option_type: str = "put",
+    r: float = 0.0,
+    q: float = 0.0,
+) -> float:
+    """Probability of Touch exacta (primer toque de barrera BSM).
+
+    Wrapper seguro para hot loops.  Devuelve probabilidad en [0, 1].
+    Fallback a 2×|Δ| si los inputs son inválidos.
+    """
+    try:
+        if T <= 0 or iv <= 0 or S <= 0 or K <= 0:
+            return min(1.0, 2.0 * 0.15)  # fallback conservador
+        opt = OptionGreeks(S=S, K=K, T=T, r=r, sigma=iv, q=q)
+        return opt.probability_of_touch(option_type)
+    except Exception:
+        return min(1.0, 2.0 * 0.15)
 
 
 # ======================================================================

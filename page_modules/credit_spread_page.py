@@ -308,6 +308,23 @@ def _render_aggrid_fragment() -> None:
                         valueFormatter="x.toFixed(1) + '%'")
     gb.configure_column("IV %", width=70, type=["numericColumn"],
                         valueFormatter="x.toFixed(1) + '%'")
+    # ── Debug / validación vs plataforma externa ─────────────────────
+    gb.configure_column("PoT 2Δ Approx", headerName="PoT 2Δ", width=90,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("POP Breakeven %", headerName="POP BE %", width=100,
+                        type=["numericColumn"],
+                        cellStyle=_JS_POP_STYLE,
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("IV Short %", headerName="IV Short", width=85,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("IV Long %", headerName="IV Long", width=85,
+                        type=["numericColumn"],
+                        valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("Breakeven", headerName="Breakeven", width=95,
+                        type=["numericColumn"],
+                        valueFormatter="'$' + x.toFixed(2)")
     gb.configure_column("IV Rank", width=80, type=["numericColumn"],
                         cellStyle=_JS_IVRANK_STYLE,
                         valueFormatter="x.toFixed(0) + '%'")

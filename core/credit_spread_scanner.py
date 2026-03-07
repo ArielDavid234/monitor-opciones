@@ -56,7 +56,7 @@ from config.constants import (
     ALERT_DEFAULT_ACCOUNT_SIZE,
     ALERT_MAX_RISK_PCT,
 )
-from core.option_greeks import OptionGreeks
+from core.option_greeks import OptionGreeks, quick_probability_of_touch
 from core.backtester import (
     compute_ev_real_adjusted,
     _surface_edge,
@@ -140,25 +140,71 @@ def _pop_from_delta(delta: float) -> float:
     return round(1.0 - abs(delta), 4)
 
 
-def calculate_probability_of_touch(delta: float) -> float:
-    """Probability of Touch (PoT) del strike vendido.
+def _pop_from_breakeven(
+    spot: float,
+    breakeven: float,
+    dte: int,
+    iv: float,
+    option_type: str = "put",
+) -> float:
+    """POP basado en breakeven real del spread (BSM con IV del strike).
 
-    Fórmula institucional (tastytrade / desks de opciones):
+    Para Bull Put: breakeven = strike_vendido - crédito
+        POP = P(S_T > breakeven) = N(d2)  con K = breakeven
+    Para Bear Call: breakeven = strike_vendido + crédito
+        POP = P(S_T < breakeven) = N(-d2) con K = breakeven
 
-        PoT ≈ 2 × |Δ_short| × 100   (cap 99 %)
+    Más preciso que 1-|Δ| porque usa el breakeven real del spread.
+    """
+    T = max(dte, 1) / DAYS_PER_YEAR
+    sigma = iv if iv > 0.01 else 0.25
+    try:
+        g = OptionGreeks(S=spot, K=breakeven, T=T, r=RISK_FREE_RATE, sigma=sigma)
+        d2 = g._d2
+        from scipy.stats import norm as _norm
+        if option_type == "put":
+            return float(_norm.cdf(d2))       # P(S_T > breakeven)
+        return float(_norm.cdf(-d2))          # P(S_T < breakeven)
+    except Exception:
+        return 0.70
 
-    Ejemplo: delta_short = -0.15  →  PoT = min(30.0, 99.0) = 30.0 %
 
-    Un PoT alto significa que el precio tiene más probabilidad de
-    tocar el strike vendido antes del vencimiento, lo que es un riesgo
-    mayor para el vendedor del spread.
+def calculate_probability_of_touch(
+    spot: float,
+    strike: float,
+    dte: int,
+    iv: float,
+    option_type: str = "put",
+) -> float:
+    """Probability of Touch (PoT) del strike vendido — fórmula BSM exacta.
+
+    Usa la fórmula de primer toque de barrera (first-passage time)
+    en vez de la aproximación 2×|Δ| de tastytrade.
+
+    La fórmula exacta captura el efecto del drift y es más precisa
+    para strikes OTM con skew alto.
 
     Args:
-        delta: delta del strike vendido (positivo o negativo).
+        spot:        precio actual del subyacente
+        strike:      strike vendido
+        dte:         días hasta vencimiento
+        iv:          implied volatility del strike (decimal, ej 0.25)
+        option_type: "put" o "call"
 
     Returns:
         Probabilidad de toque en porcentaje (0.0 – 99.0).
     """
+    T = max(dte, 1) / DAYS_PER_YEAR
+    sigma = iv if iv > 0.01 else 0.25
+    prob = quick_probability_of_touch(
+        S=spot, K=strike, T=T, iv=sigma,
+        option_type=option_type, r=RISK_FREE_RATE,
+    )
+    return round(min(prob * 100.0, 99.0), 1)
+
+
+def _pot_approx_2delta(delta: float) -> float:
+    """PoT aproximado tastytrade (2×|Δ|) — solo para columna debug."""
     return round(min(2.0 * abs(delta) * 100.0, 99.0), 1)
 
 
@@ -678,8 +724,23 @@ def _build_spreads_for_expiry(
                 # ── Métricas Fase 1: PoT, Delta Comprado, Delta Neto ─────
                 bought_iv = float(_safe_num(bought.get("impliedVolatility", sold_iv)) or sold_iv)
                 bought_delta = _bsm_delta(spot, bought_strike, dte, bought_iv, "put")
-                pot_short = calculate_probability_of_touch(sold_delta)
-                delta_neto = round(abs(sold_delta) - abs(bought_delta), 4)
+
+                # PoT BSM exacto (barrera) vs aproximación 2×|Δ|
+                pot_short = calculate_probability_of_touch(
+                    spot, sold_strike, dte, sold_iv, "put",
+                )
+                pot_approx = _pot_approx_2delta(sold_delta)
+
+                # Delta Neto: para Bull Put (short higher put, long lower put),
+                # ambos deltas son negativos.  El spread neto es bullish (positivo).
+                # Δ_spread = Δ_short + Δ_long (short = vendido, invertimos signo)
+                #          = -Δ_short_put + Δ_long_put
+                delta_neto = round(-sold_delta + bought_delta, 4)
+
+                # POP basado en breakeven real del spread
+                breakeven = round(sold_strike - credit, 2)
+                pop_be = _pop_from_breakeven(spot, breakeven, dte, sold_iv, "put")
+                pop = _pop_from_delta(sold_delta)  # mantener como referencia
 
                 # ── Métricas Fase 2: Gamma, Theta, Liquidez ───────────────
                 _g_sold = _bsm_greeks(spot, sold_strike, dte, sold_iv, "put")
@@ -719,15 +780,20 @@ def _build_spreads_for_expiry(
                     "Delta Comprado": round(bought_delta, 4),
                     "Delta Neto": delta_neto,
                     "PoT Short": pot_short,
+                    "PoT 2Δ Approx": pot_approx,
                     "Gamma Neto": gamma_neto,
                     "Theta Neto": theta_neto,
                     "Decay 7d": decay_7d,
                     "POP %": round(pop * 100, 1),
+                    "POP Breakeven %": round(pop_be * 100, 1),
                     "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
+                    "IV Short %": round(sold_iv * 100, 1),
+                    "IV Long %": round(bought_iv * 100, 1),
                     "IV %": round(sold_iv * 100, 1),
+                    "Breakeven": breakeven,
                     "Dist Strike %": dist_pct,
                     "Vol Short": sold_vol,
                     "OI Short": sold_oi,
@@ -839,8 +905,22 @@ def _build_spreads_for_expiry(
                 # ── Métricas Fase 1: PoT, Delta Comprado, Delta Neto ─────
                 bought_ivbc = float(_safe_num(bought.get("impliedVolatility", sold_iv)) or sold_iv)
                 bought_delta_bc = _bsm_delta(spot, bought_strike, dte, bought_ivbc, "call")
-                pot_short_bc = calculate_probability_of_touch(sold_delta)
-                delta_neto_bc = round(abs(sold_delta) - abs(bought_delta_bc), 4)
+
+                # PoT BSM exacto (barrera) vs aproximación 2×|Δ|
+                pot_short_bc = calculate_probability_of_touch(
+                    spot, sold_strike, dte, sold_iv, "call",
+                )
+                pot_approx_bc = _pot_approx_2delta(sold_delta)
+
+                # Delta Neto: para Bear Call (short lower call, long higher call),
+                # ambos deltas son positivos.  El spread neto es bearish (negativo).
+                # Δ_spread = -Δ_short_call + Δ_long_call
+                delta_neto_bc = round(-sold_delta + bought_delta_bc, 4)
+
+                # POP basado en breakeven real del spread
+                breakeven_bc = round(sold_strike + credit, 2)
+                pop_be_bc = _pop_from_breakeven(spot, breakeven_bc, dte, sold_iv, "call")
+                pop_bc = _pop_from_delta(sold_delta)  # referencia
 
                 # ── Métricas Fase 2: Gamma, Theta, Liquidez ───────────────
                 _gc_sold = _bsm_greeks(spot, sold_strike, dte, sold_iv, "call")
@@ -862,7 +942,7 @@ def _build_spreads_for_expiry(
                     spot, sold_strike, dte, sold_iv, credit, max_risk, "call",
                 )
                 surface_edge_bc = _surface_edge(
-                    spot, sold_strike, dte, sold_iv, round(pop * 100, 1), "call",
+                    spot, sold_strike, dte, sold_iv, round(pop_bc * 100, 1), "call",
                 )
 
                 row = {
@@ -877,15 +957,20 @@ def _build_spreads_for_expiry(
                     "Delta Comprado": round(bought_delta_bc, 4),
                     "Delta Neto": delta_neto_bc,
                     "PoT Short": pot_short_bc,
+                    "PoT 2Δ Approx": pot_approx_bc,
                     "Gamma Neto": gamma_neto_bc,
                     "Theta Neto": theta_neto_bc,
                     "Decay 7d": decay_7d_bc,
-                    "POP %": round(pop * 100, 1),
-                    "Prob OTM %": round(pop * 100, 1),
+                    "POP %": round(pop_bc * 100, 1),
+                    "POP Breakeven %": round(pop_be_bc * 100, 1),
+                    "Prob OTM %": round(pop_bc * 100, 1),
                     "Crédito": credit,
                     "Riesgo Máx": max_risk,
                     "Retorno %": retorno_pct,
+                    "IV Short %": round(sold_iv * 100, 1),
+                    "IV Long %": round(bought_ivbc * 100, 1),
                     "IV %": round(sold_iv * 100, 1),
+                    "Breakeven": breakeven_bc,
                     "Dist Strike %": dist_pct,
                     "Vol Short": sold_vol,
                     "OI Short": sold_oi,
