@@ -162,18 +162,98 @@ def predict_implied_volatility(
 #        ENRICHMENT — Datos fundamentales vía Alpha Vantage
 # ============================================================================
 
+def _get_fundamentals_yfinance(ticker: str) -> dict:
+    """Obtiene fundamentales desde yfinance (fallback gratuito sin API key).
+
+    Devuelve el mismo esquema de dict que get_alpha_vantage_fundamentals.
+    """
+    try:
+        session, _ = crear_sesion_nueva()
+        t = yf.Ticker(ticker, session=session)
+        info = t.info or {}
+
+        def _sf(key, factor=1.0):
+            v = info.get(key)
+            try:
+                f = float(v) * factor
+                return f if not (f != f) else None  # NaN check
+            except (TypeError, ValueError):
+                return None
+
+        # Earnings history (surprise %)
+        quarterly_earnings = []
+        last_surprise_pct = None
+        last_reported_date = "N/A"
+        earnings_beat_streak = 0
+        try:
+            eh = t.earnings_history
+            if eh is not None and not eh.empty:
+                for _, row in eh.head(8).iterrows():
+                    eps_est = row.get("epsEstimate") if hasattr(row, "get") else row["epsEstimate"]
+                    eps_rep = row.get("epsActual") if hasattr(row, "get") else row["epsActual"]
+                    surp = row.get("surprisePercent") if hasattr(row, "get") else row["surprisePercent"]
+                    date_str = str(row.name.date()) if hasattr(row.name, "date") else str(row.name)
+                    try:
+                        surp_f = float(surp) * 100 if surp is not None else 0.0
+                    except (TypeError, ValueError):
+                        surp_f = 0.0
+                    quarterly_earnings.append({
+                        "date": date_str,
+                        "reported_eps": float(eps_rep) if eps_rep is not None else 0.0,
+                        "estimated_eps": float(eps_est) if eps_est is not None else 0.0,
+                        "surprise_pct": round(surp_f, 2),
+                    })
+                if quarterly_earnings:
+                    last_surprise_pct = quarterly_earnings[0]["surprise_pct"]
+                    last_reported_date = quarterly_earnings[0]["date"]
+                    for q in quarterly_earnings:
+                        if q["surprise_pct"] > 0:
+                            earnings_beat_streak += 1
+                        else:
+                            break
+        except Exception:
+            pass
+
+        short_pct = _sf("shortPercentOfFloat", 100) or 0.0
+
+        return {
+            "peg_ratio": _sf("pegRatio"),
+            "pe_forward": _sf("forwardPE"),
+            "pe_trailing": _sf("trailingPE"),
+            "ev_to_ebitda": _sf("enterpriseToEbitda"),
+            "book_value": _sf("bookValue"),
+            "revenue_ttm": _sf("totalRevenue") or 0,
+            "eps_ttm": _sf("trailingEps"),
+            "profit_margin": round(_sf("profitMargins", 100) or 0, 2) or None,
+            "gross_margin_pct": round(_sf("grossMargins", 100) or 0, 2),
+            "operating_margin": round(_sf("operatingMargins", 100) or 0, 2) or None,
+            "roe": round(_sf("returnOnEquity", 100) or 0, 2) or None,
+            "roa": round(_sf("returnOnAssets", 100) or 0, 2) or None,
+            "short_interest_pct": round(short_pct, 2),
+            "beta": _sf("beta"),
+            "dividend_yield": round(_sf("dividendYield", 100) or 0, 2) or None,
+            "analyst_target": _sf("targetMeanPrice"),
+            "week_52_high": _sf("fiftyTwoWeekHigh") or 0,
+            "week_52_low": _sf("fiftyTwoWeekLow") or 0,
+            "last_earnings_date": last_reported_date,
+            "last_surprise_pct": last_surprise_pct,
+            "earnings_beat_streak": earnings_beat_streak,
+            "quarterly_earnings": quarterly_earnings,
+            "name": info.get("longName") or info.get("shortName", ticker),
+            "sector": info.get("sector", "N/A"),
+            "industry": info.get("industry", "N/A"),
+            "description": info.get("longBusinessSummary", ""),
+            "source": "Yahoo Finance",
+        }
+    except Exception as e:
+        return {"error": f"yfinance fundamentals error: {e}"}
+
+
 def enrich_with_fundamentals(ticker: str) -> dict:
-    """Enriquece el análisis de un ticker con datos de Alpha Vantage.
+    """Enriquece el análisis de un ticker con datos fundamentales.
 
-    Combina datos de la API externa (earnings surprise, short interest,
-    PEG actualizado, ROE, márgenes) con interpretaciones financieras
-    que ayudan a contextualizar la actividad de opciones.
-
-    **Uso financiero:**
-    - Earnings surprise positivo + IV alta → probable contracción de IV post-earnings
-    - Short interest > 10% + calls subiendo → posible short squeeze
-    - PEG < 1 → empresa infravalorada vs su crecimiento
-    - ROE alto + margen de beneficio alto → empresa de calidad (protective puts baratos)
+    Intenta Alpha Vantage primero; si no hay API key configurada, usa
+    yfinance como fallback gratuito con el mismo esquema de datos.
 
     Args:
         ticker: Símbolo del activo (e.g. "AAPL").
@@ -183,10 +263,14 @@ def enrich_with_fundamentals(ticker: str) -> dict:
     """
     try:
         from infrastructure.api_integrations import get_alpha_vantage_fundamentals
-    except ImportError as e:
-        return {"error": f"Módulo api_integrations no disponible: {e}"}
+        raw = get_alpha_vantage_fundamentals(ticker)
+    except ImportError:
+        raw = {"error": "api_integrations no disponible"}
 
-    raw = get_alpha_vantage_fundamentals(ticker)
+    # Si Alpha Vantage falla por falta de key (o cualquier error), usar yfinance
+    if "error" in raw:
+        logger.info("%s: Alpha Vantage no disponible (%s) — usando yfinance fallback", ticker, raw["error"][:60])
+        raw = _get_fundamentals_yfinance(ticker)
 
     if "error" in raw:
         return raw
