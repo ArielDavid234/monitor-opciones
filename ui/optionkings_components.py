@@ -646,13 +646,8 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
             <h4 style="color:#a78bfa;margin:0 0 0.25rem 0;">
                 🎲 Simulación Monte Carlo{label_txt}
                 <span style="font-size:0.75rem;font-weight:400;color:#64748b;
-                    margin-left:8px;">{n_sim:,} escenarios · GBM mejorado · Student-t df=4</span>
+                    margin-left:8px;">{n_sim:,} escenarios</span>
             </h4>
-            <p style="color:#475569;margin:0;font-size:0.75rem;font-family:monospace;">
-                σ blend = {sigma_str} (IV+HV/2) &nbsp;|&nbsp;
-                μ = {mu_str} &nbsp;|&nbsp;
-                Fat tails · Path simulation · Vol crush
-            </p>
         </div>
         """,
         unsafe_allow_html=True,
