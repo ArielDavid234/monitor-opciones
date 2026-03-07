@@ -177,7 +177,7 @@ def render_spread_card(
         f"POP {metrics.get('pop_pct', 0):.0f}%"
     )
 
-    with st.expander(expander_title, expanded=(idx == 0)):
+    with st.expander(expander_title, expanded=False):
 
         # ── Sub-header ────────────────────────────────────────────────────
         st.markdown(
