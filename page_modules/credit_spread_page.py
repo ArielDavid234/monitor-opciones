@@ -769,6 +769,12 @@ def render(**kwargs) -> None:
         )
 
     # ── Botón de escaneo ─────────────────────────────────────────────────
+    if len(selected_tickers) > 10:
+        st.info(
+            f"⏱️ **{len(selected_tickers)} tickers seleccionados** — el scan puede tardar más "
+            f"de lo normal. Considera seleccionar solo los tickers clave para resultados más rápidos."
+        )
+
     scan_btn = st.button(
         "🚀 Ejecutar Scanner",
         type="primary",
@@ -978,10 +984,15 @@ def render(**kwargs) -> None:
             )
     if df is None or df.empty:
         if df is not None:
-            st.warning(
-                "⚠️ **No se encontraron spreads con los parámetros actuales.**\n\n"
+            _rules_on = strict_rules and any(strict_rules.values())
+            _hint = (
+                "Prueba reduciendo el crédito mínimo o ampliando el DTE máximo."
+                if not _rules_on else
                 "Prueba reduciendo el crédito mínimo, ampliando el DTE máximo, "
                 "o desactivando algunas reglas en **Reglas importantes**."
+            )
+            st.warning(
+                f"⚠️ **No se encontraron spreads con los parámetros actuales.**\n\n{_hint}"
             )
         else:
             st.markdown(

@@ -1099,10 +1099,12 @@ def _scan_single_ticker(
 
     all_spreads: list[dict] = []
 
-    for exp_date in exp_dates:
-        dte = _dte_from_expiry(exp_date)
-        if dte <= 0 or dte > max_dte:
-            continue
+    # Filtrar expirations válidas y capear a 8 para evitar rate-limiting
+    valid_exps = [e for e in exp_dates if 0 < _dte_from_expiry(e) <= max_dte]
+    if len(valid_exps) > 8:
+        valid_exps = valid_exps[:8]  # 8 expirations más cercanas
+
+    for exp_date in valid_exps:
         spreads = _build_spreads_for_expiry(
             ticker, spot, exp_date, min_pop, min_credit, ticker_meta,
             allowed_type=allowed_type,
