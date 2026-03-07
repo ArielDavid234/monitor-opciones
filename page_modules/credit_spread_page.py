@@ -829,7 +829,7 @@ def render(**kwargs) -> None:
                 "min_iv_rank": min_iv_rank,
                 "trend_align": filter_by_trend,
                 "filter_ev": filter_by_ev,
-                "strict": strict_mode,
+                "strict": any(strict_rules.values()),
                 "account_size": account_size,
             }
         })
