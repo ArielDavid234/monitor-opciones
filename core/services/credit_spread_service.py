@@ -97,20 +97,16 @@ class CreditSpreadService:
         self,
         df: pd.DataFrame,
         account_size: float = ALERT_DEFAULT_ACCOUNT_SIZE,
+        strict_rules: dict | None = None,
     ) -> pd.DataFrame:
-        """Aplica las 10 reglas obligatorias y devuelve sólo las alertas accionables.
+        """Aplica las reglas de seguridad y devuelve las alertas accionables.
 
-        Args:
-            df: resultado de ``scan()``.
-            account_size: tamaño de cuenta para calcular riesgo máx (Regla 8).
-
-        Returns:
-            DataFrame filtrado con las alertas que pasan todas las reglas.
-            Vacío si ninguna cumple todas.
+        Las reglas respetan strict_rules: las desactivadas se saltan.
+        La Regla 8 (riesgo de cuenta) siempre se verifica.
         """
         if df is None or df.empty:
             return pd.DataFrame()
-        return _gen_alerts(df, account_size=account_size)
+        return _gen_alerts(df, account_size=account_size, strict_rules=strict_rules)
 
     def score_breakdown(self, row: dict[str, Any]) -> list[dict[str, Any]]:
         """Devuelve el desglose de puntaje para un spread específico.

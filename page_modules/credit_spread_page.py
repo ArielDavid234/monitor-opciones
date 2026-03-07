@@ -809,7 +809,7 @@ def render(**kwargs) -> None:
         )
 
         # ── Generar alertas (10 reglas) via service ───────────────────────
-        alerts_df = _cs_service.get_alerts(df, account_size=account_size)
+        alerts_df = _cs_service.get_alerts(df, account_size=account_size, strict_rules=strict_rules)
         st.session_state["cs_alerts"] = alerts_df
 
         # ── Guardar snapshot de filtros para mostrar al volver a la página ─
