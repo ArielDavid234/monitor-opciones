@@ -203,6 +203,7 @@ def render_spread_card(
                     _score_gauge(score, grade_col),
                     use_container_width=True,
                     config={"displayModeBar": False},
+                    key=f"oka_gauge_{ticker}_{idx}",
                 )
             else:
                 st.metric("Score Profesional", f"{score:.0f}/100")
@@ -514,7 +515,8 @@ def render_drawdown_chart(mgmt: dict) -> None:
         bargap=0.3,
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
+                     key=f"oka_dd_{id(mgmt)}")
 
 
 # ============================================================================
