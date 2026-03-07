@@ -769,12 +769,6 @@ def render(**kwargs) -> None:
         )
 
     # ── Botón de escaneo ─────────────────────────────────────────────────
-    if len(selected_tickers) > 10:
-        st.info(
-            f"⏱️ **{len(selected_tickers)} tickers seleccionados** — el scan puede tardar más "
-            f"de lo normal. Considera seleccionar solo los tickers clave para resultados más rápidos."
-        )
-
     scan_btn = st.button(
         "🚀 Ejecutar Scanner",
         type="primary",
