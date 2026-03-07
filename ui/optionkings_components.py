@@ -341,7 +341,7 @@ def render_spread_card(
         # ── Gestión de cuenta (si se proporcionó) ─────────────────────────
         if management:
             render_account_summary_card(management)
-            render_drawdown_chart(management)
+            render_drawdown_chart(management, idx=idx, ticker=ticker)
 
 
 # ============================================================================
@@ -434,7 +434,7 @@ def render_account_summary_card(mgmt: dict) -> None:
 #   GRÁFICO DE DRAWDOWN — Bar chart Plotly rojo para psicología del trader
 # ============================================================================
 
-def render_drawdown_chart(mgmt: dict) -> None:
+def render_drawdown_chart(mgmt: dict, idx: int = 0, ticker: str = "x") -> None:
     """Bar chart Plotly de drawdown por rachas de pérdidas consecutivas.
 
     Diseñado para impacto psicológico: el trader ve de golpe el daño potencial
@@ -516,7 +516,7 @@ def render_drawdown_chart(mgmt: dict) -> None:
     )
 
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
-                     key=f"oka_dd_{id(mgmt)}")
+                     key=f"oka_dd_{ticker}_{idx}")
 
 
 # ============================================================================
@@ -718,7 +718,7 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
             ))
             fig_gauge.update_layout(**{**pro_gauge_layout(220), "margin": dict(l=10, r=10, t=30, b=10)})
             st.plotly_chart(fig_gauge, use_container_width=True,
-                            key=f"mc_gauge_{id(mc_results)}")
+                            key=f"mc_gauge_{spread_label}")
 
         # Histograma de distribución PnL
         with col_hist:
@@ -773,7 +773,7 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
                 margin=dict(l=40, r=15, t=45, b=35),
             )
             st.plotly_chart(fig_hist, use_container_width=True,
-                            key=f"mc_hist_{id(mc_results)}")
+                            key=f"mc_hist_{spread_label}")
 
     # ── Contexto crédito / max loss ───────────────────────────────────────
     st.markdown(
