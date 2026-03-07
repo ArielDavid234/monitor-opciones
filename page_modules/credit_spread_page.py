@@ -704,19 +704,22 @@ def render(**kwargs) -> None:
             key="cs_filter_by_ev",
         )
         st.markdown("---")
-        st.markdown("#### 🛡️ Modo Estricto")
-        strict_mode = st.checkbox(
-            "✅ Activar filtros estrictos (9 reglas)",
-            value=True,
-            help=(
-                "Aplica 9 filtros obligatorios: whitelist, precio>"
-                "$20, vol>1M, IV Rank≥30, DTE 25-45, delta 0.10-0.20, "
-                "ancho 2, 3 o 5, crédito≥15% ancho, distancia≥3%, "
-                "OI>500, vol>100, bid-ask≤10%. "
-                "Desactiva para ver TODAS las oportunidades sin filtrar."
-            ),
-            key="cs_strict_mode",
-        )
+        st.markdown("#### 🛡️ Modo Estricto — Filtros Individuales")
+        with st.expander("Personaliza las 9 reglas (todas activas por defecto)", expanded=False):
+            _r1 = st.checkbox("R1: Whitelist + Precio>$20 + Vol>1M acciones", value=True, key="cs_r1")
+            _r2 = st.checkbox("R2: IV Rank ≥ 30%", value=True, key="cs_r2")
+            _r3 = st.checkbox("R3: DTE entre 25–45 días", value=True, key="cs_r3")
+            _r4 = st.checkbox("R4: Delta vendido 0.10–0.20", value=True, key="cs_r4")
+            _r5 = st.checkbox("R5: Dirección alineada con tendencia", value=True, key="cs_r5")
+            _r6 = st.checkbox("R6: Ancho del spread: 2, 3 o 5 puntos", value=True, key="cs_r6")
+            _r7 = st.checkbox("R7: Crédito ≥ 15% del ancho", value=True, key="cs_r7")
+            _r8 = st.checkbox("R8: Distancia del strike ≥ 3%", value=True, key="cs_r8")
+            _r9 = st.checkbox("R9: Liquidez (OI>500, Vol>100, Bid-Ask≤10%)", value=True, key="cs_r9")
+        strict_rules = {
+            "r1_whitelist": _r1, "r2_iv_rank": _r2, "r3_dte": _r3,
+            "r4_delta": _r4, "r5_trend": _r5, "r6_width": _r6,
+            "r7_credit_pct": _r7, "r8_distance": _r8, "r9_liquidity": _r9,
+        }
         st.markdown("---")
         st.markdown("#### 💰 Cuenta")
         account_size = st.number_input(
@@ -772,7 +775,7 @@ def render(**kwargs) -> None:
                 min_pop=min_pop_pct / 100.0,
                 max_dte=max_dte,
                 min_credit=min_credit,
-                strict=strict_mode,
+                strict_rules=strict_rules,
                 account_size=account_size,
                 progress_callback=_progress_cb,
             )

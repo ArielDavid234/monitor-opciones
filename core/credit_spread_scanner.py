@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import numpy as np
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from config.constants import (
@@ -485,21 +486,45 @@ def opportunity_score_breakdown(row: dict) -> list[dict]:
 # ────────────────────────────────────────────────────────────────────────────
 
 def compute_iv_rank_percentile(ticker: str) -> dict:
-    """Thin adapter around ``core.iv_rank.calcular_iv_rank_percentile``.
+    """Calcula IV Rank / Percentile usando el historial cacheado.
 
-    Returns keys expected by the rest of this module:
-        iv_current, iv_rank, iv_percentile, iv_1y_high, iv_1y_low
+    Usa _cached_history(ticker, "1y") — reutiliza el caché TTL del scanner
+    y evita un download adicional de yfinance por ticker.
+
+    Returns keys: iv_current, iv_rank, iv_percentile, iv_1y_high, iv_1y_low
     """
-    from core.iv_rank import calcular_iv_rank_percentile  # canonical impl
-
-    raw = calcular_iv_rank_percentile(ticker)
-    return {
-        "iv_current":    raw.get("hv_20d", 0.0),
-        "iv_rank":       raw.get("iv_rank", 0.0),
-        "iv_percentile": raw.get("iv_percentile", 0.0),
-        "iv_1y_high":    raw.get("iv_high_52w", 0.0),
-        "iv_1y_low":     raw.get("iv_low_52w", 0.0),
+    _default = {
+        "iv_current": 0.0, "iv_rank": 0.0, "iv_percentile": 0.0,
+        "iv_1y_high": 0.0, "iv_1y_low": 0.0,
     }
+    try:
+        hist = _cached_history(ticker, "1y")
+        if hist is None or hist.empty or len(hist) < 30:
+            return _default
+        close = hist["Close"]
+        if hasattr(close, "squeeze"):
+            close = close.squeeze()
+        log_ret = np.log(close / close.shift(1))
+        hv = log_ret.rolling(20).std() * np.sqrt(252) * 100
+        hv = hv.dropna()
+        if hv.empty:
+            return _default
+        iv_current = round(float(hv.iloc[-1]), 2)
+        iv_max = round(float(hv.max()), 2)
+        iv_min = round(float(hv.min()), 2)
+        iv_range = iv_max - iv_min
+        iv_rank = round((iv_current - iv_min) / iv_range * 100, 1) if iv_range > 0 else 0.0
+        iv_pct = round(float((hv < iv_current).mean() * 100), 1)
+        return {
+            "iv_current": iv_current,
+            "iv_rank": iv_rank,
+            "iv_percentile": iv_pct,
+            "iv_1y_high": iv_max,
+            "iv_1y_low": iv_min,
+        }
+    except Exception as _e:
+        logger.warning("compute_iv_rank_percentile(%s): %s", ticker, _e)
+        return _default
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -598,6 +623,7 @@ def _build_spreads_for_expiry(
     ticker_meta: dict | None = None,
     allowed_type: str | None = None,
     strict: bool = False,
+    strict_rules: dict | None = None,
 ) -> list[dict]:
     """Genera Bull Put Spreads y Bear Call Spreads para una expiración.
 
@@ -607,13 +633,16 @@ def _build_spreads_for_expiry(
         Si se pasa "Bull Put" o "Bear Call", solo genera ese tipo (filtro 5).
     strict : bool
         Si True, aplica los 9 filtros obligatorios del pipeline.
+    strict_rules : dict | None
+        Reglas individuales activadas. Tiene prioridad sobre ``strict``.
     """
+    _sr = strict_rules or {}
     dte = _dte_from_expiry(exp_date)
     if dte <= 0:
         return []
 
     # Filtro 3 — DTE estricto (solo en modo strict)
-    if strict and (dte < CS_DTE_MIN or dte > CS_DTE_MAX):
+    if _sr.get("r3_dte", strict) and (dte < CS_DTE_MIN or dte > CS_DTE_MAX):
         return []
 
     try:
@@ -647,7 +676,7 @@ def _build_spreads_for_expiry(
             sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "put")
 
             # Filtro 4 — Delta del short strike (strict)
-            if strict:
+            if _sr.get("r4_delta", strict):
                 abs_d = abs(sold_delta)
                 if abs_d < CS_DELTA_MIN or abs_d > CS_DELTA_MAX:
                     continue
@@ -658,22 +687,22 @@ def _build_spreads_for_expiry(
 
             # Filtro 8 — Distancia del strike (strict)
             dist_pct = _strike_distance_pct(spot, sold_strike)
-            if strict and dist_pct < CS_MIN_DIST_PCT:
+            if _sr.get("r8_distance", strict) and dist_pct < CS_MIN_DIST_PCT:
                 continue
 
             # Filtro 9a/9b — Liquidez del contrato vendido (strict)
-            if strict and (sold_oi < CS_MIN_SOLD_OI or sold_vol < CS_MIN_SOLD_VOL):
+            if _sr.get("r9_liquidity", strict) and (sold_oi < CS_MIN_SOLD_OI or sold_vol < CS_MIN_SOLD_VOL):
                 continue
 
             # Filtro 9c — Bid-Ask (strict)
-            if strict and not _passes_bid_ask_filter(sold_bid, sold_ask):
+            if _sr.get("r9_liquidity", strict) and not _passes_bid_ask_filter(sold_bid, sold_ask):
                 continue
 
             # Build a strike→row lookup for fast width matching
             _put_strikes = {float(r["strike"]): r for _, r in otm_puts.iterrows()}
 
             # In strict mode, only try allowed widths; otherwise try next 5 strikes
-            if strict:
+            if _sr.get("r6_width", strict):
                 _target_widths = CS_ALLOWED_WIDTHS
             else:
                 _target_widths = None  # fallback: iterate consecutive
@@ -704,13 +733,13 @@ def _build_spreads_for_expiry(
                     continue
 
                 # Filtro 6 — Ancho del spread (strict)
-                if strict:
+                if _sr.get("r6_width", strict):
                     width_int = int(round(width))
                     if width_int not in CS_ALLOWED_WIDTHS:
                         continue
 
                 # Filtro 7 — Crédito mínimo % del ancho (strict)
-                if strict and credit < width * CS_MIN_CREDIT_PCT:
+                if _sr.get("r7_credit_pct", strict) and credit < width * CS_MIN_CREDIT_PCT:
                     continue
 
                 max_risk = round(width - credit, 2)
@@ -829,7 +858,7 @@ def _build_spreads_for_expiry(
             sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "call")
 
             # Filtro 4 — Delta del short strike (strict)
-            if strict:
+            if _sr.get("r4_delta", strict):
                 abs_d = abs(sold_delta)
                 if abs_d < CS_DELTA_MIN or abs_d > CS_DELTA_MAX:
                     continue
@@ -840,21 +869,21 @@ def _build_spreads_for_expiry(
 
             # Filtro 8 — Distancia del strike (strict)
             dist_pct = _strike_distance_pct(spot, sold_strike)
-            if strict and dist_pct < CS_MIN_DIST_PCT:
+            if _sr.get("r8_distance", strict) and dist_pct < CS_MIN_DIST_PCT:
                 continue
 
             # Filtro 9a/9b — Liquidez del contrato vendido (strict)
-            if strict and (sold_oi < CS_MIN_SOLD_OI or sold_vol < CS_MIN_SOLD_VOL):
+            if _sr.get("r9_liquidity", strict) and (sold_oi < CS_MIN_SOLD_OI or sold_vol < CS_MIN_SOLD_VOL):
                 continue
 
             # Filtro 9c — Bid-Ask (strict)
-            if strict and not _passes_bid_ask_filter(sold_bid, sold_ask):
+            if _sr.get("r9_liquidity", strict) and not _passes_bid_ask_filter(sold_bid, sold_ask):
                 continue
 
             # Build a strike→row lookup for fast width matching
             _call_strikes = {float(r["strike"]): r for _, r in otm_calls.iterrows()}
 
-            if strict:
+            if _sr.get("r6_width", strict):
                 _target_widths_c = CS_ALLOWED_WIDTHS
             else:
                 _target_widths_c = None
@@ -885,13 +914,13 @@ def _build_spreads_for_expiry(
                     continue
 
                 # Filtro 6 — Ancho del spread (strict)
-                if strict:
+                if _sr.get("r6_width", strict):
                     width_int = int(round(width))
                     if width_int not in CS_ALLOWED_WIDTHS:
                         continue
 
                 # Filtro 7 — Crédito mínimo % del ancho (strict)
-                if strict and credit < width * CS_MIN_CREDIT_PCT:
+                if _sr.get("r7_credit_pct", strict) and credit < width * CS_MIN_CREDIT_PCT:
                     continue
 
                 max_risk = round(width - credit, 2)
@@ -999,6 +1028,7 @@ def _scan_single_ticker(
     max_dte: int,
     min_credit: float,
     strict: bool = False,
+    strict_rules: dict | None = None,
 ) -> tuple[list[dict], dict]:
     """Escanea todas las expiraciones válidas de un ticker.
 
@@ -1006,12 +1036,15 @@ def _scan_single_ticker(
     ----------
     strict : bool
         Si True, aplica pipeline completo de 9 filtros.
+    strict_rules : dict | None
+        Reglas individuales activadas. Tiene prioridad sobre ``strict``.
 
     Returns
     -------
     tuple[list[dict], dict]
         (lista de spreads, metadata del ticker — IV rank, trend, etc.)
     """
+    _sr = strict_rules or {}
     spot, err = obtener_precio_actual(ticker)
     if not spot:
         logger.warning("Sin precio para %s: %s", ticker, err)
@@ -1024,14 +1057,14 @@ def _scan_single_ticker(
     combined_meta = {"ticker": ticker, **iv_info, **trend_info}
 
     # ── Filtro 1 — Underlying (strict) ───────────────────────────────────
-    if strict:
+    if _sr.get("r1_whitelist", strict):
         ok, reason = _passes_underlying_filter(ticker, spot)
         if not ok:
             logger.info("[STRICT] %s descartado — %s", ticker, reason)
             return [], combined_meta
 
     # ── Filtro 2 — IV Rank mínimo (strict) ───────────────────────────────
-    if strict and iv_info["iv_rank"] < CS_MIN_IV_RANK:
+    if _sr.get("r2_iv_rank", strict) and iv_info["iv_rank"] < CS_MIN_IV_RANK:
         logger.info(
             "[STRICT] %s descartado — IV Rank %.1f < %d",
             ticker, iv_info["iv_rank"], CS_MIN_IV_RANK,
@@ -1040,7 +1073,7 @@ def _scan_single_ticker(
 
     # ── Filtro 5 — Dirección / Tendencia (strict) ────────────────────────
     allowed_type: str | None = None
-    if strict:
+    if _sr.get("r5_trend", strict):
         trend = trend_info["trend"]
         if trend == "Alcista":
             allowed_type = "Bull Put"
@@ -1074,6 +1107,7 @@ def _scan_single_ticker(
             ticker, spot, exp_date, min_pop, min_credit, ticker_meta,
             allowed_type=allowed_type,
             strict=strict,
+            strict_rules=_sr,
         )
         all_spreads.extend(spreads)
 
@@ -1168,6 +1202,7 @@ def scan_credit_spreads(
     min_credit: float = 0.30,
     progress_callback=None,
     strict: bool = False,
+    strict_rules: dict | None = None,
 ) -> tuple[pd.DataFrame, dict[str, dict]]:
     """Escanea múltiples tickers buscando Credit Spreads óptimos.
 
@@ -1186,6 +1221,8 @@ def scan_credit_spreads(
     strict : bool
         Si True, aplica los 9 filtros obligatorios del pipeline.
         En modo strict, solo se escanean tickers de la whitelist.
+    strict_rules : dict | None
+        Reglas individuales activadas. Tiene prioridad sobre ``strict``.
 
     Returns
     -------
@@ -1193,30 +1230,38 @@ def scan_credit_spreads(
         (DataFrame de oportunidades ordenado por Income Score,
          dict {ticker: {iv_rank, iv_percentile, trend, ...}} por ticker)
     """
+    _sr = strict_rules or {}
     all_results: list[dict] = []
     ticker_indicators: dict[str, dict] = {}
 
     # En modo strict, filtrar contra whitelist
     effective_tickers = tickers
-    if strict:
+    if _sr.get("r1_whitelist", strict):
         effective_tickers = [t for t in tickers if t.strip().upper() in CS_WHITELIST]
 
-    for idx, ticker in enumerate(effective_tickers):
-        ticker = ticker.strip().upper()
-        if not ticker:
-            continue
-        if progress_callback:
-            progress_callback(ticker, idx, len(effective_tickers))
+    clean_tickers = [t.strip().upper() for t in effective_tickers if t.strip()]
+    total = len(clean_tickers)
 
+    results_lock = __import__("threading").Lock()
+
+    def _scan_one(idx_ticker):
+        idx, ticker = idx_ticker
+        if progress_callback:
+            progress_callback(ticker, idx, total)
         try:
             spreads, t_meta = _scan_single_ticker(
-                ticker, min_pop, max_dte, min_credit, strict=strict,
+                ticker, min_pop, max_dte, min_credit,
+                strict=strict, strict_rules=_sr,
             )
-            all_results.extend(spreads)
-            if t_meta:
-                ticker_indicators[ticker] = t_meta
+            with results_lock:
+                all_results.extend(spreads)
+                if t_meta:
+                    ticker_indicators[ticker] = t_meta
         except Exception as exc:
             logger.error("Error escaneando %s: %s", ticker, exc)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        pool.map(_scan_one, enumerate(clean_tickers))
 
     if not all_results:
         return pd.DataFrame(), ticker_indicators

@@ -57,6 +57,7 @@ class CreditSpreadService:
         max_dte: int = 45,
         min_credit: float = 0.30,
         strict: bool = True,
+        strict_rules: dict | None = None,
         account_size: float = ALERT_DEFAULT_ACCOUNT_SIZE,
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
     ) -> tuple[pd.DataFrame, dict[str, dict[str, Any]]]:
@@ -68,6 +69,7 @@ class CreditSpreadService:
             max_dte: máximo de DTE.
             min_credit: crédito mínimo en USD.
             strict: si True, aplica los 9 filtros del pipeline.
+            strict_rules: reglas individuales activadas (prioridad sobre strict).
             account_size: tamaño de cuenta para cálculo de riesgo.
             progress_callback: fn(ticker, idx, total) para reportar progreso.
 
@@ -87,6 +89,7 @@ class CreditSpreadService:
             min_credit=min_credit,
             progress_callback=progress_callback,
             strict=strict,
+            strict_rules=strict_rules,
         )
         return df, ticker_indicators
 
