@@ -737,6 +737,8 @@ def render(**kwargs) -> None:
         with _col_all:
             _toggle_all = st.checkbox("☑️ Marcar todas", value=_all_on, key="cs_all_rules")
             if _toggle_all != _all_on:
+                for _k in ["cs_r1", "cs_r2", "cs_r3", "cs_r4", "cs_r5", "cs_r6", "cs_r7", "cs_r8", "cs_r9"]:
+                    st.session_state[_k] = _toggle_all
                 st.rerun()
         strict_rules = {
             "r1_whitelist": _r1, "r2_iv_rank": _r2, "r3_dte": _r3,
