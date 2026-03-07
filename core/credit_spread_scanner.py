@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 import numpy as np
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from datetime import datetime
 
 from config.constants import (
@@ -500,6 +499,7 @@ def compute_iv_rank_percentile(ticker: str) -> dict:
     try:
         hist = _cached_history(ticker, "1y")
         if hist is None or hist.empty or len(hist) < 30:
+            _cached_history.cache_invalidate(ticker, "1y")
             return _default
         close = hist["Close"]
         if hasattr(close, "squeeze"):
@@ -551,6 +551,7 @@ def compute_trend(ticker: str) -> dict:
         # Historial de 3 meses para EMAs robustas (~60 trading days)
         hist = _cached_history(ticker, "3mo")
         if hist is None or hist.empty or len(hist) < 10:
+            _cached_history.cache_invalidate(ticker, "3mo")
             return default
 
         close = hist["Close"]
@@ -1099,15 +1100,15 @@ def _scan_single_ticker(
 
     all_spreads: list[dict] = []
 
-    # Filtrar expirations válidas y capear a 8 para evitar rate-limiting
+    # Filtrar expirations válidas y capear a 6 para evitar rate-limiting
     valid_exps = [e for e in exp_dates if 0 < _dte_from_expiry(e) <= max_dte]
-    if len(valid_exps) > 8:
-        valid_exps = valid_exps[:8]  # 8 expirations más cercanas
+    if len(valid_exps) > 6:
+        valid_exps = valid_exps[:6]  # 6 expirations más cercanas
 
+    import time as _t_mod
     for _ei, exp_date in enumerate(valid_exps):
         if _ei > 0:
-            import time as _t
-            _t.sleep(0.35)  # anti-rate-limit entre expiraciones
+            _t_mod.sleep(0.5)  # anti-rate-limit entre expiraciones
         spreads = _build_spreads_for_expiry(
             ticker, spot, exp_date, min_pop, min_credit, ticker_meta,
             allowed_type=allowed_type,
@@ -1247,45 +1248,24 @@ def scan_credit_spreads(
     clean_tickers = [t.strip().upper() for t in effective_tickers if t.strip()]
     total = len(clean_tickers)
 
-    results_lock = __import__("threading").Lock()
-    completed_count = [0]  # mutable counter for threads
+    import time as _time
 
-    def _scan_one(idx_ticker):
-        idx, ticker = idx_ticker
+    for idx, ticker in enumerate(clean_tickers):
+        if progress_callback:
+            progress_callback(ticker, idx, total)
+        # Delay anti-rate-limit entre tickers (salvo el primero)
+        if idx > 0:
+            _time.sleep(1.2)
         try:
             spreads, t_meta = _scan_single_ticker(
                 ticker, min_pop, max_dte, min_credit,
                 strict=strict, strict_rules=_sr,
             )
-            with results_lock:
-                all_results.extend(spreads)
-                if t_meta:
-                    ticker_indicators[ticker] = t_meta
-                completed_count[0] += 1
+            all_results.extend(spreads)
+            if t_meta:
+                ticker_indicators[ticker] = t_meta
         except Exception as exc:
             logger.error("Error escaneando %s: %s", ticker, exc)
-            with results_lock:
-                completed_count[0] += 1
-
-    if total <= 1:
-        # Single ticker — run directly (no threads), supports progress_callback
-        for idx, ticker in enumerate(clean_tickers):
-            if progress_callback:
-                progress_callback(ticker, idx, total)
-            _scan_one((idx, ticker))
-    else:
-        # Multiple tickers — parallel scan (2 workers to avoid rate-limit)
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures: dict[Future, str] = {}
-            for idx, ticker in enumerate(clean_tickers):
-                f = pool.submit(_scan_one, (idx, ticker))
-                futures[f] = ticker
-            for done_f in as_completed(futures):
-                # Report progress from main thread (safe for Streamlit)
-                if progress_callback:
-                    with results_lock:
-                        n = completed_count[0]
-                    progress_callback(futures[done_f], n - 1, total)
 
     if not all_results:
         return pd.DataFrame(), ticker_indicators

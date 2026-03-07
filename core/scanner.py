@@ -143,7 +143,11 @@ def _cached_options_dates(ticker_sym):
 
 @ttl_cache(ttl_seconds=300, maxsize=256)
 def _cached_option_chain(ticker_sym, exp_date):
-    """Obtiene y cachea la cadena de opciones con retry anti-rate-limit."""
+    """Obtiene y cachea la cadena de opciones con retry anti-rate-limit.
+
+    Si la respuesta está vacía (probable rate-limit silencioso), invalida
+    la entrada de cache para que el próximo intento re-descargue.
+    """
     last_exc = None
     for _attempt in range(4):
         if _attempt > 0:
@@ -157,7 +161,18 @@ def _cached_option_chain(ticker_sym, exp_date):
             session, _ = crear_sesion_nueva()
             ticker = yf.Ticker(ticker_sym, session=session)
             chain = ticker.option_chain(exp_date)
-            return {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
+            result = {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
+            # Si ambas tablas están vacías, posible rate-limit silencioso.
+            # Retornar pero NO cachear (la decoración ttl_cache guarda
+            # el resultado tras return; invalidamos inmediatamente).
+            if result["puts"].empty and result["calls"].empty:
+                logger.warning(
+                    "_cached_option_chain: cadena vacía para %s %s — no se cacheará",
+                    ticker_sym, exp_date,
+                )
+                # Planificar invalidación post-return
+                _cached_option_chain.cache_invalidate(ticker_sym, exp_date)
+            return result
         except Exception as _e:
             last_exc = _e
             _msg = str(_e).lower()
@@ -204,8 +219,10 @@ def obtener_precio_actual(ticker_sym):
     """
     try:
         hist = _cached_history(ticker_sym, "1d")
-        if not hist.empty:
+        if hist is not None and not hist.empty:
             return float(hist['Close'].iloc[-1]), None
+        # Resultado vacío → invalidar caché para re-descargar en próximo intento
+        _cached_history.cache_invalidate(ticker_sym, "1d")
         return None, "Sin datos de precio"
     except Exception as e:
         return None, str(e)
