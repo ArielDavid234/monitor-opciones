@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import numpy as np
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from datetime import datetime
 
 from config.constants import (
@@ -1243,11 +1243,10 @@ def scan_credit_spreads(
     total = len(clean_tickers)
 
     results_lock = __import__("threading").Lock()
+    completed_count = [0]  # mutable counter for threads
 
     def _scan_one(idx_ticker):
         idx, ticker = idx_ticker
-        if progress_callback:
-            progress_callback(ticker, idx, total)
         try:
             spreads, t_meta = _scan_single_ticker(
                 ticker, min_pop, max_dte, min_credit,
@@ -1257,11 +1256,31 @@ def scan_credit_spreads(
                 all_results.extend(spreads)
                 if t_meta:
                     ticker_indicators[ticker] = t_meta
+                completed_count[0] += 1
         except Exception as exc:
             logger.error("Error escaneando %s: %s", ticker, exc)
+            with results_lock:
+                completed_count[0] += 1
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        pool.map(_scan_one, enumerate(clean_tickers))
+    if total <= 1:
+        # Single ticker — run directly (no threads), supports progress_callback
+        for idx, ticker in enumerate(clean_tickers):
+            if progress_callback:
+                progress_callback(ticker, idx, total)
+            _scan_one((idx, ticker))
+    else:
+        # Multiple tickers — parallel scan
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures: dict[Future, str] = {}
+            for idx, ticker in enumerate(clean_tickers):
+                f = pool.submit(_scan_one, (idx, ticker))
+                futures[f] = ticker
+            for done_f in as_completed(futures):
+                # Report progress from main thread (safe for Streamlit)
+                if progress_callback:
+                    with results_lock:
+                        n = completed_count[0]
+                    progress_callback(futures[done_f], n - 1, total)
 
     if not all_results:
         return pd.DataFrame(), ticker_indicators
