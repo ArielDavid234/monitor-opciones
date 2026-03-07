@@ -665,8 +665,8 @@ def monte_carlo_spread_simulation(
     mu_annual = 0.0
     if ticker:
         try:
-            import yfinance as yf
-            _hist = yf.Ticker(ticker).history(period="1y", auto_adjust=True)["Close"]
+            from core.scanner import _cached_history
+            _hist = _cached_history(ticker, "1y")["Close"]
             if len(_hist) >= 20:
                 mu_annual = float(_hist.pct_change().dropna().mean() * 252)
         except Exception:
