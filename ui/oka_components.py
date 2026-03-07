@@ -107,10 +107,7 @@ def render_okaindex_gauge(result: dict) -> None:
         },
     ))
 
-    fig.update_layout(
-        **pro_gauge_layout(380),
-        margin=dict(l=30, r=30, t=60, b=20),
-    )
+    fig.update_layout(**{**pro_gauge_layout(380), "margin": dict(l=30, r=30, t=60, b=20)})
 
     st.plotly_chart(fig, use_container_width=True, key="oka_gauge")
 

@@ -144,8 +144,7 @@ def render_iv_gauge(
         },
     ))
     fig.update_layout(
-        **pro_gauge_layout(280),
-        margin=dict(l=25, r=25, t=50, b=10),
+        **{**pro_gauge_layout(280), "margin": dict(l=25, r=25, t=50, b=10)},
         annotations=[
             dict(
                 text=f"IV Percentile: {iv_percentile:.0f}% | IV Actual: {iv_actual:.1f}%",

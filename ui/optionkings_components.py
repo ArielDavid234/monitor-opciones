@@ -74,10 +74,7 @@ def _score_gauge(score: float, grade_color: str) -> "go.Figure":  # type: ignore
             },
         },
     ))
-    fig.update_layout(
-        **pro_gauge_layout(200),
-        margin=dict(l=15, r=15, t=20, b=10),
-    )
+    fig.update_layout(**{**pro_gauge_layout(200), "margin": dict(l=15, r=15, t=20, b=10)})
     return fig
 
 
@@ -494,8 +491,7 @@ def render_drawdown_chart(mgmt: dict) -> None:
         )
 
     fig.update_layout(
-        **pro_gauge_layout(220),
-        margin=dict(l=0, r=0, t=30, b=0),
+        **{**pro_gauge_layout(220), "margin": dict(l=0, r=0, t=30, b=0)},
         title={
             "text": "📉 Impacto de Pérdidas Consecutivas",
             "font": {"size": 12, "color": COLORS["muted"]},
@@ -718,10 +714,7 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
                 title={"text": "Escenarios<br>Ganadores",
                        "font": {"size": 12, "color": COLORS["muted"]}},
             ))
-            fig_gauge.update_layout(
-                **pro_gauge_layout(220),
-                margin=dict(l=10, r=10, t=30, b=10),
-            )
+            fig_gauge.update_layout(**{**pro_gauge_layout(220), "margin": dict(l=10, r=10, t=30, b=10)})
             st.plotly_chart(fig_gauge, use_container_width=True,
                             key=f"mc_gauge_{id(mc_results)}")
 
