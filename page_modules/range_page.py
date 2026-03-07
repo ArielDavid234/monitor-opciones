@@ -61,81 +61,130 @@ def render(ticker_symbol, **kwargs):
     # ── Obtener cadena de opciones para cada fecha y calcular EM ──
     em_results = []
 
-    with st.spinner("Cargando..."):
-        try:
-            cb_yfinance.check()
-            session_em, _ = crear_sesion_nueva()
-            ticker_em = yf.Ticker(ticker_symbol, session=session_em)
+    # PRIORIDAD 1: usar datos ya escaneados en session_state (sin API calls)
+    datos_scan = st.session_state.get("datos_completos")
+    if datos_scan:
+        df_scan = pd.DataFrame(datos_scan)
+        # IV en datos_completos ya viene en % (ej: 28.5), convertir a decimal
+        for exp_date in sorted(df_scan["Vencimiento"].unique()):
+            try:
+                df_exp = df_scan[df_scan["Vencimiento"] == exp_date]
+                calls_exp = df_exp[df_exp["Tipo"] == "CALL"][["Strike", "IV", "Ask", "Bid", "Ultimo"]].copy()
+                puts_exp  = df_exp[df_exp["Tipo"] == "PUT"][["Strike", "IV", "Ask", "Bid", "Ultimo"]].copy()
 
-            for idx, exp_date in enumerate(fechas_exp_disponibles):
-                try:
-                    # Respetar rate limit antes de cada llamada a la API
-                    if not rl_yfinance.acquire(timeout=20):
-                        logger.warning("Range: timeout esperando rate limiter para %s", exp_date)
-                        continue
+                calls_exp = calls_exp[calls_exp["IV"] > 0]
+                puts_exp  = puts_exp[puts_exp["IV"] > 0]
 
-                    chain = ticker_em.option_chain(exp_date)
-
-                    exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
-                    dte = max((exp_dt - datetime.now()).total_seconds() / 86400, 0.01)
-
-                    calls_df = chain.calls
-                    puts_df = chain.puts
-
-                    if calls_df.empty or puts_df.empty:
-                        continue
-
-                    calls_df = calls_df[calls_df["impliedVolatility"].notna() & (calls_df["impliedVolatility"] > 0)]
-                    puts_df = puts_df[puts_df["impliedVolatility"].notna() & (puts_df["impliedVolatility"] > 0)]
-
-                    if calls_df.empty or puts_df.empty:
-                        continue
-
-                    atm_call_idx = (calls_df["strike"] - precio_actual_rango).abs().idxmin()
-                    atm_put_idx = (puts_df["strike"] - precio_actual_rango).abs().idxmin()
-
-                    atm_call = calls_df.loc[atm_call_idx]
-                    atm_put = puts_df.loc[atm_put_idx]
-
-                    iv_call = float(atm_call.get("impliedVolatility", 0) or 0)
-                    iv_put = float(atm_put.get("impliedVolatility", 0) or 0)
-                    iv_avg = (iv_call + iv_put) / 2 if iv_call > 0 and iv_put > 0 else max(iv_call, iv_put)
-
-                    if iv_avg <= 0:
-                        continue
-
-                    em = calcular_expected_move(precio_actual_rango, iv_avg, dte)
-
-                    call_price = float(atm_call.get("lastPrice", 0) or atm_call.get("ask", 0) or 0)
-                    put_price = float(atm_put.get("lastPrice", 0) or atm_put.get("ask", 0) or 0)
-                    em_straddle = None
-                    if call_price > 0 and put_price > 0:
-                        em_straddle = calcular_em_straddle(precio_actual_rango, call_price, put_price)
-
-                    em_results.append({
-                        "expiration": exp_date,
-                        "dte": round(dte, 1),
-                        "iv_atm": round(iv_avg * 100, 2),
-                        "em": em,
-                        "em_straddle": em_straddle,
-                        "call_strike": float(atm_call["strike"]),
-                        "call_price": round(call_price, 2),
-                        "call_iv": round(iv_call * 100, 2),
-                        "put_strike": float(atm_put["strike"]),
-                        "put_price": round(put_price, 2),
-                        "put_iv": round(iv_put * 100, 2),
-                    })
-
-                except Exception as e:
-                    logger.warning("Error procesando %s: %s", exp_date, e)
+                if calls_exp.empty or puts_exp.empty:
                     continue
 
-        except Exception as e:
-            st.error(f"Error obteniendo cadena de opciones: {e}")
+                atm_call = calls_exp.iloc[(calls_exp["Strike"] - precio_actual_rango).abs().argsort()[:1]].iloc[0]
+                atm_put  = puts_exp.iloc[(puts_exp["Strike"] - precio_actual_rango).abs().argsort()[:1]].iloc[0]
+
+                iv_call = float(atm_call["IV"]) / 100
+                iv_put  = float(atm_put["IV"]) / 100
+                iv_avg  = (iv_call + iv_put) / 2 if iv_call > 0 and iv_put > 0 else max(iv_call, iv_put)
+
+                if iv_avg <= 0:
+                    continue
+
+                exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
+                dte = max((exp_dt - datetime.now()).total_seconds() / 86400, 0.01)
+
+                em = calcular_expected_move(precio_actual_rango, iv_avg, dte)
+
+                call_price = float(atm_call.get("Ultimo") or atm_call.get("Ask") or 0)
+                put_price  = float(atm_put.get("Ultimo") or atm_put.get("Ask") or 0)
+                em_straddle = calcular_em_straddle(precio_actual_rango, call_price, put_price) if call_price > 0 and put_price > 0 else None
+
+                em_results.append({
+                    "expiration": exp_date,
+                    "dte": round(dte, 1),
+                    "iv_atm": round(iv_avg * 100, 2),
+                    "em": em,
+                    "em_straddle": em_straddle,
+                    "call_strike": float(atm_call["Strike"]),
+                    "call_price": round(call_price, 2),
+                    "call_iv": round(iv_call * 100, 2),
+                    "put_strike": float(atm_put["Strike"]),
+                    "put_price": round(put_price, 2),
+                    "put_iv": round(iv_put * 100, 2),
+                })
+            except Exception as e:
+                logger.warning("Range (scan data): error en %s: %s", exp_date, e)
+                continue
+
+    # PRIORIDAD 2: fallback — fetch desde yfinance si no hay datos escaneados
+    if not em_results:
+        with st.spinner("Cargando opciones desde Yahoo Finance..."):
+            try:
+                cb_yfinance.check()
+                session_em, _ = crear_sesion_nueva()
+                ticker_em = yf.Ticker(ticker_symbol, session=session_em)
+
+                for exp_date in fechas_exp_disponibles:
+                    try:
+                        if not rl_yfinance.acquire(timeout=30):
+                            logger.warning("Range: timeout rate limiter para %s", exp_date)
+                            continue
+
+                        chain = ticker_em.option_chain(exp_date)
+                        exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
+                        dte = max((exp_dt - datetime.now()).total_seconds() / 86400, 0.01)
+
+                        calls_df = chain.calls
+                        puts_df  = chain.puts
+
+                        if calls_df.empty or puts_df.empty:
+                            continue
+
+                        calls_df = calls_df[calls_df["impliedVolatility"].notna() & (calls_df["impliedVolatility"] > 0)]
+                        puts_df  = puts_df[puts_df["impliedVolatility"].notna() & (puts_df["impliedVolatility"] > 0)]
+
+                        if calls_df.empty or puts_df.empty:
+                            continue
+
+                        atm_call = calls_df.loc[(calls_df["strike"] - precio_actual_rango).abs().idxmin()]
+                        atm_put  = puts_df.loc[(puts_df["strike"] - precio_actual_rango).abs().idxmin()]
+
+                        iv_call = float(atm_call.get("impliedVolatility", 0) or 0)
+                        iv_put  = float(atm_put.get("impliedVolatility", 0) or 0)
+                        iv_avg  = (iv_call + iv_put) / 2 if iv_call > 0 and iv_put > 0 else max(iv_call, iv_put)
+                        if iv_avg <= 0:
+                            continue
+
+                        em = calcular_expected_move(precio_actual_rango, iv_avg, dte)
+                        call_price = float(atm_call.get("lastPrice", 0) or atm_call.get("ask", 0) or 0)
+                        put_price  = float(atm_put.get("lastPrice", 0) or atm_put.get("ask", 0) or 0)
+                        em_straddle = calcular_em_straddle(precio_actual_rango, call_price, put_price) if call_price > 0 and put_price > 0 else None
+
+                        em_results.append({
+                            "expiration": exp_date,
+                            "dte": round(dte, 1),
+                            "iv_atm": round(iv_avg * 100, 2),
+                            "em": em,
+                            "em_straddle": em_straddle,
+                            "call_strike": float(atm_call["strike"]),
+                            "call_price": round(call_price, 2),
+                            "call_iv": round(iv_call * 100, 2),
+                            "put_strike": float(atm_put["strike"]),
+                            "put_price": round(put_price, 2),
+                            "put_iv": round(iv_put * 100, 2),
+                        })
+
+                    except Exception as e:
+                        logger.warning("Range (yfinance): error en %s: %s", exp_date, e)
+                        continue
+
+            except Exception as e:
+                st.error(f"Error obteniendo cadena de opciones: {e}")
 
     # ── Tabla principal de Expected Move por fecha ──
     if not em_results:
-        st.info("No se pudo calcular el Expected Move. Verifica que el ticker tenga opciones disponibles.")
+        if not st.session_state.get("datos_completos"):
+            st.info("⏳ Ejecuta un escaneo en **Live Scanning** primero — Range usará los datos ya cargados sin llamadas adicionales a la API.")
+        else:
+            st.warning("⚠️ No se pudo calcular el Expected Move. Los datos escaneados no tienen IV disponible para este ticker.")
         return
 
     st.markdown("#### 📊 Expected Move por Fecha de Expiración")
