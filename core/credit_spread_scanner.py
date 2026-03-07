@@ -1282,8 +1282,9 @@ def scan_credit_spreads(
     df["Score Oportunidad"] = list(opp_scores)
     df["Nivel"] = list(opp_labels)
 
-    # Filtrar: solo mostrar score ≥ 60
-    df = df[df["Score Oportunidad"] >= OPP_SCORE_MIN_SHOW].reset_index(drop=True)
+    # Filtrar: solo mostrar score ≥ 60 cuando hay filtros activos
+    if strict or any(_sr.values()):
+        df = df[df["Score Oportunidad"] >= OPP_SCORE_MIN_SHOW].reset_index(drop=True)
 
     if df.empty:
         return pd.DataFrame(), ticker_indicators

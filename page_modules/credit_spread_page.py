@@ -977,12 +977,9 @@ def render(**kwargs) -> None:
     if df is None or df.empty:
         if df is not None:
             st.warning(
-                "🛡️ **No se encontraron oportunidades que cumplan TODOS los "
-                "criterios de seguridad.**\n\n"
-                "Esto significa que el mercado actual no ofrece spreads de alta "
-                "calidad según los 9 filtros estrictos. "
-                "Puedes desactivar el **Modo Estricto** en el sidebar para ver "
-                "todas las oportunidades sin filtrar, o ajustar los parámetros."
+                "⚠️ **No se encontraron spreads con los parámetros actuales.**\n\n"
+                "Prueba reduciendo el crédito mínimo, ampliando el DTE máximo, "
+                "o desactivando algunas reglas en **Reglas importantes**."
             )
         else:
             st.markdown(
