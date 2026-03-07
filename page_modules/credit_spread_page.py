@@ -730,16 +730,9 @@ def render(**kwargs) -> None:
             _r7 = st.checkbox("R7: Crédito ≥ 15% del ancho", value=_all_on, key="cs_r7")
         with _col8:
             _r8 = st.checkbox("R8: Distancia strike ≥ 3%", value=_all_on, key="cs_r8")
-        # Fila 5 — R9 sola + "Marcar todas"
-        _col9, _col_all = st.columns(2)
-        with _col9:
+        # Fila 5 — R9 sola
+        with st.columns(2)[0]:
             _r9 = st.checkbox("R9: Liquidez (OI>500, Vol>100, B/A≤10%)", value=_all_on, key="cs_r9")
-        with _col_all:
-            _toggle_all = st.checkbox("☑️ Marcar todas", value=_all_on, key="cs_all_rules")
-            if _toggle_all != _all_on:
-                for _k in ["cs_r1", "cs_r2", "cs_r3", "cs_r4", "cs_r5", "cs_r6", "cs_r7", "cs_r8", "cs_r9"]:
-                    st.session_state[_k] = _toggle_all
-                st.rerun()
         strict_rules = {
             "r1_whitelist": _r1, "r2_iv_rank": _r2, "r3_dte": _r3,
             "r4_delta": _r4, "r5_trend": _r5, "r6_width": _r6,
