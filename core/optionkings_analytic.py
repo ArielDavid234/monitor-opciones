@@ -576,24 +576,23 @@ def monte_carlo_spread_simulation(
     n_sim: int = 1000,
     seed: int = 42,
 ) -> dict:
-    """Simula n_sim escenarios de precio con GBM y calcula el PnL del spread.
+    """Simula n_sim escenarios de precio con GBM mejorado y calcula el PnL del spread.
 
-    Modelo:
-        S_T = S_0 × exp( (μ − 0.5 × σ²) × t + σ × √t × Z )
-        con:
-            μ     = 0  (sin drift; análisis neutro por defecto)
-            σ     = IV anualizado del spread (ej 0.25 = 25%)
-            t     = DTE / 365 (horizonte en años)
-            Z     ~ N(0, 1)
+    Mejoras sobre el modelo básico:
+        1. Fat tails: se usa distribución Student-t (df=4) en lugar de Normal,
+           capturando crashes y eventos extremos con mayor realismo.
+        2. Drift real: se estima μ a partir del retorno histórico anualizado del
+           activo usando yfinance (1 año de datos diarios). Fallback a μ=0.
+        3. Vol crush: σ efectiva = promedio(IV, HV_20d). Refleja que la IV suele
+           comprimir hacia la HV durante la vida del spread.
+        4. Simulación de camino completo (path simulation): se simulan los DTE
+           días paso a paso y se detecta si el precio *toca* el strike en algún
+           momento, no solo al vencimiento. Esto modela el riesgo de cierre
+           anticipado y las barreras knock-out informales.
 
     PnL por escenario (por contrato = × 100 acciones):
-        PnL = crédito_recibido − intrínseco_al_vencimiento
-        con intrínseco limitado al ancho del spread (max_loss).
-
-        Bull Put Spread (sv > sc):
-            intrínseco = min(max(0, sv − S_T), spread_width)
-        Bear Call Spread (sv < sc):
-            intrínseco = min(max(0, S_T − sv), spread_width)
+        Si el precio toca el strike durante la vida → pérdida máxima (knock-out).
+        Si no toca → PnL = crédito − intrínseco al vencimiento.
 
     Args:
         spread_data: dict con clave 'row' (datos del scanner) y opcionalmente
@@ -611,6 +610,9 @@ def monte_carlo_spread_simulation(
             credit_dollars    — crédito por contrato ($)
             max_loss_dollars  — pérdida máxima teórica por contrato ($)
             n_sim             — número de simulaciones ejecutadas
+            mu_annual         — drift anual usado (0.0 si no se pudo calcular)
+            sigma_effective   — volatilidad efectiva usada (blend IV/HV)
+            touch_rate        — % escenarios que tocaron el strike durante la vida
     """
     try:
         import numpy as np
@@ -625,12 +627,20 @@ def monte_carlo_spread_simulation(
 
     # spread_data puede contener la clave 'row' (estructura de la página) o
     # ser directamente el dict de la fila del escáner.
-    row = spread_data.get("row", spread_data)
+    row     = spread_data.get("row", spread_data)
+    metrics = spread_data.get("metrics", {})
 
+    ticker      = str(row.get("Ticker", ""))
     S0          = float(row.get("Spot",            0) or 0)
     # IV se guarda como porcentaje (ej: 45.2) bajo "IV %" — convertir a decimal
     _iv_raw = float(row.get("IV %") or row.get("IV Short %") or row.get("IV") or 0)
     iv      = (_iv_raw / 100.0) if _iv_raw > 1.0 else _iv_raw
+    # HV 20D también en porcentaje
+    _hv_raw = float(
+        row.get("HV 20D") or row.get("HV 20d") or
+        metrics.get("hv_20d") or 0
+    )
+    hv = (_hv_raw / 100.0) if _hv_raw > 1.0 else _hv_raw
     dte         = int(  row.get("DTE",            30) or 30)
     tipo        = str(  row.get("Tipo",   "Bull Put"))
     sv          = float(row.get("Strike Vendido",  0) or 0)
@@ -651,29 +661,66 @@ def monte_carlo_spread_simulation(
     credit_dollars   = credit_raw * 100
     max_loss_dollars = max((spread_width - credit_raw) * 100, spread_width * 100 * 0.05)
 
-    # ── Parámetros GBM ───────────────────────────────────────────────────
-    sigma = max(iv, 0.05)      # IV anualizado, mínimo 5% para evitar sigma=0
-    t     = max(dte / 365.0, 1 / 365.0)
-    mu    = 0.0                # sin drift direccional (análisis neutro)
+    # ── Mejora 2: Drift real desde yfinance ──────────────────────────────
+    mu_annual = 0.0
+    if ticker:
+        try:
+            import yfinance as yf
+            _hist = yf.Ticker(ticker).history(period="1y", auto_adjust=True)["Close"]
+            if len(_hist) >= 20:
+                mu_annual = float(_hist.pct_change().dropna().mean() * 252)
+        except Exception:
+            mu_annual = 0.0
 
-    # ── Generación de escenarios ──────────────────────────────────────────
-    rng = np.random.default_rng(seed)
-    Z   = rng.standard_normal(n_sim)
+    # ── Mejora 3: Vol crush — blend IV con HV ────────────────────────────
+    # σ efectiva = promedio(IV, HV) si HV disponible, sino usar IV completa
+    if hv > 0.01:
+        sigma = max((iv + hv) / 2.0, 0.05)
+    else:
+        sigma = max(iv, 0.05)
 
-    # S_T = S_0 × exp( (mu - 0.5σ²)t + σ√t·Z )
-    S_T = S0 * np.exp((mu - 0.5 * sigma ** 2) * t + sigma * np.sqrt(t) * Z)
+    # ── Mejora 4: Simulación de camino completo (path simulation) ────────
+    n_days = max(dte, 1)
+    dt     = 1.0 / 365.0
+    rng    = np.random.default_rng(seed)
 
-    # ── PnL por escenario ─────────────────────────────────────────────────
+    # ── Mejora 1: Fat tails — Student-t con df=4 ────────────────────────
+    try:
+        from scipy.stats import t as _t_dist
+        Z_path = _t_dist.rvs(df=4, size=(n_sim, n_days), random_state=seed)
+        # Normalizar varianza para que sea comparable a N(0,1)
+        Z_path = Z_path / float(np.std(Z_path))
+    except ImportError:
+        # scipy no disponible — fallback a Normal (sin fat tails)
+        Z_path = rng.standard_normal((n_sim, n_days))
+
+    # Retornos log diarios: (μ - 0.5σ²)dt + σ√dt·Z
+    log_ret = (mu_annual - 0.5 * sigma ** 2) * dt + sigma * np.sqrt(dt) * Z_path
+    # Caminos de precio: shape (n_sim, n_days)
+    S_path = S0 * np.exp(np.cumsum(log_ret, axis=1))
+
     is_bull_put = "Bull Put" in tipo or "put" in tipo.lower()
 
+    # ── Detectar touch durante la vida del spread ─────────────────────────
     if is_bull_put:
-        # Short put en sv, long put en sc (sv > sc)
-        intrinsic = np.minimum(np.maximum(0.0, sv - S_T), spread_width)
+        # Toca si en cualquier día el precio baja hasta o por debajo del strike vendido
+        touched = np.any(S_path <= sv, axis=1)      # shape (n_sim,)
+        S_T     = S_path[:, -1]                     # precio al vencimiento
+        intrinsic_final = np.minimum(np.maximum(0.0, sv - S_T), spread_width)
     else:
-        # Short call en sv, long call en sc (sv < sc) — Bear Call
-        intrinsic = np.minimum(np.maximum(0.0, S_T - sv), spread_width)
+        # Bear Call: toca si el precio sube hasta o por encima del strike vendido
+        touched = np.any(S_path >= sv, axis=1)
+        S_T     = S_path[:, -1]
+        intrinsic_final = np.minimum(np.maximum(0.0, S_T - sv), spread_width)
 
-    pnl = (credit_raw - intrinsic) * 100   # $ por contrato
+    # PnL: si tocó → pérdida máxima; si no tocó → intrínseco al vencimiento
+    pnl = np.where(
+        touched,
+        -max_loss_dollars,                         # touch = gestión activa: cerrar en max loss
+        (credit_raw - intrinsic_final) * 100,
+    )
+
+    touch_rate = float(np.mean(touched) * 100)
 
     # ── Estadísticas ──────────────────────────────────────────────────────
     wins      = int(np.sum(pnl > 0))
@@ -705,4 +752,7 @@ def monte_carlo_spread_simulation(
         "credit_dollars":    float(credit_dollars),
         "max_loss_dollars":  float(max_loss_dollars),
         "n_sim":             n_sim,
+        "mu_annual":         round(mu_annual * 100, 2),   # en %
+        "sigma_effective":   round(sigma * 100, 2),       # en %
+        "touch_rate":        round(touch_rate, 1),
     }

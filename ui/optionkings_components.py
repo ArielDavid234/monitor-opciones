@@ -617,6 +617,9 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
     n_sim        = int(  mc_results.get("n_sim",       1000))
     credit_d     = float(mc_results.get("credit_dollars",  0))
     max_loss_d   = float(mc_results.get("max_loss_dollars", 0))
+    mu_annual    = float(mc_results.get("mu_annual",     0.0))   # en %
+    sigma_eff    = float(mc_results.get("sigma_effective", 0.0)) # en %
+    touch_rate   = float(mc_results.get("touch_rate",    0.0))   # %
 
     # Paleta de colores por umbral
     if win_rate >= 70:
@@ -632,6 +635,9 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
 
     # ── Header ────────────────────────────────────────────────────────────
     label_txt = f" · {spread_label}" if spread_label else ""
+    mu_sign   = "+" if mu_annual >= 0 else ""
+    sigma_str = f"{sigma_eff:.1f}%" if sigma_eff > 0 else "IV"
+    mu_str    = f"{mu_sign}{mu_annual:.1f}%/año" if sigma_eff > 0 else "0 (neutro)"
     st.markdown(
         f"""
         <div style="background:linear-gradient(135deg,#0d1117,#0a1628);
@@ -640,19 +646,22 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
             <h4 style="color:#a78bfa;margin:0 0 0.25rem 0;">
                 🎲 Simulación Monte Carlo{label_txt}
                 <span style="font-size:0.75rem;font-weight:400;color:#64748b;
-                    margin-left:8px;">{n_sim:,} escenarios · GBM</span>
+                    margin-left:8px;">{n_sim:,} escenarios · GBM mejorado · Student-t df=4</span>
             </h4>
             <p style="color:#475569;margin:0;font-size:0.75rem;font-family:monospace;">
-                S_T = S₀ × exp((μ − ½σ²)t + σ√t·Z) &nbsp;|&nbsp;
-                μ = 0 (neutro) &nbsp;|&nbsp; σ = IV &nbsp;|&nbsp; t = DTE/365
+                σ blend = {sigma_str} (IV+HV/2) &nbsp;|&nbsp;
+                μ = {mu_str} &nbsp;|&nbsp;
+                Fat tails · Path simulation · Vol crush
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ── 4 KPIs ────────────────────────────────────────────────────────────
-    c1, c2, c3, c4 = st.columns(4)
+    # ── 5 KPIs ────────────────────────────────────────────────────────────
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    touch_color = COLORS["negative"] if touch_rate >= 30 else (COLORS["warning"] if touch_rate >= 15 else COLORS["positive"])
 
     def _kpi_card(container, title: str, value: str, subtitle: str, border_color: str) -> None:
         container.markdown(
@@ -672,6 +681,7 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
     _kpi_card(c2, "Retorno prom.",  f"${avg_return:+.0f}",   "por contrato",           avg_color)
     _kpi_card(c3, "Max drawdown",   f"${max_drawdown:,.0f}", "caída máx. acumulada",   "#ef4444")
     _kpi_card(c4, "Peor racha",     str(worst_streak),       "pérdidas consecutivas",  streak_color)
+    _kpi_card(c5, "% toca strike",  f"{touch_rate:.1f}%",    "durante la vida",        touch_color)
 
     st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
 
@@ -803,10 +813,12 @@ def render_monte_carlo_section(mc_results: dict, spread_label: str = "") -> None
         """
         <div style="background:#0a0a0a;border:1px solid #2d1b00;border-radius:6px;
                     padding:7px 12px;margin-top:8px;font-size:0.72rem;color:#78716c;">
-            ⚠️ <b style="color:#fbbf24;">Simulación basada en GBM (Movimiento Browniano Geométrico).</b>
-            Asume volatilidad constante y distribución log-normal.
-            Los saltos discretos, cambios de régimen y eventos de cola no están modelados.
-            <b>No garantiza resultados futuros.</b>
+            📊 <b style="color:#fbbf24;">Modelo GBM mejorado:</b>
+            Fat tails (Student-t df=4) · Drift histórico real ·
+            Vol efectiva = blend(IV, HV) · Path simulation día a día.
+            <b>% toca strike</b> = escenarios donde el precio tocó el strike durante la vida del spread
+            (mayor realismo que solo mirar precio al vencimiento).
+            <b style="color:#ef4444;">No garantiza resultados futuros.</b>
             Solo para educación cuantitativa y análisis de riesgo.
         </div>
         """,
