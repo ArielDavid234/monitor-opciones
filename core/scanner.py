@@ -143,12 +143,31 @@ def _cached_options_dates(ticker_sym):
 
 @ttl_cache(ttl_seconds=300, maxsize=256)
 def _cached_option_chain(ticker_sym, exp_date):
-    """Obtiene y cachea la cadena de opciones por 5 min."""
-    session, _ = crear_sesion_nueva()
-    ticker = yf.Ticker(ticker_sym, session=session)
-    chain = ticker.option_chain(exp_date)
-    # Convertir a dict para almacenar en caché
-    return {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
+    """Obtiene y cachea la cadena de opciones con retry anti-rate-limit."""
+    last_exc = None
+    for _attempt in range(4):
+        if _attempt > 0:
+            _wait = uniform(3.0, 5.0) * _attempt
+            logger.warning(
+                "_cached_option_chain: reintento %d/4 para %s %s — esperando %.1fs",
+                _attempt + 1, ticker_sym, exp_date, _wait,
+            )
+            time.sleep(_wait)
+        try:
+            session, _ = crear_sesion_nueva()
+            ticker = yf.Ticker(ticker_sym, session=session)
+            chain = ticker.option_chain(exp_date)
+            return {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
+        except Exception as _e:
+            last_exc = _e
+            _msg = str(_e).lower()
+            if not any(kw in _msg for kw in [
+                "429", "rate limit", "too many", "timeout", "timed out",
+                "connection", "503", "502", "504",
+            ]):
+                raise
+            logger.warning("Error transitorio cadena (%s %s): %s", ticker_sym, exp_date, _e)
+    raise last_exc
 
 
 @ttl_cache(ttl_seconds=300, maxsize=32)

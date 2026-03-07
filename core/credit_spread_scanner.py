@@ -1104,7 +1104,10 @@ def _scan_single_ticker(
     if len(valid_exps) > 8:
         valid_exps = valid_exps[:8]  # 8 expirations más cercanas
 
-    for exp_date in valid_exps:
+    for _ei, exp_date in enumerate(valid_exps):
+        if _ei > 0:
+            import time as _t
+            _t.sleep(0.35)  # anti-rate-limit entre expiraciones
         spreads = _build_spreads_for_expiry(
             ticker, spot, exp_date, min_pop, min_credit, ticker_meta,
             allowed_type=allowed_type,
@@ -1271,8 +1274,8 @@ def scan_credit_spreads(
                 progress_callback(ticker, idx, total)
             _scan_one((idx, ticker))
     else:
-        # Multiple tickers — parallel scan
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        # Multiple tickers — parallel scan (2 workers to avoid rate-limit)
+        with ThreadPoolExecutor(max_workers=2) as pool:
             futures: dict[Future, str] = {}
             for idx, ticker in enumerate(clean_tickers):
                 f = pool.submit(_scan_one, (idx, ticker))
