@@ -628,7 +628,9 @@ def monte_carlo_spread_simulation(
     row = spread_data.get("row", spread_data)
 
     S0          = float(row.get("Spot",            0) or 0)
-    iv          = float(row.get("IV",              0) or 0)
+    # IV se guarda como porcentaje (ej: 45.2) bajo "IV %" — convertir a decimal
+    _iv_raw = float(row.get("IV %") or row.get("IV Short %") or row.get("IV") or 0)
+    iv      = (_iv_raw / 100.0) if _iv_raw > 1.0 else _iv_raw
     dte         = int(  row.get("DTE",            30) or 30)
     tipo        = str(  row.get("Tipo",   "Bull Put"))
     sv          = float(row.get("Strike Vendido",  0) or 0)
