@@ -704,17 +704,40 @@ def render(**kwargs) -> None:
             key="cs_filter_by_ev",
         )
         st.markdown("---")
-        st.markdown("#### 🛡️ Modo Estricto — Filtros Individuales")
-        with st.expander("Personaliza las 9 reglas (todas activas por defecto)", expanded=False):
-            _r1 = st.checkbox("R1: Whitelist + Precio>$20 + Vol>1M acciones", value=True, key="cs_r1")
-            _r2 = st.checkbox("R2: IV Rank ≥ 30%", value=True, key="cs_r2")
-            _r3 = st.checkbox("R3: DTE entre 25–45 días", value=True, key="cs_r3")
-            _r4 = st.checkbox("R4: Delta vendido 0.10–0.20", value=True, key="cs_r4")
-            _r5 = st.checkbox("R5: Dirección alineada con tendencia", value=True, key="cs_r5")
-            _r6 = st.checkbox("R6: Ancho del spread: 2, 3 o 5 puntos", value=True, key="cs_r6")
-            _r7 = st.checkbox("R7: Crédito ≥ 15% del ancho", value=True, key="cs_r7")
-            _r8 = st.checkbox("R8: Distancia del strike ≥ 3%", value=True, key="cs_r8")
-            _r9 = st.checkbox("R9: Liquidez (OI>500, Vol>100, Bid-Ask≤10%)", value=True, key="cs_r9")
+        st.markdown("#### � Reglas importantes")
+        _all_on = st.session_state.get("cs_all_rules", True)
+        # Fila 1
+        _col1, _col2 = st.columns(2)
+        with _col1:
+            _r1 = st.checkbox("R1: Whitelist + Precio>$20 + Vol>1M", value=_all_on, key="cs_r1")
+        with _col2:
+            _r2 = st.checkbox("R2: IV Rank ≥ 30%", value=_all_on, key="cs_r2")
+        # Fila 2
+        _col3, _col4 = st.columns(2)
+        with _col3:
+            _r3 = st.checkbox("R3: DTE entre 25–45 días", value=_all_on, key="cs_r3")
+        with _col4:
+            _r4 = st.checkbox("R4: Delta vendido 0.10–0.20", value=_all_on, key="cs_r4")
+        # Fila 3
+        _col5, _col6 = st.columns(2)
+        with _col5:
+            _r5 = st.checkbox("R5: Tendencia alineada", value=_all_on, key="cs_r5")
+        with _col6:
+            _r6 = st.checkbox("R6: Ancho: 2, 3 o 5 puntos", value=_all_on, key="cs_r6")
+        # Fila 4
+        _col7, _col8 = st.columns(2)
+        with _col7:
+            _r7 = st.checkbox("R7: Crédito ≥ 15% del ancho", value=_all_on, key="cs_r7")
+        with _col8:
+            _r8 = st.checkbox("R8: Distancia strike ≥ 3%", value=_all_on, key="cs_r8")
+        # Fila 5 — R9 sola + "Marcar todas"
+        _col9, _col_all = st.columns(2)
+        with _col9:
+            _r9 = st.checkbox("R9: Liquidez (OI>500, Vol>100, B/A≤10%)", value=_all_on, key="cs_r9")
+        with _col_all:
+            _toggle_all = st.checkbox("☑️ Marcar todas", value=_all_on, key="cs_all_rules")
+            if _toggle_all != _all_on:
+                st.rerun()
         strict_rules = {
             "r1_whitelist": _r1, "r2_iv_rank": _r2, "r3_dte": _r3,
             "r4_delta": _r4, "r5_trend": _r5, "r6_width": _r6,
