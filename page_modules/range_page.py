@@ -11,7 +11,7 @@ from datetime import datetime
 from core.scanner import crear_sesion_nueva, obtener_precio_actual
 from core.expected_move import calcular_expected_move, calcular_em_straddle
 from ui.components import render_pro_table
-from utils.retry_utils import cb_yfinance
+from utils.retry_utils import cb_yfinance, rl_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,11 @@ def render(ticker_symbol, **kwargs):
 
             for idx, exp_date in enumerate(fechas_exp_disponibles):
                 try:
+                    # Respetar rate limit antes de cada llamada a la API
+                    if not rl_yfinance.acquire(timeout=20):
+                        logger.warning("Range: timeout esperando rate limiter para %s", exp_date)
+                        continue
+
                     chain = ticker_em.option_chain(exp_date)
 
                     exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
@@ -121,15 +126,12 @@ def render(ticker_symbol, **kwargs):
                         "put_iv": round(iv_put * 100, 2),
                     })
 
-                    if idx < len(fechas_exp_disponibles) - 1:
-                        time.sleep(0.3)
-
                 except Exception as e:
                     logger.warning("Error procesando %s: %s", exp_date, e)
                     continue
 
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error obteniendo cadena de opciones: {e}")
 
     # ── Tabla principal de Expected Move por fecha ──
     if not em_results:
