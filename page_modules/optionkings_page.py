@@ -263,6 +263,7 @@ def render(**kwargs) -> None:
 
         st.session_state["ok_results"]   = df
         st.session_state["ok_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state["ok_page"]       = 0
         st.session_state["ok_settings"]  = {
             "apply_smart": apply_smart,
             "show_rejected": show_rejected,
@@ -350,10 +351,39 @@ def render(**kwargs) -> None:
             "o esperar mayor volatilidad (IV Percentile > 50%)."
         )
     else:
+        _PAGE_SIZE = 10
+        _cur_page  = int(st.session_state.get("ok_page", 0))
+        _total_pages = max(1, (len(aprobados) + _PAGE_SIZE - 1) // _PAGE_SIZE)
+        _cur_page    = max(0, min(_cur_page, _total_pages - 1))
+        _page_start  = _cur_page * _PAGE_SIZE
+        _page_end    = _page_start + _PAGE_SIZE
+        _page_items  = aprobados[_page_start:_page_end]
+
         st.markdown(
             f"### ✅ {len(aprobados)} Spreads con Edge Matemático Verificado"
         )
-        for idx, item in enumerate(aprobados):
+
+        # ── Navegación (arriba) ───────────────────────────────────────────
+        _nav_c1, _nav_c2, _nav_c3 = st.columns([1, 2, 1])
+        with _nav_c1:
+            if st.button("◀ Anterior", key="ok_prev_top", disabled=(_cur_page == 0)):
+                st.session_state["ok_page"] = _cur_page - 1
+                st.rerun()
+        with _nav_c2:
+            st.markdown(
+                f'<p style="text-align:center;color:#94a3b8;font-size:0.85rem;'
+                f'margin:6px 0;">Página <b style="color:#00ff88;">{_cur_page + 1}</b>'
+                f' de <b>{_total_pages}</b>'
+                f' · mostrando {_page_start + 1}–{min(_page_end, len(aprobados))}'
+                f' de {len(aprobados)}</p>',
+                unsafe_allow_html=True,
+            )
+        with _nav_c3:
+            if st.button("Siguiente ▶", key="ok_next_top", disabled=(_cur_page >= _total_pages - 1)):
+                st.session_state["ok_page"] = _cur_page + 1
+                st.rerun()
+
+        for idx, item in enumerate(_page_items, start=_page_start):
             mgmt = calculate_account_management(
                 item["metrics"], acc_size, risk_pct_val
             )
@@ -400,6 +430,25 @@ def render(**kwargs) -> None:
                         "Pulsa el botón para ver la distribución de PnL simulada.</p>",
                         unsafe_allow_html=True,
                     )
+
+        # ── Navegación (abajo) ────────────────────────────────────────────
+        st.markdown("---")
+        _bn_c1, _bn_c2, _bn_c3 = st.columns([1, 2, 1])
+        with _bn_c1:
+            if st.button("◀ Anterior", key="ok_prev_bot", disabled=(_cur_page == 0)):
+                st.session_state["ok_page"] = _cur_page - 1
+                st.rerun()
+        with _bn_c2:
+            st.markdown(
+                f'<p style="text-align:center;color:#94a3b8;font-size:0.85rem;'
+                f'margin:6px 0;">Página <b style="color:#00ff88;">{_cur_page + 1}</b>'
+                f' de <b>{_total_pages}</b></p>',
+                unsafe_allow_html=True,
+            )
+        with _bn_c3:
+            if st.button("Siguiente ▶", key="ok_next_bot", disabled=(_cur_page >= _total_pages - 1)):
+                st.session_state["ok_page"] = _cur_page + 1
+                st.rerun()
 
     # ── Spreads rechazados (transparencia) ────────────────────────────────
     if show_rej and rechazados:
