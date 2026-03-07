@@ -198,12 +198,13 @@ def _render_aggrid_fragment() -> None:
     # ── Score Final (Fase 1+2) ──────────────────────────────────────
     gb.configure_column("Score Final", headerName="⭐ Score Final", width=130,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v >= 75) return {color:'#4ade80',fontWeight:'bold'};
                             if (v >= 55) return {color:'#facc15'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         sort="desc",
                         valueFormatter="x.toFixed(1)")
     gb.configure_column("Score Oportunidad", headerName="Score de Oportunidad",
@@ -232,12 +233,13 @@ def _render_aggrid_fragment() -> None:
                         valueFormatter="x.toFixed(4)")
     gb.configure_column("PoT Short", headerName="PoT Short", width=100,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v >= 40) return {color:'#f87171',fontWeight:'bold'};
                             if (v >= 25) return {color:'#facc15'};
                             return {color:'#4ade80'};
-                        }""",
+                        }"""),
                         valueFormatter="x.toFixed(1) + '%'")
     # ── Fase 2: Gamma Neto, Theta Neto, Decay 7d ─────────────────
     gb.configure_column("Gamma Neto", headerName="Γ Neto", width=85,
@@ -245,20 +247,22 @@ def _render_aggrid_fragment() -> None:
                         valueFormatter="x.toFixed(4)")
     gb.configure_column("Theta Neto", headerName="θ Neto", width=85,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v > 0) return {color:'#4ade80'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         valueFormatter="x.toFixed(3)")
     gb.configure_column("Decay 7d", headerName="Decay 7d", width=90,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v > 0.5) return {color:'#4ade80',fontWeight:'bold'};
                             if (v > 0) return {color:'#facc15'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         valueFormatter="'$' + x.toFixed(2)")
     gb.configure_column("POP %", width=75, type=["numericColumn"],
                         cellStyle=_JS_POP_STYLE,
@@ -274,31 +278,34 @@ def _render_aggrid_fragment() -> None:
     # ── EV Ajustado (Fase 1) ─────────────────────────────────────────
     gb.configure_column("EV Ajustado", headerName="EV Aj. %", width=100,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v > 5)  return {color:'#4ade80',fontWeight:'bold'};
                             if (v > 0)  return {color:'#facc15'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
     # ── Fase 3: EV Real Adj + Surface Edge ─────────────────────
     gb.configure_column("EV Real Adj", headerName="EV Real %", width=100,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v > 5)  return {color:'#a78bfa',fontWeight:'bold'};
                             if (v > 0)  return {color:'#facc15'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
     gb.configure_column("Surface Edge", headerName="Srf Edge %", width=100,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v > 3)  return {color:'#4ade80',fontWeight:'bold'};
                             if (v > 0)  return {color:'#22d3ee'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         valueFormatter="(x >= 0 ? '+' : '') + x.toFixed(1) + '%'")
     gb.configure_column("Retorno %", width=95, type=["numericColumn"],
                         cellStyle=_JS_RETORNO_STYLE,
@@ -339,12 +346,13 @@ def _render_aggrid_fragment() -> None:
                         type=["numericColumn"])
     gb.configure_column("Liq Score", headerName="Liq Score", width=95,
                         type=["numericColumn"],
-                        cellStyle="""function(params) {
+                        cellStyle=JsCode("""
+                        function(params) {
                             var v = params.value;
                             if (v >= 70) return {color:'#4ade80',fontWeight:'bold'};
                             if (v >= 40) return {color:'#facc15'};
                             return {color:'#f87171'};
-                        }""",
+                        }"""),
                         valueFormatter="x.toFixed(0)")
     gb.configure_column("Liquidez", width=85, type=["numericColumn"],
                         cellStyle=_JS_LIQUIDEZ_STYLE)
