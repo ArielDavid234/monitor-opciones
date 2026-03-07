@@ -730,6 +730,15 @@ def render(**kwargs) -> None:
         )
         st.markdown("---")
 
+    # ── Indicador de datos pre-cargados en background ──────────────────
+    from utils.background_updater import read_fast_data
+    _cached_count = sum(1 for t in selected_tickers if read_fast_data(t))
+    if _cached_count > 0:
+        st.caption(
+            f"📡 {_cached_count}/{len(selected_tickers)} tickers con datos "
+            f"pre-cargados en background"
+        )
+
     # ── Botón de escaneo ─────────────────────────────────────────────────
     scan_btn = st.button(
         "🚀 Ejecutar Scanner",

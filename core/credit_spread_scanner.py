@@ -1081,6 +1081,86 @@ def _scan_single_ticker(
 
 
 # ────────────────────────────────────────────────────────────────────────────
+#  Datos rápidos de mercado (background updater)
+# ────────────────────────────────────────────────────────────────────────────
+
+def get_fast_market_data(tickers: list[str]) -> dict[str, dict]:
+    """Obtiene datos ligeros de mercado para un batch de tickers.
+
+    Para cada ticker recopila:
+      - spot (precio actual)
+      - iv_rank, iv_percentile (rango/percentil de IV)
+      - trend (tendencia: Alcista/Bajista/Neutral)
+      - expirations (lista de expiraciones disponibles)
+      - updated_at (timestamp de actualización)
+
+    Respeta rate limiter + circuit breaker globales de yfinance.
+    Usa sleep aleatorio entre llamadas para evitar bans.
+
+    Args:
+        tickers: lista de símbolos (ej. ["AAPL", "MSFT", "NVDA"]).
+
+    Returns:
+        dict[str, dict] — {ticker: {spot, iv_rank, ...}} para los que
+        se obtuvieron datos exitosamente.
+    """
+    import time as _time
+    from random import uniform as _uniform
+    from utils.retry_utils import cb_yfinance, rl_yfinance
+
+    results: dict[str, dict] = {}
+
+    for ticker in tickers:
+        try:
+            # Respetar circuit breaker
+            if cb_yfinance.is_open:
+                logger.warning("get_fast_market_data: circuit breaker abierto — abortando batch")
+                break
+
+            # Respetar rate limiter
+            rl_yfinance.acquire(timeout=15)
+
+            # Precio actual (usa cache TTL interno de 5 min)
+            spot, err = obtener_precio_actual(ticker)
+            if not spot:
+                logger.debug("get_fast_market_data: sin precio para %s: %s", ticker, err)
+                continue
+
+            # IV rank + percentile + tendencia
+            iv_info = compute_iv_rank_percentile(ticker)
+            trend_info = compute_trend(ticker)
+
+            # Expiraciones disponibles (usa cache TTL interno de 5 min)
+            try:
+                expirations = list(_cached_options_dates(ticker))
+            except Exception:
+                expirations = []
+
+            results[ticker] = {
+                "spot": round(spot, 2),
+                "iv_rank": iv_info.get("iv_rank", 0),
+                "iv_percentile": iv_info.get("iv_percentile", 0),
+                "trend": trend_info.get("trend", "Neutral"),
+                "expirations": expirations[:12],
+                "updated_at": _time.time(),
+            }
+
+            cb_yfinance.record_success()
+
+            # Sleep anti-ban entre tickers
+            _time.sleep(_uniform(1.8, 2.5))
+
+        except Exception as exc:
+            cb_yfinance.record_failure()
+            logger.warning("get_fast_market_data: error en %s — %s", ticker, exc)
+            # Continuar con el siguiente ticker
+            _time.sleep(_uniform(2.0, 3.5))
+
+    logger.info("get_fast_market_data: %d/%d tickers OK", len(results), len(tickers))
+    return results
+
+
+# ────────────────────────────────────────────────────────────────────────────
 #  Función pública principal
 # ────────────────────────────────────────────────────────────────────────────
 

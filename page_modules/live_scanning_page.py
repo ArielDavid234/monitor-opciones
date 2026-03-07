@@ -114,6 +114,18 @@ def render(ticker_symbol, **kwargs):
     with col_btn2:
         auto_scan = st.checkbox("🔄 Auto-escaneo (5 min)")
 
+    # ── Indicador de datos pre-cargados en background ────────────────────
+    from utils.background_updater import read_fast_data
+    _fast = read_fast_data(ticker_symbol)
+    if _fast:
+        import time as _t
+        _age = (_t.time() - _fast.get("updated_at", 0)) / 60
+        st.caption(
+            f"📡 Datos background: spot **${_fast['spot']}** · "
+            f"IV Rank **{_fast.get('iv_rank', 0):.0f}%** · "
+            f"hace {_age:.0f} min"
+        )
+
     # ── Status bar ───────────────────────────────────────────────────────
     if st.session_state.last_scan_time:
         scan_date = st.session_state.last_scan_time.split()[0] if ' ' in st.session_state.last_scan_time else ''

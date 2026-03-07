@@ -55,6 +55,10 @@ from domain.entities import User  # noqa: E402
 from presentation.components import render_sidebar_user_block  # noqa: E402
 from presentation.layouts import render_main_header, build_sidebar_nav  # noqa: E402
 
+# ── Background updater: iniciar una sola vez por proceso ─────────────────
+from utils.background_updater import start_background_updater, get_updater_state  # noqa: E402
+start_background_updater()
+
 _raw_user = _auth.get_current_user()
 _current_user = User.from_auth_dict(_raw_user)
 
@@ -95,6 +99,18 @@ if not st.session_state.get("_favs_synced"):
 with st.sidebar:
     render_sidebar_logo()
     _effective_page = build_sidebar_nav(_current_user)
+
+    # ── Indicador de background updater ──────────────────────────────
+    _bg = get_updater_state()
+    if _bg.running:
+        st.markdown(
+            f'<div style="padding:0.4rem 0.6rem;margin:0.3rem 0;'
+            f'background:#0d1117;border:1px solid #1e293b;border-radius:8px;'
+            f'font-size:0.75rem;color:#94a3b8;">'
+            f'📡 Top {_bg.tickers_loaded} S&P 500 · {_bg.status_text}</div>',
+            unsafe_allow_html=True,
+        )
+
     render_sidebar_user_block(_current_user, _auth)
 
 st.session_state.current_page = _effective_page
