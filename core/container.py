@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bump this string whenever service signatures change so stale
+# session_state containers are automatically discarded on reload.
+_CONTAINER_VERSION = "2026-03-06-v2"
+
 
 class ServiceContainer:
     """Contenedor centralizado de servicios — poor-man's DI.
@@ -140,9 +144,15 @@ def get_container(auth: Optional[Any] = None) -> ServiceContainer:
     """
     import streamlit as st
 
-    if "_service_container" not in st.session_state:
+    stored = st.session_state.get("_service_container")
+    stored_version = st.session_state.get("_service_container_version")
+
+    if stored is None or stored_version != _CONTAINER_VERSION:
+        # Either first run or code was updated — discard stale instance.
         st.session_state["_service_container"] = ServiceContainer(auth=auth)
-        logger.debug("ServiceContainer inicializado (per-session)")
+        st.session_state["_service_container_version"] = _CONTAINER_VERSION
+        logger.debug("ServiceContainer inicializado/renovado (ver=%s)", _CONTAINER_VERSION)
+
     return st.session_state["_service_container"]
 
 
