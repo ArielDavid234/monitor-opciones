@@ -269,12 +269,20 @@ def _passes_underlying_filter(ticker: str, spot: float) -> tuple[bool, str]:
     """
     if spot < CS_MIN_PRICE:
         return False, f"Precio ${spot:.2f} < ${CS_MIN_PRICE}"
+    is_whitelisted = ticker.upper() in CS_WHITELIST
     avg_vol = _avg_daily_volume(ticker)
     if avg_vol < CS_MIN_AVG_VOLUME:
-        return False, f"Vol prom {avg_vol:,.0f} < {CS_MIN_AVG_VOLUME:,}"
+        if avg_vol == 0 and is_whitelisted:
+            # Data unavailable (network error) — skip check for known-liquid tickers
+            logger.info("R1: %s vol=0 pero en whitelist — se omite filtro volumen", ticker)
+        else:
+            return False, f"Vol prom {avg_vol:,.0f} < {CS_MIN_AVG_VOLUME:,}"
     avg_oi = _avg_chain_oi(ticker)
     if avg_oi < CS_MIN_CHAIN_OI:
-        return False, f"OI cadena prom {avg_oi:.0f} < {CS_MIN_CHAIN_OI}"
+        if avg_oi == 0 and is_whitelisted:
+            logger.info("R1: %s OI=0 pero en whitelist — se omite filtro OI", ticker)
+        else:
+            return False, f"OI cadena prom {avg_oi:.0f} < {CS_MIN_CHAIN_OI}"
     return True, ""
 
 
@@ -1065,12 +1073,13 @@ def _scan_single_ticker(
             return [], combined_meta
 
     # ── Filtro 2 — IV Rank mínimo (strict) ───────────────────────────────
+    # Nota: ya no descarta el ticker completo — solo registra advertencia.
+    # El IV Rank se incluye en los resultados para que el usuario decida.
     if _sr.get("r2_iv_rank", strict) and iv_info["iv_rank"] < CS_MIN_IV_RANK:
         logger.info(
-            "[STRICT] %s descartado — IV Rank %.1f < %d",
+            "[STRICT-WARN] %s IV Rank %.1f < %d — se continúa igualmente",
             ticker, iv_info["iv_rank"], CS_MIN_IV_RANK,
         )
-        return [], combined_meta
 
     # ── Filtro 5 — Dirección / Tendencia (strict) ────────────────────────
     allowed_type: str | None = None
@@ -1102,6 +1111,16 @@ def _scan_single_ticker(
 
     # Filtrar expirations válidas y capear a 6 para evitar rate-limiting
     valid_exps = [e for e in exp_dates if 0 < _dte_from_expiry(e) <= max_dte]
+
+    # Cuando R3 (DTE estricto) está activo, pre-filtrar expirations al rango
+    # CS_DTE_MIN–CS_DTE_MAX *antes* de aplicar el cap de 6.  Sin esto, las 6
+    # primeras pueden ser DTEs cortos que R3 rechazará al 100 %.
+    if _sr.get("r3_dte", strict):
+        valid_exps = [
+            e for e in valid_exps
+            if CS_DTE_MIN <= _dte_from_expiry(e) <= CS_DTE_MAX
+        ]
+
     if len(valid_exps) > 6:
         valid_exps = valid_exps[:6]  # 6 expirations más cercanas
 
@@ -1264,6 +1283,9 @@ def scan_credit_spreads(
             all_results.extend(spreads)
             if t_meta:
                 ticker_indicators[ticker] = t_meta
+        except KeyboardInterrupt:
+            # curl_cffi raises spurious KeyboardInterrupt from buffer_callback
+            logger.error("KeyboardInterrupt (curl_cffi) escaneando %s — continuando", ticker)
         except Exception as exc:
             logger.error("Error escaneando %s: %s", ticker, exc)
 
@@ -1286,10 +1308,8 @@ def scan_credit_spreads(
     df["Score Oportunidad"] = list(opp_scores)
     df["Nivel"] = list(opp_labels)
 
-    # Filtrar: solo mostrar score ≥ 60 cuando hay filtros activos
-    if strict or any(_sr.values()):
-        df = df[df["Score Oportunidad"] >= OPP_SCORE_MIN_SHOW].reset_index(drop=True)
-
+    # Nota: ya no se filtra por OPP_SCORE_MIN_SHOW — las reglas estrictas
+    # (R1-R9) ya garantizan calidad. El score se muestra al usuario.
     if df.empty:
         return pd.DataFrame(), ticker_indicators
 

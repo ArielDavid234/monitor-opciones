@@ -64,12 +64,14 @@ def cache_chain(ticker: str, expiration: str, chain_df, ttl_seconds: int = 720):
     Si los datos ya fueron descargados en los últimos `ttl` segundos,
     se devuelven desde memoria sin hacer una nueva petición a Yahoo Finance.
 """
-def ttl_cache(ttl_seconds=300, maxsize=128):
+def ttl_cache(ttl_seconds=300, maxsize=128, should_cache=None):
     """Decorador de caché con TTL (time-to-live).
 
     Similar a @lru_cache pero los datos expiran después de `ttl_seconds`.
     - maxsize: máximo de entradas en caché (evita memory leaks)
     - Cada entrada guarda (resultado, timestamp)
+    - should_cache: callable(result) -> bool. Si devuelve False, el resultado
+      NO se almacena en cache (evita envenenar el cache con respuestas vacías).
     """
     def decorator(func):
         cache = {}
@@ -86,11 +88,15 @@ def ttl_cache(ttl_seconds=300, maxsize=128):
             # Cache MISS — ejecutar función real
             logger.debug("Cache MISS para %s%s", func.__name__, args)
             result = func(*args, **kwargs)
-            cache[key] = (result, now)
-            # Evictar entradas viejas si el cache crece mucho
-            if len(cache) > maxsize:
-                oldest = min(cache, key=lambda k: cache[k][1])
-                del cache[oldest]
+            # Solo cachear si should_cache lo permite (o si no hay predicado)
+            if should_cache is None or should_cache(result):
+                cache[key] = (result, now)
+                # Evictar entradas viejas si el cache crece mucho
+                if len(cache) > maxsize:
+                    oldest = min(cache, key=lambda k: cache[k][1])
+                    del cache[oldest]
+            else:
+                logger.debug("Cache SKIP (should_cache=False) para %s%s", func.__name__, args)
             return result
 
         def cache_clear():
@@ -110,6 +116,32 @@ def ttl_cache(ttl_seconds=300, maxsize=128):
 
 
 # --- Funciones cacheadas de Yahoo Finance ---
+
+# Errores que justifican reintento (rate-limit, red, curl)
+_RETRIABLE_KEYWORDS = (
+    "429", "rate limit", "too many", "timeout", "timed out",
+    "connection", "503", "502", "504",
+    "curl", "failure writing", "failed to perform",
+)
+
+
+def _chain_is_cacheable(result):
+    """Predicado: solo cachear cadenas con datos reales."""
+    if not isinstance(result, dict):
+        return False
+    puts = result.get("puts")
+    calls = result.get("calls")
+    if puts is None or calls is None:
+        return False
+    return not (puts.empty and calls.empty)
+
+
+def _history_is_cacheable(result):
+    """Predicado: solo cachear historiales no vacíos."""
+    if result is None:
+        return False
+    return not result.empty
+
 
 @ttl_cache(ttl_seconds=300, maxsize=64)
 def _cached_options_dates(ticker_sym):
@@ -131,22 +163,20 @@ def _cached_options_dates(ticker_sym):
         except Exception as _e:
             last_exc = _e
             _msg = str(_e).lower()
-            # Solo reintentar en errores transitorios (rate-limit, timeout, etc.)
-            if not any(kw in _msg for kw in [
-                "429", "rate limit", "too many", "timeout", "timed out",
-                "connection", "503", "502", "504",
-            ]):
+            # Solo reintentar en errores transitorios (rate-limit, timeout, curl, etc.)
+            if not any(kw in _msg for kw in _RETRIABLE_KEYWORDS):
                 raise  # Error no retriable (ej. ticker inválido) — salir ya
             logger.warning("Error transitorio obteniendo fechas (%s): %s", ticker_sym, _e)
     raise last_exc
 
 
-@ttl_cache(ttl_seconds=300, maxsize=256)
+@ttl_cache(ttl_seconds=300, maxsize=256, should_cache=_chain_is_cacheable)
 def _cached_option_chain(ticker_sym, exp_date):
     """Obtiene y cachea la cadena de opciones con retry anti-rate-limit.
 
-    Si la respuesta está vacía (probable rate-limit silencioso), invalida
-    la entrada de cache para que el próximo intento re-descargue.
+    Reintenta hasta 4 veces tanto en excepciones como en cadenas vacías
+    (rate-limit silencioso de Yahoo). Las cadenas vacías NO se cachean
+    gracias al predicado should_cache del decorador ttl_cache.
     """
     last_exc = None
     for _attempt in range(4):
@@ -162,32 +192,41 @@ def _cached_option_chain(ticker_sym, exp_date):
             ticker = yf.Ticker(ticker_sym, session=session)
             chain = ticker.option_chain(exp_date)
             result = {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
-            # Si ambas tablas están vacías, posible rate-limit silencioso.
-            # Retornar pero NO cachear (la decoración ttl_cache guarda
-            # el resultado tras return; invalidamos inmediatamente).
+            # Si ambas tablas están vacías → posible rate-limit silencioso.
+            # Reintentar (no retornar inmediatamente).
             if result["puts"].empty and result["calls"].empty:
                 logger.warning(
-                    "_cached_option_chain: cadena vacía para %s %s — no se cacheará",
-                    ticker_sym, exp_date,
+                    "_cached_option_chain: cadena vacía para %s %s (intento %d/4)",
+                    ticker_sym, exp_date, _attempt + 1,
                 )
-                # Planificar invalidación post-return
-                _cached_option_chain.cache_invalidate(ticker_sym, exp_date)
+                continue  # reintentar
             return result
+        except KeyboardInterrupt:
+            # curl_cffi raises spurious KeyboardInterrupt from buffer_callback
+            last_exc = RuntimeError(f"curl interrupt for {ticker_sym} {exp_date}")
+            logger.warning("KeyboardInterrupt (curl_cffi) cadena (%s %s) — reintentando", ticker_sym, exp_date)
         except Exception as _e:
             last_exc = _e
             _msg = str(_e).lower()
-            if not any(kw in _msg for kw in [
-                "429", "rate limit", "too many", "timeout", "timed out",
-                "connection", "503", "502", "504",
-            ]):
+            if not any(kw in _msg for kw in _RETRIABLE_KEYWORDS):
                 raise
             logger.warning("Error transitorio cadena (%s %s): %s", ticker_sym, exp_date, _e)
-    raise last_exc
+    # Agotados los reintentos: devolver cadena vacía (no se cacheará)
+    if last_exc:
+        raise last_exc
+    logger.warning(
+        "_cached_option_chain: cadena vacía persistente para %s %s tras 4 intentos",
+        ticker_sym, exp_date,
+    )
+    return {"calls": pd.DataFrame(), "puts": pd.DataFrame()}
 
 
-@ttl_cache(ttl_seconds=300, maxsize=32)
+@ttl_cache(ttl_seconds=300, maxsize=32, should_cache=_history_is_cacheable)
 def _cached_history(ticker_sym, period="1d"):
-    """Obtiene y cachea el historial de precios por 5 min."""
+    """Obtiene y cachea el historial de precios por 5 min.
+
+    Los historiales vacíos NO se cachean para evitar envenenar el cache.
+    """
     session, _ = crear_sesion_nueva()
     ticker = yf.Ticker(ticker_sym, session=session)
     return ticker.history(period=period)
@@ -221,8 +260,7 @@ def obtener_precio_actual(ticker_sym):
         hist = _cached_history(ticker_sym, "1d")
         if hist is not None and not hist.empty:
             return float(hist['Close'].iloc[-1]), None
-        # Resultado vacío → invalidar caché para re-descargar en próximo intento
-        _cached_history.cache_invalidate(ticker_sym, "1d")
+        # Resultado vacío (no se cacheó gracias a should_cache)
         return None, "Sin datos de precio"
     except Exception as e:
         return None, str(e)

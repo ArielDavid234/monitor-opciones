@@ -8,7 +8,6 @@ Usa AgGrid para tabla interactiva (sortable, filterable, color-coded).
 """
 from __future__ import annotations
 
-import io
 import logging
 import pandas as pd
 import streamlit as st
@@ -796,16 +795,28 @@ def render(**kwargs) -> None:
             )
 
         with st.spinner("Analizando cadenas de opciones..."):
-            df, ticker_indicators = _cs_service.scan(
-                tickers=selected_tickers,
-                min_pop=min_pop_pct / 100.0,
-                max_dte=max_dte,
-                min_credit=min_credit,
-                strict=any(strict_rules.values()),
-                strict_rules=strict_rules,
-                account_size=account_size,
-                progress_callback=_progress_cb,
-            )
+            try:
+                df, ticker_indicators = _cs_service.scan(
+                    tickers=selected_tickers,
+                    min_pop=min_pop_pct / 100.0,
+                    max_dte=max_dte,
+                    min_credit=min_credit,
+                    strict=any(strict_rules.values()),
+                    strict_rules=strict_rules,
+                    account_size=account_size,
+                    progress_callback=_progress_cb,
+                )
+            except BaseException as _scan_exc:
+                import logging as _logging
+                _logging.getLogger(__name__).error(
+                    "Error inesperado en scan: %s", _scan_exc, exc_info=True,
+                )
+                df = pd.DataFrame()
+                ticker_indicators = {}
+                st.error(
+                    f"❌ Error durante el escaneo: {_scan_exc}\n\n"
+                    "Intenta de nuevo en unos segundos."
+                )
 
         progress_bar.empty()
         status_text.empty()
@@ -854,19 +865,35 @@ def render(**kwargs) -> None:
                 <div style="background:linear-gradient(135deg,#0d1f12,#132a13);
                             border:2px solid #22c55e;border-radius:14px;
                             padding:1.2rem 1.5rem;margin-bottom:1.5rem;">
-                    <h3 style="color:#00ff88;margin:0 0 0.3rem 0;">
+                    <h3 style="color:#00ff88;margin:0;">
                         🚨 Sistema de Alertas — {len(alerts_df)} Estrategia{"s" if len(alerts_df) != 1 else ""} Lista{"s" if len(alerts_df) != 1 else ""}
                     </h3>
-                    <p style="color:#94a3b8;margin:0;font-size:0.82rem;">
-                        Cumplen las <b style="color:#22c55e;">10 reglas obligatorias</b> de seguridad.
-                        Riesgo máx por trade ≤ 5% de cuenta (${account_size:,.0f}).
-                    </p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
+            # ── Paginación: 10 alertas por página ────────────────────────
+            _alerts_per_page = 10
+            _alerts_total = len(alerts_df)
+            _alerts_pages = max(1, (_alerts_total + _alerts_per_page - 1) // _alerts_per_page)
+            if _alerts_pages > 1:
+                _alerts_page = st.selectbox(
+                    f"Página (total {_alerts_total} alertas)",
+                    options=list(range(1, _alerts_pages + 1)),
+                    format_func=lambda p: f"Página {p} de {_alerts_pages}  ({(p-1)*_alerts_per_page+1}–{min(p*_alerts_per_page, _alerts_total)})",
+                    key="alerts_page_sel",
+                    label_visibility="collapsed",
+                )
+            else:
+                _alerts_page = 1
+            _alerts_start = (_alerts_page - 1) * _alerts_per_page
+            _alerts_end = _alerts_start + _alerts_per_page
+            _alerts_page_df = alerts_df.iloc[_alerts_start:_alerts_end]
+
             for a_idx, (_, a_row) in enumerate(alerts_df.iterrows()):
+                if a_idx < _alerts_start or a_idx >= _alerts_end:
+                    continue
                 _a_tk = a_row.get("Ticker", "")
                 _a_tipo = a_row.get("Tipo", "")
                 _a_spot = a_row.get("Spot", 0)
@@ -1209,7 +1236,12 @@ def render(**kwargs) -> None:
             unsafe_allow_html=True,
         )
 
-    # ── Métricas rápidas (ampliadas Fase 1) ───────────────────────────────
+    # ── Métricas rápidas — fila 1: resultados clave ─────────────────────
+    st.markdown(
+        "<p style='color:#64748b;font-size:0.78rem;margin:0.6rem 0 0.2rem;text-transform:uppercase;"
+        "letter-spacing:0.08em;'>Resumen del escaneo</p>",
+        unsafe_allow_html=True,
+    )
     mc1, mc2, mc3, mc4 = st.columns(4)
     with mc1:
         st.metric("Mejor Retorno %", f"{df_filtered['Retorno %'].max():.1f}%")
@@ -1220,6 +1252,12 @@ def render(**kwargs) -> None:
     with mc4:
         st.metric("DTE Promedio", f"{df_filtered['DTE'].mean():.0f}d")
 
+    # ── Métricas rápidas — fila 2: métricas avanzadas ─────────────────────
+    st.markdown(
+        "<p style='color:#64748b;font-size:0.78rem;margin:1rem 0 0.2rem;text-transform:uppercase;"
+        "letter-spacing:0.08em;'>Promedios avanzados</p>",
+        unsafe_allow_html=True,
+    )
     mc5, mc6, mc7, mc8 = st.columns(4)
     with mc5:
         _avg_pot = df_filtered["PoT Short"].mean() if "PoT Short" in df_filtered.columns else 0
@@ -1227,48 +1265,18 @@ def render(**kwargs) -> None:
                   help="Prob. de que el precio toque el strike vendido antes del vencimiento")
     with mc6:
         _avg_dn = df_filtered["Delta Neto"].mean() if "Delta Neto" in df_filtered.columns else 0
-        st.metric("Ø Δ Neto", f"{_avg_dn:.3f}")
+        st.metric("Ø Δ Neto", f"{_avg_dn:.3f}",
+                  help="Delta neto del spread (exposición direccional combinada)")
     with mc7:
         _avg_eva = df_filtered["EV Ajustado"].mean() if "EV Ajustado" in df_filtered.columns else 0
-        st.metric("Ø EV Ajustado", f"{_avg_eva:+.1f}%")
+        st.metric("Ø EV Ajustado", f"{_avg_eva:+.1f}%",
+                  help="Expected Value ajustado por capital en riesgo (positivo = edge real)")
     with mc8:
         _avg_ns = df_filtered["Score Final"].mean() if "Score Final" in df_filtered.columns else 0
-        st.metric("Ø Score Final", f"{_avg_ns:.1f}")
+        st.metric("Ø Score Final", f"{_avg_ns:.1f}",
+                  help="Score optimizado combinando EV, Surface Edge e Income Score")
 
-    # ── Tabla AgGrid (interactive, sortable, filterable) ─────────────────
-    display_cols = [
-        "Ticker", "Tipo", "Score Final", "Score Oportunidad", "Nivel",
-        "Income Score", "Calidad", "Spot",
-        "Strike Vendido", "Strike Comprado",
-        "DTE", "Delta Vendido", "Delta Neto", "PoT Short",
-        "Gamma Neto", "Theta Neto", "Decay 7d",
-        "POP %", "Prob OTM %", "Crédito",
-        "Riesgo Máx", "EV Ajustado", "EV Real Adj", "Surface Edge",
-        "EV $", "EV %", "Retorno %", "Dist Strike %", "IV %",
-        "IV Rank", "IV Pctil", "Tendencia",
-        "OI Short", "Vol Short", "Liq Score",
-        "Liquidez", "Volumen", "OI", "Bid-Ask",
-    ]
-    display_cols = [c for c in display_cols if c in df_filtered.columns]
-    df_show = df_filtered[display_cols].reset_index(drop=True)
-
-    # ── Fragment: AgGrid + desglose de score ─────────────────────────────
-    st.session_state["_cs_aggrid_df"] = df_show
-    _render_aggrid_fragment()
-
-
-    # ── Exportar CSV ─────────────────────────────────────────────────────
-    st.markdown("")
-    csv_buffer = io.StringIO()
-    df_filtered.to_csv(csv_buffer, index=False)
-    st.download_button(
-        label="📥 Exportar a CSV",
-        data=csv_buffer.getvalue(),
-        file_name=f"credit_spreads_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv",
-        use_container_width=True,
-        key="cs_export_csv",
-    )
+    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
 
     # ── Top 5 por tipo ───────────────────────────────────────────────────
     st.markdown("---")
