@@ -87,13 +87,15 @@ def _sync_user_lists_once(user_id: str, user_service) -> None:
 
 
 def _start_background_once() -> None:
-    """Inicia updater de background una sola vez por sesión (idempotente)."""
+    """Inicia updater de background (idempotente a nivel de proceso)."""
     bg_state = get_updater_state()
-    should_start = (not st.session_state.get("background_running")) or (not bg_state.running)
-    if should_start:
-        start_background_updater()
-        st.session_state["background_running"] = True
-        st.session_state["background_started_at"] = time.time()
+    # Si ya corre a nivel de proceso, solo marcar la sesión sin tocar el lock
+    if bg_state.running and bg_state._thread and bg_state._thread.is_alive():
+        st.session_state.setdefault("background_running", True)
+        return
+    start_background_updater()
+    st.session_state["background_running"] = True
+    st.session_state["background_started_at"] = time.time()
 
 
 def _render_sidebar(current_user: User, auth: SupabaseAuth) -> str:
