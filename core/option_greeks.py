@@ -492,6 +492,63 @@ def quick_probability_of_touch(
         return min(1.0, 2.0 * 0.15)
 
 
+def calculate_probability_of_touch_precise(
+    spot: float,
+    strike: float,
+    dte: int,
+    iv_short: float,
+    option_type: str = "put",
+    skew_adjust: float = 0.0,
+    r: float = 0.0,
+    q: float = 0.0,
+) -> float:
+    """PoT precisa: BSM first-passage barrier + ajuste explícito por skew de IV.
+
+    Extiende ``quick_probability_of_touch`` con un parámetro de ajuste
+    empírico de skew.  Para puts OTM, la IV implícita del strike vendido
+    suele ser mayor que la IV ATM (skew negativo típico de renta variable):
+    el mercado asigna cola más pesada → PoT real es más alta que el modelo
+    log-normal puro con volatilidad plana implica.
+
+    Ajuste de skew
+    --------------
+    El llamador debe calcular ``skew_adjust`` como::
+
+        _skew_pct    = (iv_short / iv_atm - 1) * 100  # prima de IV en pp
+        skew_adjust  = min(_skew_pct * 0.2, 5.0)      # máx +5 pp de PoT
+
+    Regla empírica: cada 5 pp de prima de IV sobre ATM → +1 pp de PoT.
+
+    Args
+    ----
+    spot         : Precio spot del subyacente.
+    strike       : Strike corto del spread.
+    dte          : Días hasta vencimiento.
+    iv_short     : IV implícita del strike corto (decimal, ej. 0.25).
+    option_type  : "put" (barrera inferior) o "call" (barrera superior).
+    skew_adjust  : Puntos porcentuales adicionales de PoT por skew (default 0).
+    r            : Tasa libre de riesgo continua (default 0).
+    q            : Yield continuo del dividendo (default 0).
+
+    Returns
+    -------
+    float — PoT ajustada en porcentaje (0.0 – 99.0).
+    """
+    T = max(dte, 1) / 365.0
+    sigma = iv_short if iv_short > 0.01 else 0.25
+
+    # BSM first-passage barrier (fórmula exacta bajo GBM con vol constante)
+    pot_bsm = quick_probability_of_touch(
+        S=spot, K=strike, T=T, iv=sigma,
+        option_type=option_type, r=r, q=q,
+    ) * 100.0  # convertir de [0.0, 1.0] a porcentaje
+
+    # Ajuste empírico por skew de volatilidad:
+    # puts OTM → iv_short > iv_atm → skew_adjust > 0 → PoT final mayor
+    pot_final = pot_bsm + float(skew_adjust)
+    return round(min(max(pot_final, 0.0), 99.0), 1)
+
+
 # ======================================================================
 # Vectorized gamma (for option-chain level batch computations)
 # ======================================================================

@@ -56,7 +56,7 @@ from config.constants import (
     ALERT_DEFAULT_ACCOUNT_SIZE,
     ALERT_MAX_RISK_PCT,
 )
-from core.option_greeks import OptionGreeks, quick_probability_of_touch
+from core.option_greeks import OptionGreeks, quick_probability_of_touch, calculate_probability_of_touch_precise
 from core.backtester import (
     compute_ev_real_adjusted,
     _surface_edge,
@@ -672,6 +672,16 @@ def _build_spreads_for_expiry(
             (puts["bid"].fillna(0) > 0)
         ].sort_values("strike", ascending=False).reset_index(drop=True)
 
+        # ATM IV de puts para detección de skew — se calcula una vez por expiración
+        _atm_iv_put = 0.0
+        if "impliedVolatility" in puts.columns and not puts.empty:
+            try:
+                _atm_idx_put = (puts["strike"] - spot).abs().idxmin()
+                _raw_atm_put = float(_safe_num(puts.at[_atm_idx_put, "impliedVolatility"], 0))
+                _atm_iv_put = _raw_atm_put if _raw_atm_put > 0.01 else 0.0
+            except Exception:
+                _atm_iv_put = 0.0
+
         for i in range(len(otm_puts)):
             sold = otm_puts.iloc[i]
             sold_strike = float(sold["strike"])
@@ -683,6 +693,13 @@ def _build_spreads_for_expiry(
 
             # Delta preciso vía BSM
             sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "put")
+
+            # Skew adjust: IV OTM puts > IV ATM → cola más pesada → PoT real mayor
+            _skew_adj = 0.0
+            if _atm_iv_put > 0.01 and sold_iv > _atm_iv_put:
+                # Regla: cada 5pp de prima de IV sobre ATM → +1pp de PoT (máx 5pp)
+                _skew_pct = (sold_iv - _atm_iv_put) / _atm_iv_put * 100.0
+                _skew_adj = round(min(_skew_pct * 0.2, 5.0), 2)
 
             # Filtro 4 — Delta del short strike (strict)
             if _sr.get("r4_delta", strict):
@@ -763,9 +780,11 @@ def _build_spreads_for_expiry(
                 bought_iv = float(_safe_num(bought.get("impliedVolatility", sold_iv)) or sold_iv)
                 bought_delta = _bsm_delta(spot, bought_strike, dte, bought_iv, "put")
 
-                # PoT BSM exacto (barrera) vs aproximación 2×|Δ|
-                pot_short = calculate_probability_of_touch(
-                    spot, sold_strike, dte, sold_iv, "put",
+                # PoT: BSM first-passage barrier + ajuste por skew de IV del strike
+                pot_short = calculate_probability_of_touch_precise(
+                    spot=spot, strike=sold_strike, dte=dte,
+                    iv_short=sold_iv, option_type="put",
+                    skew_adjust=_skew_adj, r=RISK_FREE_RATE,
                 )
                 pot_approx = _pot_approx_2delta(sold_delta)
 
@@ -801,6 +820,7 @@ def _build_spreads_for_expiry(
                 # ── Fase 3: EV Real Adjusted + Surface Edge ───────────────
                 ev_real_adj = compute_ev_real_adjusted(
                     spot, sold_strike, dte, sold_iv, credit, max_risk, "put",
+                    breakeven=breakeven,
                 )
                 surface_edge = _surface_edge(
                     spot, sold_strike, dte, sold_iv, round(pop * 100, 1), "put",
@@ -819,6 +839,7 @@ def _build_spreads_for_expiry(
                     "Delta Neto": delta_neto,
                     "PoT Short": pot_short,
                     "PoT 2Δ Approx": pot_approx,
+                    "PoT Skew Adj": _skew_adj,
                     "Gamma Neto": gamma_neto,
                     "Theta Neto": theta_neto,
                     "Decay 7d": decay_7d,
@@ -854,6 +875,16 @@ def _build_spreads_for_expiry(
             (calls["bid"].fillna(0) > 0)
         ].sort_values("strike", ascending=True).reset_index(drop=True)
 
+        # ATM IV de calls para detección de skew — se calcula una vez por expiración
+        _atm_iv_call = 0.0
+        if "impliedVolatility" in calls.columns and not calls.empty:
+            try:
+                _atm_idx_call = (calls["strike"] - spot).abs().idxmin()
+                _raw_atm_call = float(_safe_num(calls.at[_atm_idx_call, "impliedVolatility"], 0))
+                _atm_iv_call = _raw_atm_call if _raw_atm_call > 0.01 else 0.0
+            except Exception:
+                _atm_iv_call = 0.0
+
         for i in range(len(otm_calls)):
             sold = otm_calls.iloc[i]
             sold_strike = float(sold["strike"])
@@ -865,6 +896,12 @@ def _build_spreads_for_expiry(
 
             # Delta preciso vía BSM
             sold_delta = _bsm_delta(spot, sold_strike, dte, sold_iv, "call")
+
+            # Skew adjust para calls OTM (usualmente 0 en renta variable)
+            _skew_adj_c = 0.0
+            if _atm_iv_call > 0.01 and sold_iv > _atm_iv_call:
+                _skew_pct_c = (sold_iv - _atm_iv_call) / _atm_iv_call * 100.0
+                _skew_adj_c = round(min(_skew_pct_c * 0.2, 5.0), 2)
 
             # Filtro 4 — Delta del short strike (strict)
             if _sr.get("r4_delta", strict):
@@ -944,9 +981,11 @@ def _build_spreads_for_expiry(
                 bought_ivbc = float(_safe_num(bought.get("impliedVolatility", sold_iv)) or sold_iv)
                 bought_delta_bc = _bsm_delta(spot, bought_strike, dte, bought_ivbc, "call")
 
-                # PoT BSM exacto (barrera) vs aproximación 2×|Δ|
-                pot_short_bc = calculate_probability_of_touch(
-                    spot, sold_strike, dte, sold_iv, "call",
+                # PoT: BSM first-passage barrier + ajuste por skew de IV del strike
+                pot_short_bc = calculate_probability_of_touch_precise(
+                    spot=spot, strike=sold_strike, dte=dte,
+                    iv_short=sold_iv, option_type="call",
+                    skew_adjust=_skew_adj_c, r=RISK_FREE_RATE,
                 )
                 pot_approx_bc = _pot_approx_2delta(sold_delta)
 
@@ -978,6 +1017,7 @@ def _build_spreads_for_expiry(
                 # ── Fase 3: EV Real Adjusted + Surface Edge ───────────────
                 ev_real_adj_bc = compute_ev_real_adjusted(
                     spot, sold_strike, dte, sold_iv, credit, max_risk, "call",
+                    breakeven=breakeven_bc,
                 )
                 surface_edge_bc = _surface_edge(
                     spot, sold_strike, dte, sold_iv, round(pop_bc * 100, 1), "call",
@@ -996,6 +1036,7 @@ def _build_spreads_for_expiry(
                     "Delta Neto": delta_neto_bc,
                     "PoT Short": pot_short_bc,
                     "PoT 2Δ Approx": pot_approx_bc,
+                    "PoT Skew Adj": _skew_adj_c,
                     "Gamma Neto": gamma_neto_bc,
                     "Theta Neto": theta_neto_bc,
                     "Decay 7d": decay_7d_bc,
@@ -1022,6 +1063,18 @@ def _build_spreads_for_expiry(
                 }
                 if ticker_meta:
                     row.update(ticker_meta)
+                # Debug para validación vs plataforma B (spread ejemplo IWM Bear Call)
+                if ticker.upper() == "IWM" and 24 <= dte <= 30:
+                    logger.debug(
+                        "[IWM DEBUG] Bear Call K=%s/%.0f DTE=%d | "
+                        "IV_short=%.1f%% IV_ATM=%.1f%% SkewAdj=+%.2fpp | "
+                        "PoT=%.1f%% PoT_2Δ=%.1f%% | "
+                        "BE=%.2f POP_BE=%.1f%% EV_Real=%.1f%%",
+                        sold_strike, bought_strike, dte,
+                        sold_iv * 100, _atm_iv_call * 100, _skew_adj_c,
+                        pot_short_bc, pot_approx_bc,
+                        breakeven_bc, pop_be_bc * 100, ev_real_adj_bc,
+                    )
                 results.append(row)
 
     return results
@@ -1315,14 +1368,19 @@ def scan_credit_spreads(
 
     # ── EV Ajustado por capital en riesgo (Fase 1) ────────────────────
     def _ev_ajustado(row: dict) -> float:
-        """EV como porcentaje del capital en riesgo.
+        """EV como % del capital en riesgo, usando POP breakeven BSM.
 
-        EV = crédito × POP  -  riesgo × (1 - POP)
+        Usa la probabilidad de superar el breakeven real del spread
+        (POP Breakeven %) en vez de la aproximación 1-|Δ|, alineándose
+        con plataformas institucionales como TOS / TastyTrade.
+
+        EV = P(S_T > breakeven) × crédito − P(S_T ≤ breakeven) × riesgo
         ev_ajustado = EV / riesgo_máx × 100
         """
         credit_ = row.get("Crédito", 0) or 0
         risk_ = row.get("Riesgo Máx", 0) or 0
-        pop_ = (row.get("POP %", 0) or 0) / 100.0
+        # Usar POP breakeven BSM — más preciso que 1-|Δ|
+        pop_ = (row.get("POP Breakeven %", row.get("POP %", 70)) or 70) / 100.0
         if risk_ <= 0:
             return 0.0
         ev = credit_ * pop_ - risk_ * (1.0 - pop_)

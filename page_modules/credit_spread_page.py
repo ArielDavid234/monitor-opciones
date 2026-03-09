@@ -318,6 +318,16 @@ def _render_aggrid_fragment() -> None:
     gb.configure_column("PoT 2Δ Approx", headerName="PoT 2Δ", width=90,
                         type=["numericColumn"],
                         valueFormatter="x.toFixed(1) + '%'")
+    gb.configure_column("PoT Skew Adj", headerName="PoT Skew+", width=90,
+                        type=["numericColumn"],
+                        cellStyle=JsCode("""
+                        function(params) {
+                            var v = params.value;
+                            if (v > 2) return {color:'#fb923c',fontWeight:'bold'};
+                            if (v > 0) return {color:'#facc15'};
+                            return {color:'#94a3b8'};
+                        }"""),
+                        valueFormatter="v => v > 0 ? '+' + v.toFixed(2) + 'pp' : '0'")
     gb.configure_column("POP Breakeven %", headerName="POP BE %", width=100,
                         type=["numericColumn"],
                         cellStyle=_JS_POP_STYLE,
@@ -614,10 +624,11 @@ def render(**kwargs) -> None:
             </div>
             <div style="margin-top:0.7rem;padding:6px 10px;background:#0d1117;border-left:3px solid #60a5fa;border-radius:4px;">
               <b style="color:#60a5fa;">Métricas Fase 1 (nuevas):</b><br>
-              📌 <b>PoT Short</b> — Probability of Touch del strike vendido (≈ 2×|Δ|). PoT bajo = menor riesgo.<br>
+              📌 <b>PoT Short</b> — Probability of Touch: barrera BSM first-passage + ajuste skew (IV_short / IV_ATM). PoT bajo = menor riesgo.<br>
+              📌 <b>PoT Skew+</b> — Ajuste en pp por el skew de IV: si IV_short > IV_ATM, la cola es más pesada → PoT real mayor (máx +5 pp).<br>
               📌 <b>Δ Neto</b> — Delta neto del spread (|Δ short| − |Δ long|). Más bajo = spread más neutral.<br>
-              📌 <b>EV Ajustado</b> — Expected Value como % del riesgo máximo. Positivo = edge estadístico.<br>
-              📌 <b>⭐ Score Final</b> — Optimizado Fase 3: 18% Income + 14% Opp + 13% Anti-PoT + 11% ΔN + 12% EV Real + 10% Anti-Γ + 12% Liq + 10% θ + 6% Surface Edge
+              📌 <b>EV Ajustado</b> — EV usando POP breakeven BSM (no 1-|Δ|). Positivo = edge estadístico sobre el breakeven real.<br>
+              📌 <b>⭐ Score Final</b> — Optimizado Fase 3: 12% Income + 10% Opp + 20% Anti-PoT + 6% POP BE + 5% ΔN + 20% EV Real + 6% Anti-Γ + 10% Liq + 6% θ + 5% Surface Edge
             </div>
             <div style="margin-top:0.7rem;padding:6px 10px;background:#0d1117;border-left:3px solid #a78bfa;border-radius:4px;">
               <b style="color:#a78bfa;">Métricas Fase 3 (nivel institucional):</b><br>
@@ -711,8 +722,8 @@ def render(**kwargs) -> None:
             key="cs_filter_by_ev",
         )
         st.markdown("---")
-        st.markdown("#### � Reglas importantes")
-        _all_on = st.session_state.get("cs_all_rules", True)
+        st.markdown("#### 🔒 Reglas importantes")
+        _all_on = st.session_state.get("cs_all_rules", False)
         # Fila 1
         _col1, _col2 = st.columns(2)
         with _col1:
@@ -1199,7 +1210,7 @@ def render(**kwargs) -> None:
                         </span>
                     </div>
                     <div style="color:#64748b;font-size:0.7rem;margin-top:2px;">
-                        18% Inc · 14% Opp · 13% PoT · 11% ΔN · 12% EV Real · 10% Γ · 12% Liq · 10% θ · 6% Surface
+                        12% Inc · 10% Opp · 20% PoT · 6% POP BE · 5% ΔN · 20% EV Real · 6% Γ · 10% Liq · 6% θ · 5% Surface
                     </div>
                 </div>
             </div>

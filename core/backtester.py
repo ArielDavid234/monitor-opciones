@@ -106,18 +106,25 @@ def compute_ev_real_adjusted(
     credit: float,
     max_risk: float,
     option_type: str = "put",
+    breakeven: float | None = None,
 ) -> float:
     """EV ajustado usando la probabilidad derivada de la IV del strike corto.
 
-    EV = prob_otm × crédito − (1 − prob_otm) × riesgo
-    ev_real_adj = EV / riesgo × 100
+    Si se proporciona ``breakeven``, la probabilidad se calcula sobre el
+    breakeven real del spread (short_strike − crédito para Bull Put,
+    short_strike + crédito para Bear Call), alineándose con plataformas
+    institucionales como TOS / TastyTrade:
 
-    Esto es MÁS preciso que el EV genérico porque usa la IV real
-    del strike (refleja el skew de la surface).
+        EV = P(S_T > breakeven) × crédito − P(S_T ≤ breakeven) × riesgo
+
+    Sin breakeven (modo legacy), usa P(S_T > strike) como antes.
+    ev_real_adj = EV / riesgo × 100
     """
     if max_risk <= 0 or credit <= 0:
         return 0.0
-    prob_otm = _prob_otm_bsm(spot, strike, dte, iv_strike, option_type)
+    # Usar breakeven como K si está disponible — más preciso que el strike
+    k_prob = breakeven if (breakeven is not None and breakeven > 0) else strike
+    prob_otm = _prob_otm_bsm(spot, k_prob, dte, iv_strike, option_type)
     ev = prob_otm * credit - (1.0 - prob_otm) * max_risk
     return round(ev / max_risk * 100.0, 2)
 
@@ -245,30 +252,32 @@ class Backtester:
     def _optimize_weights(self, historical_wr: float) -> dict:
         """Retorna pesos optimizados basados en el win rate histórico.
 
-        Estrategia: si el WR histórico es alto (>70%), priorizamos income
-        y theta (más agresivo). Si es bajo (<60%), priorizamos risk mgmt
-        (PoT, liquidez, gamma).
+        Estrategia:
+          - WR >= 75%: más peso a income/theta (agresivo)
+          - WR >= 65%: balanceado
+          - WR <  65%: priorizar riesgo (PoT, EV, gamma)
+        Todos los dicts tienen 10 componentes y suman 1.00.
         """
         if historical_wr >= 75:
-            # Estrategia agresiva — más peso a income/theta
+            # Estrategia agresiva — sigue priorizando PoT y EV Real
             return {
-                "income": 0.18, "opp": 0.14, "anti_pot": 0.11,
-                "anti_dn": 0.09, "ev_real": 0.12, "anti_gamma": 0.08,
-                "liq": 0.12, "theta": 0.10, "surface_edge": 0.06,
+                "income": 0.12, "opp": 0.10, "anti_pot": 0.20,
+                "pop_be": 0.06, "anti_dn": 0.04, "ev_real": 0.20,
+                "anti_gamma": 0.05, "liq": 0.10, "theta": 0.07, "surface_edge": 0.06,
             }
         elif historical_wr >= 65:
             # Estrategia balanceada
             return {
-                "income": 0.16, "opp": 0.13, "anti_pot": 0.13,
-                "anti_dn": 0.10, "ev_real": 0.12, "anti_gamma": 0.10,
-                "liq": 0.12, "theta": 0.08, "surface_edge": 0.06,
+                "income": 0.12, "opp": 0.10, "anti_pot": 0.20,
+                "pop_be": 0.07, "anti_dn": 0.05, "ev_real": 0.20,
+                "anti_gamma": 0.06, "liq": 0.10, "theta": 0.06, "surface_edge": 0.04,
             }
         else:
-            # Estrategia conservadora — proteger capital
+            # Estrategia conservadora — más peso a PoT y EV Real
             return {
-                "income": 0.14, "opp": 0.12, "anti_pot": 0.15,
-                "anti_dn": 0.12, "ev_real": 0.10, "anti_gamma": 0.12,
-                "liq": 0.13, "theta": 0.06, "surface_edge": 0.06,
+                "income": 0.10, "opp": 0.09, "anti_pot": 0.22,
+                "pop_be": 0.08, "anti_dn": 0.06, "ev_real": 0.20,
+                "anti_gamma": 0.08, "liq": 0.10, "theta": 0.04, "surface_edge": 0.03,
             }
 
     def _get_history(self, ticker: str) -> Optional[pd.DataFrame]:
@@ -295,46 +304,51 @@ def compute_optimized_score(
     Fórmula:
         optimized = Σ (peso_i × componente_i) × 100
 
-    Componentes (9):
-        1. Income Score (normalizado 0-1)
-        2. Opportunity Score (normalizado 0-1)
-        3. Anti-PoT (1 - PoT/100)
-        4. Anti-Delta Neto (1 - |ΔN|)
-        5. EV Real Adjusted / 15 (normalizado)
-        6. Anti-Gamma (1 - |Γ|×10)
-        7. Liquidity Score / 100
-        8. Surface Edge / 20 (normalizado, puede ser negativo)
-        9. Historical Win Rate / 100
+    Componentes (10):
+        1.  Income Score (normalizado 0-1)
+        2.  Opportunity Score (normalizado 0-1)
+        3.  Anti-PoT (1 - PoT/100)          ← peso 20%: métrica clave
+        4.  POP Breakeven % / 100           ← NUEVO: prob BSM real de ganar
+        5.  Anti-Delta Neto (1 - |ΔN|)
+        6.  EV Real Adjusted / 15           ← peso 20%: métrica clave
+        7.  Anti-Gamma (1 - |Γ|×10)
+        8.  Liquidity Score / 100
+        9.  Theta Decay 7d / 10
+        10. Surface Edge / 20               (puede ser negativo)
 
-    Los pesos por defecto reflejan el backtesting recomendado.
-    Se ajustan dinámicamente si el backtester devuelve pesos optimizados.
+    Pesos calibrados para alinearse con plataformas institucionales:
+    anti_pot y ev_real priorizados al 20% c/u.  Suma de pesos = 1.00.
+    Se ajustan dinámicamente si el backtester devuelve WR histórico.
     """
     if weights is None:
+        # Pesos institucionales: priorizan PoT y EV Real (suma = 1.00)
         weights = {
-            "income": 0.18, "opp": 0.14, "anti_pot": 0.13,
-            "anti_dn": 0.11, "ev_real": 0.12, "anti_gamma": 0.10,
-            "liq": 0.12, "theta": 0.10, "surface_edge": 0.06,
+            "income": 0.12, "opp": 0.10, "anti_pot": 0.20,
+            "pop_be": 0.06, "anti_dn": 0.05, "ev_real": 0.20,
+            "anti_gamma": 0.06, "liq": 0.10, "theta": 0.06, "surface_edge": 0.05,
         }
 
-    inc = (row.get("Income Score", 0) or 0) / 100.0
-    opp = (row.get("Score Oportunidad", 0) or 0) / 100.0
-    pot = (row.get("PoT Short", 50) or 50) / 100.0
-    dn = abs(row.get("Delta Neto", 0) or 0)
-    ev_r = (row.get("EV Real Adj", 0) or 0)
-    gn = abs(row.get("Gamma Neto", 0) or 0)
-    liq = (row.get("Liq Score", 0) or 0) / 100.0
-    d7 = (row.get("Decay 7d", 0) or 0)
-    se = (row.get("Surface Edge", 0) or 0)
+    inc    = (row.get("Income Score", 0) or 0) / 100.0
+    opp    = (row.get("Score Oportunidad", 0) or 0) / 100.0
+    pot    = (row.get("PoT Short", 50) or 50) / 100.0
+    pop_be = (row.get("POP Breakeven %", row.get("POP %", 70)) or 70) / 100.0
+    dn     = abs(row.get("Delta Neto", 0) or 0)
+    ev_r   = (row.get("EV Real Adj", 0) or 0)
+    gn     = abs(row.get("Gamma Neto", 0) or 0)
+    liq    = (row.get("Liq Score", 0) or 0) / 100.0
+    d7     = (row.get("Decay 7d", 0) or 0)
+    se     = (row.get("Surface Edge", 0) or 0)
 
     raw = (
-        weights.get("income", 0.18) * inc
-        + weights.get("opp", 0.14) * opp
-        + weights.get("anti_pot", 0.13) * max(0.0, 1.0 - pot)
-        + weights.get("anti_dn", 0.11) * max(0.0, 1.0 - dn)
-        + weights.get("ev_real", 0.12) * min(1.0, max(0.0, ev_r / 15.0))
-        + weights.get("anti_gamma", 0.10) * max(0.0, 1.0 - gn * 10.0)
-        + weights.get("liq", 0.12) * liq
-        + weights.get("theta", 0.10) * min(1.0, max(0.0, d7 / 10.0))
-        + weights.get("surface_edge", 0.06) * min(1.0, max(-0.5, se / 20.0))
+        weights.get("income",       0.12) * inc
+        + weights.get("opp",        0.10) * opp
+        + weights.get("anti_pot",   0.20) * max(0.0, 1.0 - pot)
+        + weights.get("pop_be",     0.06) * pop_be
+        + weights.get("anti_dn",    0.05) * max(0.0, 1.0 - dn)
+        + weights.get("ev_real",    0.20) * min(1.0, max(0.0, ev_r / 15.0))
+        + weights.get("anti_gamma", 0.06) * max(0.0, 1.0 - gn * 10.0)
+        + weights.get("liq",        0.10) * liq
+        + weights.get("theta",      0.06) * min(1.0, max(0.0, d7 / 10.0))
+        + weights.get("surface_edge", 0.05) * min(1.0, max(-0.5, se / 20.0))
     )
     return round(raw * 100.0, 1)
