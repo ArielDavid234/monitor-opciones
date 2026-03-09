@@ -1,27 +1,52 @@
 # -*- coding: utf-8 -*-
+"""OPTIONSKING Analytics - entrypoint principal de Streamlit.
+
+Orquestador limpio:
+  1) Configuración de página + CSS
+  2) Auth gate
+  3) Inicialización centralizada de session_state
+  4) Sidebar (navegación + estado del background updater + user block)
+  5) Header + ticker
+  6) Dispatcher de páginas con manejo global de errores
 """
-Monitor de Opciones — Punto de entrada para Streamlit Cloud.
+from __future__ import annotations
 
-Orquestador mínimo:
-  1. Configura la página (debe ser la primera llamada a st)
-  2. Aplica CSS global
-  3. Verifica/restaura autenticación
-  4. Inicializa session_state
-  5. Construye el sidebar (layout + user block)
-  6. Renderiza la página activa
+import logging
+import time
+from typing import Callable
 
-Toda la lógica de negocio vive en core/services/.
-Toda la lógica de presentación vive en presentation/.
-Infraestructura (Supabase, Redis, yfinance) vive en infrastructure/.
-Configuración global vive en config/.
-
-Arquitectura: config → core → infrastructure → presentation → app_web.py
-"""
 import streamlit as st
 
-# ============================================================================
-#                    PAGE CONFIG  (primera llamada st — obligatorio)
-# ============================================================================
+from core.auth import SupabaseAuth
+from core.container import get_container
+from domain.entities import User
+from page_modules import login_page
+from page_modules import (
+    admin_users_page,
+    calendar_page,
+    credit_spread_page,
+    data_analysis_page,
+    favorites_page,
+    important_companies_page,
+    live_scanning_page,
+    mi_perfil_page,
+    news_page,
+    oka_sentiment_page,
+    open_interest_page,
+    optionkings_page,
+    range_page,
+    reports_page,
+    watchlist_page,
+)
+from presentation.components import render_sidebar_user_block
+from presentation.layouts import build_sidebar_nav, render_main_header
+from ui.shared import inject_all_css, render_footer, render_sidebar_logo
+from utils.background_updater import get_updater_state, start_background_updater
+from utils.state import initialize_session_state, persist_shared_state
+
+logger = logging.getLogger(__name__)
+
+
 st.set_page_config(
     page_title="OPTIONSKING Analytics",
     page_icon="\U0001f451",
@@ -29,183 +54,188 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ============================================================================
-#                    AUTH GATE — bloquea TODO si no hay sesión
-# ============================================================================
-from core.auth import SupabaseAuth  # noqa: E402
-from core.container import get_container  # noqa: E402
-from page_modules import login_page  # noqa: E402
-from ui.shared import inject_all_css, render_sidebar_logo  # noqa: E402
 
-inject_all_css()
+def _bootstrap_auth() -> tuple[SupabaseAuth, User]:
+    """Resuelve autenticación o detiene la app mostrando login."""
+    auth = SupabaseAuth()
 
-_auth = SupabaseAuth()
-_container = get_container(auth=_auth)
+    if auth.handle_email_callback():
+        pass
 
-if _auth.handle_email_callback():
-    pass  # autenticado via PKCE — continúa
-
-if not _auth.is_authenticated():
-    if not _auth.try_restore_session():
-        login_page.render(auth=_auth)
+    if not auth.is_authenticated() and not auth.try_restore_session():
+        login_page.render(auth=auth)
         st.stop()
 
-# ── A partir de aquí el usuario ESTÁ autenticado ─────────────────────────
-from domain.entities import User  # noqa: E402
-from presentation.components import render_sidebar_user_block  # noqa: E402
-from presentation.layouts import render_main_header, build_sidebar_nav  # noqa: E402
+    raw_user = auth.get_current_user()
+    return auth, User.from_auth_dict(raw_user)
 
-# ── Background updater: iniciar una sola vez por proceso ─────────────────
-from utils.background_updater import start_background_updater, get_updater_state  # noqa: E402
-start_background_updater()
 
-_raw_user = _auth.get_current_user()
-_current_user = User.from_auth_dict(_raw_user)
+def _sync_user_lists_once(user_id: str, user_service) -> None:
+    """Sincroniza favoritos/watchlist desde Supabase una sola vez por sesión."""
+    if st.session_state.get("_favs_synced"):
+        return
 
-_user_svc = _container.user_service
-_scan_svc = _container.scan_service
+    favorites = user_service.load_favorites(user_id)
+    watchlist = user_service.load_watchlist(user_id)
 
-# ── Splash de bienvenida (una sola vez tras login) ────────────────────────
-if st.session_state.pop("_show_welcome_splash", False):
-    from page_modules.login_page import show_welcome_splash  # noqa: E402
-    show_welcome_splash(_raw_user)
+    if favorites:
+        st.session_state["favoritos"] = favorites
+    if watchlist:
+        st.session_state["watchlist"] = watchlist
 
-# ============================================================================
-#                    IMPORTS DE PÁGINAS + SESSION STATE
-# ============================================================================
-from utils.state import initialize_session_state, persist_shared_state  # noqa: E402
-from page_modules import (  # noqa: E402
-    live_scanning_page, open_interest_page, data_analysis_page,
-    range_page, favorites_page, watchlist_page, important_companies_page,
-    news_page, reports_page, calendar_page, admin_users_page,
-    credit_spread_page, mi_perfil_page, optionkings_page, oka_sentiment_page,
-)
-
-initialize_session_state()
-
-# ── Sincronizar favoritos/watchlist desde Supabase (una vez por sesión) ──
-if not st.session_state.get("_favs_synced"):
-    _favs = _user_svc.load_favorites(_current_user.id)
-    _wl = _user_svc.load_watchlist(_current_user.id)
-    if _favs:
-        st.session_state.favoritos = _favs
-    if _wl:
-        st.session_state.watchlist = _wl
     st.session_state["_favs_synced"] = True
 
-# ============================================================================
-#                    SIDEBAR
-# ============================================================================
-with st.sidebar:
-    render_sidebar_logo()
-    _effective_page = build_sidebar_nav(_current_user)
 
-    # ── Indicador de background updater ──────────────────────────────
-    _bg = get_updater_state()
-    if _bg.running:
-        st.markdown(
-            f'<div style="padding:0.4rem 0.6rem;margin:0.3rem 0;'
-            f'background:#0d1117;border:1px solid #1e293b;border-radius:8px;'
-            f'font-size:0.75rem;color:#94a3b8;">'
-            f'📡 Top {_bg.tickers_loaded} S&P 500 · {_bg.status_text}</div>',
-            unsafe_allow_html=True,
-        )
+def _start_background_once() -> None:
+    """Inicia updater de background una sola vez por sesión (idempotente)."""
+    bg_state = get_updater_state()
+    should_start = (not st.session_state.get("background_running")) or (not bg_state.running)
+    if should_start:
+        start_background_updater()
+        st.session_state["background_running"] = True
+        st.session_state["background_started_at"] = time.time()
 
-    render_sidebar_user_block(_current_user, _auth)
 
-st.session_state.current_page = _effective_page
+def _render_sidebar(current_user: User, auth: SupabaseAuth) -> str:
+    """Renderiza sidebar y retorna página seleccionada."""
+    with st.sidebar:
+        render_sidebar_logo()
+        effective_page = build_sidebar_nav(current_user)
 
-# ============================================================================
-#                    HEADER + TICKER INPUT
-# ============================================================================
-_redir = st.session_state.get("_redirect", {})
-_redirect_ticker = st.query_params.get("t", "")
-if _redirect_ticker:
-    del st.query_params["t"]
+        bg_state = get_updater_state()
+        if bg_state.running:
+            if bg_state.last_update > 0:
+                age_seconds = max(0, int(time.time() - bg_state.last_update))
+                age_txt = f"Datos actualizados hace {age_seconds}s"
+            else:
+                age_txt = "Cargando datos de mercado..."
 
-_default_ticker = _redirect_ticker or st.session_state.get("ticker_anterior", "") or "SPY"
-
-if _redir.get("page") or _redirect_ticker:
-    st.session_state["_redirect"] = {"page": None, "ticker": None}
-    if _redirect_ticker:
-        st.session_state.ticker_anterior = _redirect_ticker
-
-_ticker_preview = _redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"
-render_main_header(_ticker_preview)
-
-ticker_symbol = st.text_input(
-    "\U0001f50d Símbolo del Ticker",
-    value=_default_ticker,
-    max_chars=10,
-    help="Ingresa el símbolo de la acción (ej: SPY, AAPL, TSLA, QQQ)",
-    placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
-    label_visibility="collapsed",
-).strip().upper()
-
-# Detectar cambio de ticker → limpiar estado y re-escanear
-if ticker_symbol and ticker_symbol != st.session_state.ticker_anterior:
-    _scan_svc.reset_for_ticker(ticker_symbol)
-    st.rerun()
-
-# Validar coherencia del estado entre páginas (no limpia, solo asegura consistencia)
-persist_shared_state(ticker_symbol)
-
-# ============================================================================
-#                    PAGE DISPATCH
-# ============================================================================
-_page_kwargs = _scan_svc.get_thresholds()
-
-_PAGE_MAP: dict[str, object] = {
-    "\U0001f50d Live Scanning":       lambda: live_scanning_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4ca Open Interest":       lambda: open_interest_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4c8 Data Analysis":       lambda: data_analysis_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4d0 Range":               lambda: range_page.render(ticker_symbol, **_page_kwargs),
-    "\u2b50 Favorites":               lambda: favorites_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4cc Watchlist":           lambda: watchlist_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f3e2 Important Companies": lambda: important_companies_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4f0 News":                lambda: news_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4c5 Calendar":            lambda: calendar_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4cb Reports":             lambda: reports_page.render(ticker_symbol, **_page_kwargs),
-    "\U0001f4b0 Venta de Prima":      lambda: credit_spread_page.render(**_page_kwargs),
-    "\U0001f464 Mi Perfil":           lambda: mi_perfil_page.render(**_page_kwargs),
-    "\U0001f3c6 OptionKings Analytic": lambda: optionkings_page.render(**_page_kwargs),
-    "\U0001f30a OKA Sentiment Index":   lambda: oka_sentiment_page.render(**_page_kwargs),
-    "\U0001f451 Administrar Usuarios": lambda: admin_users_page.render(**_page_kwargs),
-}
-
-if _render_fn := _PAGE_MAP.get(_effective_page):
-    try:
-        _render_fn()
-    except Exception as _page_exc:
-        # Safety net: si un circuit breaker abierto o retries agotados
-        # llegan hasta aquí sin ser manejados por la página, informar al usuario.
-        _exc_name = type(_page_exc).__name__
-        if "CircuitOpen" in _exc_name:
-            st.error(
-                "🔌 **API pausada** — Demasiados fallos consecutivos. "
-                "Los datos se recuperarán automáticamente en unos minutos.",
-                icon="🔌",
+            st.markdown(
+                f'<div style="padding:0.45rem 0.6rem;margin:0.35rem 0;'
+                f'background:#0d1117;border:1px solid #1e293b;border-radius:8px;'
+                f'font-size:0.76rem;color:#94a3b8;">'
+                f'\U0001f4e1 Top {bg_state.tickers_loaded} S&P 500<br>'
+                f'{age_txt}</div>',
+                unsafe_allow_html=True,
             )
-        elif "RetryError" in _exc_name or "RateLimit" in _exc_name:
+
+        render_sidebar_user_block(current_user, auth)
+
+    return effective_page
+
+
+def _resolve_ticker(scan_service) -> str:
+    """Resuelve ticker activo, sincroniza estado y reinicia datos si cambió."""
+    redirect = st.session_state.get("_redirect", {})
+    redirect_ticker = st.query_params.get("t", "")
+    if redirect_ticker:
+        del st.query_params["t"]
+
+    default_ticker = redirect_ticker or st.session_state.get("ticker_anterior", "") or "SPY"
+
+    if redirect.get("page") or redirect_ticker:
+        st.session_state["_redirect"] = {"page": None, "ticker": None}
+        if redirect_ticker:
+            st.session_state["ticker_anterior"] = redirect_ticker
+
+    ticker_preview = redirect_ticker or st.session_state.get("ticker_anterior", "SPY") or "SPY"
+    render_main_header(ticker_preview)
+
+    ticker_symbol = st.text_input(
+        "\U0001f50d S\u00edmbolo del Ticker",
+        value=default_ticker,
+        max_chars=10,
+        help="Ingresa el s\u00edmbolo de la acci\u00f3n (ej: SPY, AAPL, TSLA, QQQ)",
+        placeholder="Escribe un ticker... (SPY, AAPL, TSLA, QQQ)",
+        label_visibility="collapsed",
+    ).strip().upper()
+
+    previous_ticker = st.session_state.get("ticker_anterior")
+    if ticker_symbol and ticker_symbol != previous_ticker:
+        # Evita rerun extra manual; el cambio de widget ya dispara rerun.
+        scan_service.reset_for_ticker(ticker_symbol)
+
+    persist_shared_state(ticker_symbol)
+    return ticker_symbol
+
+
+def _render_page(page_name: str, ticker_symbol: str, page_kwargs: dict) -> None:
+    """Dispatcher principal de páginas con firmas compatibles."""
+    page_map: dict[str, Callable[[], None]] = {
+        "\U0001f50d Live Scanning": lambda: live_scanning_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4ca Open Interest": lambda: open_interest_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4c8 Data Analysis": lambda: data_analysis_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4d0 Range": lambda: range_page.render(ticker_symbol, **page_kwargs),
+        "\u2b50 Favorites": lambda: favorites_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4cc Watchlist": lambda: watchlist_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f3e2 Important Companies": lambda: important_companies_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4f0 News": lambda: news_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4c5 Calendar": lambda: calendar_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4cb Reports": lambda: reports_page.render(ticker_symbol, **page_kwargs),
+        "\U0001f4b0 Venta de Prima": lambda: credit_spread_page.render(**page_kwargs),
+        "\U0001f464 Mi Perfil": lambda: mi_perfil_page.render(**page_kwargs),
+        "\U0001f3c6 OptionKings Analytic": lambda: optionkings_page.render(**page_kwargs),
+        "\U0001f30a OKA Sentiment Index": lambda: oka_sentiment_page.render(**page_kwargs),
+        "\U0001f451 Administrar Usuarios": lambda: admin_users_page.render(**page_kwargs),
+    }
+
+    render_fn = page_map.get(page_name)
+    if not render_fn:
+        st.warning(f"P\u00e1gina no registrada: {page_name}")
+        return
+
+    try:
+        render_fn()
+    except Exception as page_exc:
+        exc_name = type(page_exc).__name__
+        if "CircuitOpen" in exc_name:
+            st.error(
+                "\U0001f50c **API pausada** - demasiados fallos consecutivos. "
+                "Los datos se recuperar\u00e1n autom\u00e1ticamente en unos minutos.",
+                icon="\U0001f50c",
+            )
+        elif "RetryError" in exc_name or "RateLimit" in exc_name:
             st.warning(
-                "⚠️ **Datos retrasados** — Límite de API alcanzado tras "
+                "\u26a0\ufe0f **Datos retrasados** - l\u00edmite de API alcanzado tras "
                 "varios reintentos. Intenta de nuevo en unos minutos.",
-                icon="⏳",
+                icon="\u23f3",
             )
         else:
-            import logging as _log
-            _log.getLogger(__name__).error(
-                "Error no manejado en página %s: %s", _effective_page, _page_exc,
+            logger.error(
+                "Error no manejado en p\u00e1gina %s: %s",
+                page_name,
+                page_exc,
                 exc_info=True,
             )
-            st.error(
-                f"❌ Error inesperado: {_page_exc}",
-                icon="❌",
-            )
+            st.error(f"\u274c Error inesperado: {page_exc}", icon="\u274c")
 
-# ============================================================================
-#                    FOOTER
-# ============================================================================
-from ui.shared import render_footer  # noqa: E402
-render_footer()
+
+def main() -> None:
+    """Pipeline principal de la app."""
+    inject_all_css()
+    initialize_session_state()
+
+    auth, current_user = _bootstrap_auth()
+    container = get_container(auth=auth)
+
+    _start_background_once()
+
+    if st.session_state.pop("_show_welcome_splash", False):
+        from page_modules.login_page import show_welcome_splash
+        show_welcome_splash(auth.get_current_user())
+
+    _sync_user_lists_once(current_user.id, container.user_service)
+
+    effective_page = _render_sidebar(current_user, auth)
+    st.session_state["current_page"] = effective_page
+
+    ticker_symbol = _resolve_ticker(container.scan_service)
+    page_kwargs = container.scan_service.get_thresholds()
+    _render_page(effective_page, ticker_symbol, page_kwargs)
+
+    render_footer()
+
+
+if __name__ == "__main__":
+    main()
 
