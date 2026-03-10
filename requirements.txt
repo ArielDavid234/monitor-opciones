@@ -26,6 +26,7 @@ kaleido>=0.2
 # Scaling / Cache
 redis>=5.0.0,<6.0.0
 python-dotenv>=1.0.0,<2.0.0
+pydantic-settings>=2.0,<3
 
 # Resilience (retry + jitter + circuit breaker)
 tenacity>=9.0,<10
