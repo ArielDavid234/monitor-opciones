@@ -1236,21 +1236,17 @@ def get_fast_market_data(tickers: list[str]) -> dict[str, dict]:
                 continue
 
             # IV rank + percentile + tendencia
+            # Nota: NO se fetcha _cached_options_dates aquí — descargar la cadena
+            # de opciones de 100 tickers en background agota el rate-limit de Yahoo
+            # Finance y bloquea los scans activos del usuario.
             iv_info = compute_iv_rank_percentile(ticker)
             trend_info = compute_trend(ticker)
-
-            # Expiraciones disponibles (usa cache TTL interno de 5 min)
-            try:
-                expirations = list(_cached_options_dates(ticker))
-            except Exception:
-                expirations = []
 
             results[ticker] = {
                 "spot": round(spot, 2),
                 "iv_rank": iv_info.get("iv_rank", 0),
                 "iv_percentile": iv_info.get("iv_percentile", 0),
                 "trend": trend_info.get("trend", "Neutral"),
-                "expirations": expirations[:12],
                 "updated_at": _time.time(),
             }
 

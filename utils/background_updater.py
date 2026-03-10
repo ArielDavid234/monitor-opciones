@@ -39,8 +39,8 @@ _FALLBACK_TICKERS: list[str] = [
 
 # ── Configuración del updater ────────────────────────────────────────────
 NUM_BATCHES = 5
-INTERVAL_SECONDS = 60          # intervalo entre batches
-CACHE_TTL_SECONDS = 360        # 6 min TTL (ciclo completo ~5 min)
+INTERVAL_SECONDS = 120         # 2 min entre batches — reduce presión sobre Yahoo Finance
+CACHE_TTL_SECONDS = 720        # 12 min TTL (ciclo completo ~10 min)
 _SP500_CSV_URL = (
     "https://raw.githubusercontent.com/datasets/"
     "s-and-p-500-companies/main/data/constituents.csv"
