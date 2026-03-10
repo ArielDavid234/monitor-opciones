@@ -263,26 +263,20 @@ def _avg_chain_oi(ticker: str) -> float:
 
 
 def _passes_underlying_filter(ticker: str, spot: float) -> tuple[bool, str]:
-    """Filtro 1 — verifica precio, volumen promedio y OI de cadena.
+    """Filtro 1 — verifica precio y volumen promedio del subyacente.
 
     Returns (passed, reason).
+
+    Nota: si avg_vol == 0 (rate-limit / error de red) el ticker pasa con
+    beneficio de la duda. Solo se rechaza cuando hay un valor real positivo
+    menor al umbral.
     """
     if spot < CS_MIN_PRICE:
         return False, f"Precio ${spot:.2f} < ${CS_MIN_PRICE}"
-    is_whitelisted = ticker.upper() in CS_WHITELIST
     avg_vol = _avg_daily_volume(ticker)
-    if avg_vol < CS_MIN_AVG_VOLUME:
-        if avg_vol == 0 and is_whitelisted:
-            # Data unavailable (network error) — skip check for known-liquid tickers
-            logger.info("R1: %s vol=0 pero en whitelist — se omite filtro volumen", ticker)
-        else:
-            return False, f"Vol prom {avg_vol:,.0f} < {CS_MIN_AVG_VOLUME:,}"
-    avg_oi = _avg_chain_oi(ticker)
-    if avg_oi < CS_MIN_CHAIN_OI:
-        if avg_oi == 0 and is_whitelisted:
-            logger.info("R1: %s OI=0 pero en whitelist — se omite filtro OI", ticker)
-        else:
-            return False, f"OI cadena prom {avg_oi:.0f} < {CS_MIN_CHAIN_OI}"
+    # avg_vol == 0 → dato no disponible (rate-limit/error) → no rechazar
+    if avg_vol > 0 and avg_vol < CS_MIN_AVG_VOLUME:
+        return False, f"Vol prom {avg_vol:,.0f} < {CS_MIN_AVG_VOLUME:,}"
     return True, ""
 
 
