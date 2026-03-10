@@ -1308,12 +1308,11 @@ def scan_credit_spreads(
     all_results: list[dict] = []
     ticker_indicators: dict[str, dict] = {}
 
-    # En modo strict, filtrar contra whitelist
-    effective_tickers = tickers
-    if _sr.get("r1_whitelist", strict):
-        effective_tickers = [t for t in tickers if t.strip().upper() in CS_WHITELIST]
-
-    clean_tickers = [t.strip().upper() for t in effective_tickers if t.strip()]
+    # Nunca recortar los tickers elegidos por el usuario contra la whitelist:
+    # el usuario seleccionó explícitamente esos tickers en la UI.
+    # R1 sigue validando precio>$20 y volumen>1M individualmente en
+    # _passes_underlying_filter — ese filtro no se toca.
+    clean_tickers = [t.strip().upper() for t in tickers if t.strip()]
     total = len(clean_tickers)
 
     import time as _time
