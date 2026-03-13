@@ -1440,13 +1440,13 @@ def _check_10_rules(row: dict, account_size: float, strict_rules: dict | None = 
     mid = credit + bid_ask / 2 if credit > 0 else 0.01
 
     # Regla 1 — Whitelist + Precio > $20
-        if skip_all or not _active("r1_whitelist"):
-            rules.append({"regla": "1. Precio>$20", "ok": True, "skip": True})
-        else:
-            r1 = spot > CS_MIN_PRICE
-            rules.append({"regla": "1. Precio>$20", "ok": r1})
-            if not r1:
-                all_pass = False
+    if skip_all or not _active("r1_whitelist"):
+        rules.append({"regla": "1. Precio>$20", "ok": True, "skip": True})
+    else:
+        r1 = spot > CS_MIN_PRICE
+        rules.append({"regla": "1. Precio>$20", "ok": r1})
+        if not r1:
+            all_pass = False
 
     # Regla 2 — IV Rank >= 30
     if skip_all or not _active("r2_iv_rank"):
