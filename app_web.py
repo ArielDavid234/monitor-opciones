@@ -105,7 +105,8 @@ def _render_sidebar(current_user: User, auth: SupabaseAuth) -> str:
         effective_page = build_sidebar_nav(current_user)
 
         bg_state = get_updater_state()
-        if bg_state.running:
+        show_bg_status = "Administrar Usuarios" not in str(effective_page)
+        if bg_state.running and show_bg_status:
             if bg_state.last_update > 0:
                 age_seconds = max(0, int(time.time() - bg_state.last_update))
                 age_txt = f"Datos actualizados hace {age_seconds}s"
