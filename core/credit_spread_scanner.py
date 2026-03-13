@@ -486,11 +486,16 @@ def opportunity_score_breakdown(row: dict) -> list[dict]:
 #  IV Rank & IV Percentile  — delegado a core.iv_rank (fuente canónica)
 # ────────────────────────────────────────────────────────────────────────────
 
-def compute_iv_rank_percentile(ticker: str) -> dict:
+def compute_iv_rank_percentile(ticker: str, current_atm_iv: float | None = None) -> dict:
     """Calcula IV Rank / Percentile usando el historial cacheado.
 
     Usa _cached_history(ticker, "1y") — reutiliza el caché TTL del scanner
     y evita un download adicional de yfinance por ticker.
+
+    Args:
+        current_atm_iv: IV implícita ATM real de la cadena de opciones (decimal).
+            Si se proporciona, se usa como nivel actual de IV en lugar del HV20.
+            Las plataformas oficiales usan la IV ATM, no la HV histórica.
 
     Returns keys: iv_current, iv_rank, iv_percentile, iv_1y_high, iv_1y_low
     """
@@ -511,14 +516,21 @@ def compute_iv_rank_percentile(ticker: str) -> dict:
         hv = hv.dropna()
         if hv.empty:
             return _default
-        iv_current = round(float(hv.iloc[-1]), 2)
+        hv_current = round(float(hv.iloc[-1]), 2)   # HV20 anualizada (%)
         iv_max = round(float(hv.max()), 2)
         iv_min = round(float(hv.min()), 2)
         iv_range = iv_max - iv_min
+        # Si se proporcionó IV ATM real de la cadena de opciones, úsarla como
+        # nivel actual; de lo contrario caer al HV20 como proxy.
+        if current_atm_iv is not None and current_atm_iv > 0.01:
+            iv_current = round(current_atm_iv * 100, 2)  # decimal → %
+        else:
+            iv_current = hv_current
         iv_rank = round((iv_current - iv_min) / iv_range * 100, 1) if iv_range > 0 else 0.0
         iv_pct = round(float((hv < iv_current).mean() * 100), 1)
         return {
             "iv_current": iv_current,
+            "hv_current": hv_current,   # HV20 siempre disponible (proxy histórico)
             "iv_rank": iv_rank,
             "iv_percentile": iv_pct,
             "iv_1y_high": iv_max,
@@ -744,7 +756,12 @@ def _build_spreads_for_expiry(
                 if bought_ask <= 0:
                     continue
 
-                credit = round(sold_bid - bought_ask, 2)
+                # Mid-price credit: (bid+ask)/2 del vendido − (bid+ask)/2 del comprado
+                # Las plataformas oficiales (TastyTrade, ToS) muestran el mid-price.
+                _bought_bid_bp = float(_safe_num(bought.get("bid", 0)))
+                _sold_mid_bp = (sold_bid + sold_ask) / 2.0 if sold_ask > 0 else sold_bid
+                _bought_mid_bp = (_bought_bid_bp + bought_ask) / 2.0 if bought_ask > 0 else bought_ask
+                credit = round(_sold_mid_bp - _bought_mid_bp, 2)
                 if credit < min_credit:
                     continue
 
@@ -800,7 +817,10 @@ def _build_spreads_for_expiry(
                 gamma_neto = round(_g_bought["gamma"] - _g_sold["gamma"], 6)
                 # Theta neto: short nos beneficia (+), long nos cuesta (-)
                 theta_neto = round(-_g_sold["theta"] + _g_bought["theta"], 6)
-                decay_7d = round(theta_neto * 7.0, 2)
+                # Decay: usar mínimo entre 7 y DTE real para evitar proyectar
+                # más días de los que quedan hasta el vencimiento.
+                _decay_days = min(7, max(1, dte))
+                decay_7d = round(theta_neto * _decay_days, 2)
                 # Liquidity Score del short leg (0-100)
                 _ba_mid = (sold_bid + sold_ask) / 2 if sold_ask > 0 else 0.01
                 _ba_tight = (sold_ask - sold_bid) / _ba_mid if _ba_mid > 0 else 1.0
@@ -837,7 +857,11 @@ def _build_spreads_for_expiry(
                     "Gamma Neto": gamma_neto,
                     "Theta Neto": theta_neto,
                     "Decay 7d": decay_7d,
-                    "POP %": round(pop * 100, 1),
+                    "Decay Days": _decay_days,
+                    # POP basada en breakeven real del spread (más precisa que 1-|delta|)
+                    # Las plataformas oficiales usan N(d2) con K=breakeven.
+                    "POP %": round(pop_be * 100, 1),
+                    "POP Delta %": round(pop * 100, 1),     # 1-|delta|, guardado como referencia
                     "POP Breakeven %": round(pop_be * 100, 1),
                     "Prob OTM %": round(pop * 100, 1),
                     "Crédito": credit,
@@ -945,7 +969,11 @@ def _build_spreads_for_expiry(
                 if bought_ask <= 0:
                     continue
 
-                credit = round(sold_bid - bought_ask, 2)
+                # Mid-price credit: (bid+ask)/2 del vendido − (bid+ask)/2 del comprado
+                _bought_bid_bc = float(_safe_num(bought.get("bid", 0)))
+                _sold_mid_bc = (sold_bid + sold_ask) / 2.0 if sold_ask > 0 else sold_bid
+                _bought_mid_bc = (_bought_bid_bc + bought_ask) / 2.0 if bought_ask > 0 else bought_ask
+                credit = round(_sold_mid_bc - _bought_mid_bc, 2)
                 if credit < min_credit:
                     continue
 
@@ -998,7 +1026,8 @@ def _build_spreads_for_expiry(
                 _gc_bought = _bsm_greeks(spot, bought_strike, dte, bought_ivbc, "call")
                 gamma_neto_bc = round(_gc_bought["gamma"] - _gc_sold["gamma"], 6)
                 theta_neto_bc = round(-_gc_sold["theta"] + _gc_bought["theta"], 6)
-                decay_7d_bc = round(theta_neto_bc * 7.0, 2)
+                _decay_days_bc = min(7, max(1, dte))
+                decay_7d_bc = round(theta_neto_bc * _decay_days_bc, 2)
                 _ba_mid_c = (sold_bid + sold_ask) / 2 if sold_ask > 0 else 0.01
                 _ba_tight_c = (sold_ask - sold_bid) / _ba_mid_c if _ba_mid_c > 0 else 1.0
                 liq_score_bc = (
@@ -1034,7 +1063,9 @@ def _build_spreads_for_expiry(
                     "Gamma Neto": gamma_neto_bc,
                     "Theta Neto": theta_neto_bc,
                     "Decay 7d": decay_7d_bc,
-                    "POP %": round(pop_bc * 100, 1),
+                    "Decay Days": _decay_days_bc,
+                    "POP %": round(pop_be_bc * 100, 1),
+                    "POP Delta %": round(pop_bc * 100, 1),
                     "POP Breakeven %": round(pop_be_bc * 100, 1),
                     "Prob OTM %": round(pop_bc * 100, 1),
                     "Crédito": credit,
@@ -1106,8 +1137,23 @@ def _scan_single_ticker(
         logger.warning("Sin precio para %s: %s", ticker, err)
         return [], {}
 
-    # Calcular indicadores a nivel de ticker (una sola vez)
-    iv_info = compute_iv_rank_percentile(ticker)
+    # Calcular indicadores a nivel de ticker (una sola vez).
+    # Primero obtenemos el ATM IV de la primera expiración disponible para que
+    # compute_iv_rank_percentile use la IV implícita real en vez del HV20.
+    _atm_iv_for_rank: float = 0.0
+    try:
+        _early_dates = _cached_options_dates(ticker)
+        if _early_dates:
+            _early_chain = _cached_option_chain(ticker, _early_dates[0])
+            _early_puts = _early_chain.get("puts", pd.DataFrame())
+            if not _early_puts.empty and "impliedVolatility" in _early_puts.columns:
+                _atm_idx_r = (_early_puts["strike"] - spot).abs().idxmin()
+                _raw_atm_r = float(_safe_num(_early_puts.at[_atm_idx_r, "impliedVolatility"], 0))
+                _atm_iv_for_rank = _raw_atm_r if _raw_atm_r > 0.01 else 0.0
+    except Exception:
+        _atm_iv_for_rank = 0.0
+
+    iv_info = compute_iv_rank_percentile(ticker, current_atm_iv=_atm_iv_for_rank)
     trend_info = compute_trend(ticker)
 
     combined_meta = {"ticker": ticker, **iv_info, **trend_info}
@@ -1144,7 +1190,8 @@ def _scan_single_ticker(
     ticker_meta = {
         "IV Rank": iv_info["iv_rank"],
         "IV Pctil": iv_info["iv_percentile"],
-        "HV 20D": iv_info["iv_current"],   # HV anualizada 20 días en % (proxy de IV histórica)
+        "HV 20D": iv_info.get("hv_current", iv_info["iv_current"]),  # HV anualizada 20D
+        "IV ATM": iv_info["iv_current"],  # IV ATM real (o HV20 si no hay cadena)
         "Tendencia": trend_info["trend"],
     }
 

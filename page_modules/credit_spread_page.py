@@ -991,6 +991,7 @@ def render(**kwargs) -> None:
                 _gn = row.get("Gamma Neto", 0)
                 _liq = row.get("Liq Score", 0)
                 _d7 = row.get("Decay 7d", 0)
+                _decay_days_disp = row.get("Decay Days", 7)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 _ns_c = "#4ade80" if _nscore >= 75 else ("#facc15" if _nscore >= 55 else "#f87171")
                 _pot_c = "#4ade80" if _pot < 25 else ("#facc15" if _pot < 40 else "#f87171")
@@ -1017,7 +1018,7 @@ def render(**kwargs) -> None:
                     f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/c '
                     f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span><br>'
                     f'<span style="color:#94a3b8;">Γ: {_gn:.4f}</span> · '
-                    f'<span style="color:#64748b;">θ 7d: ${_d7:.2f}</span> · '
+                    f'<span style="color:#64748b;">θ {_decay_days_disp}d: ${_d7:.2f}</span> · '
                     f'<span style="color:{_liq_c};">Liq: {_liq:.0f}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
@@ -1043,6 +1044,7 @@ def render(**kwargs) -> None:
                 _gn = row.get("Gamma Neto", 0)
                 _liq = row.get("Liq Score", 0)
                 _d7 = row.get("Decay 7d", 0)
+                _decay_days_disp = row.get("Decay Days", 7)
                 _ivr_c = "#00ff88" if _ivr >= 40 else "#64748b"
                 _ns_c = "#4ade80" if _nscore >= 75 else ("#facc15" if _nscore >= 55 else "#f87171")
                 _pot_c = "#4ade80" if _pot < 25 else ("#facc15" if _pot < 40 else "#f87171")
@@ -1069,7 +1071,7 @@ def render(**kwargs) -> None:
                     f'<span style="color:{_ev_c};font-weight:700;">🧮 EV: ${_ev_d:+.2f}/c '
                     f'({_ev_p:+.1f}%) | EV Aj: {_eva:+.1f}% — {_ev_badge}</span><br>'
                     f'<span style="color:#94a3b8;">Γ: {_gn:.4f}</span> · '
-                    f'<span style="color:#64748b;">θ 7d: ${_d7:.2f}</span> · '
+                    f'<span style="color:#64748b;">θ {_decay_days_disp}d: ${_d7:.2f}</span> · '
                     f'<span style="color:{_liq_c};">Liq: {_liq:.0f}</span>'
                     f"</div>",
                     unsafe_allow_html=True,
