@@ -220,7 +220,7 @@ def main() -> None:
     auth, current_user = _bootstrap_auth()
     container = get_container(auth=auth)
 
-    _start_background_once()
+    # _start_background_once()
 
     if st.session_state.pop("_show_welcome_splash", False):
         from page_modules.login_page import show_welcome_splash
