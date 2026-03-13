@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import pandas as pd
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from st_aggrid import AgGrid
 
@@ -617,7 +617,29 @@ def render(**kwargs) -> None:
                     key=f"alert_save_{a_idx}",
                     use_container_width=True,
                 ):
+                    _dte_int = int(_a_dte or 0)
+                    _expiry = (datetime.now() + timedelta(days=max(0, _dte_int))).strftime("%Y-%m-%d")
+                    _contract_id = f"{_a_tk}_{_opt.upper()}_{int(_a_sv)}_{int(_a_sc)}_{_dte_int}D"
+                    _credit_per_spread = float(_a_cr or 0) * 100.0
                     fav_entry = {
+                        # Canonical schema (used by Favorites page)
+                        "Contrato": _contract_id,
+                        "Ticker": _a_tk,
+                        "Tipo_Opcion": _opt.upper(),
+                        "Strike": float(_a_sv or 0),
+                        "Vencimiento": _expiry,
+                        "Volumen": 0,
+                        "OI": 0,
+                        "OI_Chg": 0,
+                        "Ask": 0,
+                        "Bid": 0,
+                        "Ultimo": 0,
+                        "Lado": "CREDIT_SPREAD",
+                        "IV": float(_a_ivr or 0),
+                        "Prima_Volumen": _credit_per_spread,
+                        "Tipo_Alerta": "Credit Spread Alert",
+                        "Guardado_En": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        # Legacy keys retained for compatibility
                         "ticker": _a_tk,
                         "tipo": _a_tipo,
                         "spot": _a_spot,
@@ -638,9 +660,12 @@ def render(**kwargs) -> None:
                     favs = st.session_state.get("favoritos", [])
                     # Evitar duplicados
                     dup = any(
-                        f.get("ticker") == _a_tk
-                        and f.get("strike_vendido") == _a_sv
-                        and f.get("strike_comprado") == _a_sc
+                        (
+                            f.get("ticker") == _a_tk
+                            and f.get("strike_vendido") == _a_sv
+                            and f.get("strike_comprado") == _a_sc
+                        )
+                        or f.get("Contrato") == _contract_id
                         for f in favs
                     )
                     if dup:

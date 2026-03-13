@@ -2,7 +2,7 @@
 """Página: ⭐ Favorites — Contratos Favoritos."""
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from utils.formatters import (
     _fmt_monto, _fmt_lado, _fmt_oi_chg, _fmt_delta,
@@ -15,10 +15,71 @@ from ui.components import (
 from core.scanner import obtener_historial_contrato
 
 
+def _normalize_favorite_item(fav: dict) -> dict:
+    """Normaliza entradas legacy de credit spread al esquema estándar de favoritos."""
+    if not isinstance(fav, dict):
+        return {}
+
+    # Ya está en formato estándar.
+    if fav.get("Contrato"):
+        return fav
+
+    ticker = str(fav.get("ticker", "")).upper().strip()
+    tipo_raw = str(fav.get("tipo", ""))
+    strike_sell = float(fav.get("strike_vendido", 0) or 0)
+    strike_buy = float(fav.get("strike_comprado", 0) or 0)
+    dte = int(fav.get("dte", 0) or 0)
+
+    if not ticker:
+        return fav
+
+    option_type = "PUT" if "Put" in tipo_raw else "CALL"
+    contract_id = f"{ticker}_{option_type}_{int(strike_sell)}_{int(strike_buy)}_{dte}D"
+    expiry = (datetime.now() + timedelta(days=max(0, dte))).strftime("%Y-%m-%d")
+
+    saved_at_iso = fav.get("saved_at")
+    if saved_at_iso:
+        try:
+            guardado_en = datetime.fromisoformat(str(saved_at_iso)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            guardado_en = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        guardado_en = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    normalized = dict(fav)
+    normalized.update(
+        {
+            "Contrato": contract_id,
+            "Ticker": ticker,
+            "Tipo_Opcion": option_type,
+            "Strike": strike_sell,
+            "Vencimiento": expiry,
+            "Volumen": int(fav.get("volumen", 0) or 0),
+            "OI": int(fav.get("oi", 0) or 0),
+            "OI_Chg": float(fav.get("oi_chg", 0) or 0),
+            "Ask": float(fav.get("ask", 0) or 0),
+            "Bid": float(fav.get("bid", 0) or 0),
+            "Ultimo": float(fav.get("ultimo", 0) or 0),
+            "Lado": "CREDIT_SPREAD",
+            "IV": float(fav.get("iv_rank", 0) or 0),
+            "Prima_Volumen": float(fav.get("credito", 0) or 0) * 100.0,
+            "Tipo_Alerta": "Credit Spread Alert",
+            "Guardado_En": guardado_en,
+        }
+    )
+    return normalized
+
+
 def render(ticker_symbol, **kwargs):
     st.markdown("### ⭐ Contratos Favoritos")
 
-    favoritos = st.session_state.get("favoritos", [])
+    favoritos_raw = st.session_state.get("favoritos", [])
+    favoritos = [_normalize_favorite_item(f) for f in favoritos_raw]
+
+    if favoritos != favoritos_raw:
+        st.session_state["favoritos"] = favoritos
+        _guardar_favoritos(favoritos)
+        _sync_to_supabase("favoritos", favoritos)
 
     if not favoritos:
         st.info("No hay contratos en favoritos. Ejecuta un escaneo y usa el botón ☆ **Guardar en Favoritos** en cualquier alerta.")
@@ -107,7 +168,13 @@ def render(ticker_symbol, **kwargs):
 
                     # Botón eliminar
                     if st.button("🗑️ Eliminar de Favoritos", key=f"del_fav_{idx_fav}_{fav_sym}", use_container_width=True):
-                        _eliminar_favorito(fav_sym)
+                        if fav_sym and fav_sym != "N/A":
+                            _eliminar_favorito(fav_sym)
+                        else:
+                            nuevos_favs = [f for i, f in enumerate(favoritos) if i != idx_fav]
+                            st.session_state.favoritos = nuevos_favs
+                            _guardar_favoritos(nuevos_favs)
+                            _sync_to_supabase("favoritos", nuevos_favs)
                         st.success(f"🗑️ {fav_sym} eliminado de Favoritos")
                         st.rerun()
 
