@@ -20,6 +20,7 @@ from ui.charts import (
 )
 from ui.plotly_professional_theme import apply_theme, COLORS, pro_gauge_layout
 from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
+from core.gex_engine import build_gex_profile, calculate_volatility_skew
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,124 @@ def render(ticker_symbol, **kwargs):
     df_analisis = pd.DataFrame(st.session_state.datos_completos)
     if "Prima_Volumen" in df_analisis.columns:
         df_analisis = df_analisis.rename(columns={"Prima_Volumen": "Prima_Vol"})
+
+    # ================================================================
+    # GAMMA EXPOSURE (GEX) + VOLATILITY ENGINE
+    # ================================================================
+    st.markdown("### 🧭 Gamma Exposure (GEX) & Volatility Engine")
+    st.caption(
+        "Perfil institucional por strike: Call GEX (+), Put GEX (-), Net GEX, "
+        "Zero Gamma y skew de volatilidad 10% OTM."
+    )
+
+    spot_gex = st.session_state.get("precio_subyacente", 0.0)
+    try:
+        spot_gex = float(spot_gex) if spot_gex is not None else 0.0
+    except Exception:
+        spot_gex = 0.0
+
+    if spot_gex <= 0:
+        if "Spot" in df_analisis.columns and not df_analisis["Spot"].dropna().empty:
+            spot_gex = float(df_analisis["Spot"].dropna().iloc[0])
+        elif "Strike" in df_analisis.columns:
+            spot_gex = float(df_analisis["Strike"].median())
+
+    try:
+        gex_res = build_gex_profile(df_analisis, spot_price=spot_gex)
+        gex_profile = gex_res.get("profile", pd.DataFrame())
+        skew_res = calculate_volatility_skew(df_analisis)
+    except Exception as exc:
+        logger.error("Error calculando GEX/Skew: %s", exc, exc_info=True)
+        gex_profile = pd.DataFrame()
+        skew_res = {
+            "put_iv_10otm": 0.0,
+            "call_iv_10otm": 0.0,
+            "skew": 0.0,
+            "regime": "Sin datos",
+        }
+
+    if not gex_profile.empty:
+        zero_gamma = float(gex_res.get("zero_gamma_level", 0.0) or 0.0)
+        call_wall = gex_res.get("call_wall", {"strike": 0.0, "gex": 0.0})
+        put_wall = gex_res.get("put_wall", {"strike": 0.0, "gex": 0.0})
+
+        fig_gex = go.Figure()
+        fig_gex.add_trace(go.Bar(
+            x=gex_profile["strike"],
+            y=gex_profile["Call GEX"],
+            name="Call GEX",
+            marker_color="#16a34a",
+            opacity=0.85,
+            hovertemplate="Strike %{x}<br>Call GEX: %{y:,.0f}<extra></extra>",
+        ))
+        fig_gex.add_trace(go.Bar(
+            x=gex_profile["strike"],
+            y=gex_profile["Put GEX"],
+            name="Put GEX",
+            marker_color="#ef4444",
+            opacity=0.85,
+            hovertemplate="Strike %{x}<br>Put GEX: %{y:,.0f}<extra></extra>",
+        ))
+
+        if spot_gex > 0:
+            fig_gex.add_vline(
+                x=spot_gex,
+                line_width=2,
+                line_dash="dash",
+                line_color="#f59e0b",
+                annotation_text=f"Spot {spot_gex:.2f}",
+                annotation_font=dict(color="#f59e0b", size=10),
+            )
+        if zero_gamma > 0:
+            fig_gex.add_vline(
+                x=zero_gamma,
+                line_width=2,
+                line_dash="dot",
+                line_color="#22d3ee",
+                annotation_text=f"Zero Gamma {zero_gamma:.2f}",
+                annotation_font=dict(color="#22d3ee", size=10),
+            )
+
+        fig_gex.update_layout(
+            barmode="relative",
+            title=dict(text="Perfil GEX por Strike", font=dict(size=14, color=COLORS["text"])),
+            xaxis=dict(title="Strike", color=COLORS["muted"], gridcolor=COLORS["faint"]),
+            yaxis=dict(title="GEX", color=COLORS["muted"], gridcolor=COLORS["faint"]),
+            paper_bgcolor=COLORS["bg"],
+            plot_bgcolor=COLORS["bg"],
+            legend=dict(orientation="h", x=0, y=1.12, font=dict(color=COLORS["muted"], size=10)),
+            margin=dict(l=30, r=20, t=50, b=30),
+            height=360,
+        )
+        st.plotly_chart(fig_gex, use_container_width=True, key="gex_profile_chart")
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Zero Gamma", f"{zero_gamma:.2f}" if zero_gamma > 0 else "N/A")
+        m2.metric("Call Wall", f"{float(call_wall.get('strike', 0.0)):.2f}" if call_wall else "N/A")
+        m3.metric("Put Wall", f"{float(put_wall.get('strike', 0.0)):.2f}" if put_wall else "N/A")
+        m4.metric("Net GEX", f"{float(gex_profile['Net GEX'].sum()):,.0f}")
+    else:
+        st.info(
+            "No hay datos suficientes para construir el perfil GEX. "
+            "Se requieren strike + OI y al menos IV (si no hay gamma API)."
+        )
+
+    sk1, sk2, sk3 = st.columns(3)
+    put_iv = float(skew_res.get("put_iv_10otm", 0.0) or 0.0)
+    call_iv = float(skew_res.get("call_iv_10otm", 0.0) or 0.0)
+    skew_val = float(skew_res.get("skew", 0.0) or 0.0)
+    sk1.metric("IV Put 10% OTM", f"{put_iv:.2f}%")
+    sk2.metric("IV Call 10% OTM", f"{call_iv:.2f}%")
+    sk3.metric("Skew", f"{skew_val:+.2f} pts", help=str(skew_res.get("regime", "")))
+
+    st.markdown(
+        f'<p style="color:#94a3b8;font-size:0.78rem;margin:0.2rem 0 1rem 0;">'
+        f'Régimen de volatilidad: <b style="color:#cbd5e1;">{skew_res.get("regime", "Sin datos")}</b>'
+        f"</p>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
 
     titulo_datos = f"Datos del último escaneo — {ticker_symbol}"
     st.caption(f"*{titulo_datos}* — {len(df_analisis):,} registros")
