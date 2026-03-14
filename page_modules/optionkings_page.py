@@ -215,33 +215,51 @@ def render(**kwargs) -> None:
         st.markdown("#### 🧠 Filtros Inteligentes (automáticos)")
         fi_col1, fi_col2 = st.columns(2)
         with fi_col1:
-            apply_smart = st.checkbox(
-                "🔬 Activar filtros inteligentes del PDF",
+            st.markdown("**🎚️ Selecciona filtros a aplicar**")
+            sf_ev = st.checkbox(
+                "EV > $0",
                 value=True,
-                key="ok_smart_filters",
-                help=(
-                    "Puedes activar solo los filtros que quieras. "
-                    "Si no eliges ninguno, no se descarta ningún spread por este bloque."
-                ),
+                key="ok_sf_ev_positive",
             )
-            selected_filter_labels = st.multiselect(
-                "🎚️ Elige qué filtros aplicar",
-                options=list(_SMART_FILTER_OPTIONS.values()),
-                default=list(_SMART_FILTER_OPTIONS.values()),
-                key="ok_smart_filter_labels",
-                disabled=not apply_smart,
+            sf_iv = st.checkbox(
+                "IV Percentile > 50%",
+                value=True,
+                key="ok_sf_iv_pctil",
             )
-            selected_filters = [
-                key for key, label in _SMART_FILTER_OPTIONS.items()
-                if label in selected_filter_labels
-            ]
+            sf_liq = st.checkbox(
+                "Liquidez < 5% del crédito",
+                value=True,
+                key="ok_sf_liquidez",
+            )
         with fi_col2:
+            sf_touch = st.checkbox(
+                "Prob Touch < 35%",
+                value=True,
+                key="ok_sf_prob_touch",
+            )
+            sf_maxloss = st.checkbox(
+                "Max Loss < % de cuenta",
+                value=True,
+                key="ok_sf_max_loss_account",
+            )
             show_rejected = st.checkbox(
                 "👁 Mostrar spreads rechazados (transparencia)",
                 value=False,
                 key="ok_show_rejected",
                 help="Muestra cards grises con el motivo del rechazo.",
             )
+
+        selected_filters = []
+        if sf_ev:
+            selected_filters.append("ev_positive")
+        if sf_iv:
+            selected_filters.append("iv_pctil")
+        if sf_liq:
+            selected_filters.append("liquidez")
+        if sf_touch:
+            selected_filters.append("prob_touch")
+        if sf_maxloss:
+            selected_filters.append("max_loss_account")
 
     # ── Botón scan ────────────────────────────────────────────────────────
     if st.button(
@@ -284,7 +302,6 @@ def render(**kwargs) -> None:
         st.session_state["ok_scan_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         st.session_state["ok_page"]       = 0
         st.session_state["ok_settings"]  = {
-            "apply_smart": apply_smart,
             "show_rejected": show_rejected,
             "min_score": min_score,
             "selected_filters": selected_filters,
@@ -294,7 +311,6 @@ def render(**kwargs) -> None:
     df: pd.DataFrame | None = st.session_state.get("ok_results")
     scan_time: str | None   = st.session_state.get("ok_scan_time")
     settings: dict          = st.session_state.get("ok_settings", {
-        "apply_smart": True,
         "show_rejected": False,
         "min_score": 40,
         "selected_filters": _SMART_FILTER_DEFAULTS,
@@ -336,7 +352,6 @@ def render(**kwargs) -> None:
         spreads_raw = st.session_state["_ok_spreads_raw"]
 
     # Re-aplicar filtros inteligentes con parámetros actuales (Aspecto 4 reactivo)
-    apply_sf = settings.get("apply_smart", True)
     show_rej = settings.get("show_rejected", False)
     min_sc   = settings.get("min_score", 40)
     selected_filters = settings.get("selected_filters", _SMART_FILTER_DEFAULTS)
@@ -348,8 +363,8 @@ def render(**kwargs) -> None:
         enabled_filters=selected_filters,
     )
 
-    aprobados  = [s for s in spreads_data if (not apply_sf or s["pasa"]) and s["score"]["score"] >= min_sc]
-    rechazados = [s for s in spreads_data if (apply_sf and not s["pasa"]) or s["score"]["score"] < min_sc]
+    aprobados  = [s for s in spreads_data if s["pasa"] and s["score"]["score"] >= min_sc]
+    rechazados = [s for s in spreads_data if (not s["pasa"]) or s["score"]["score"] < min_sc]
 
     # ── Métricas resumen ──────────────────────────────────────────────────
     st.markdown(
@@ -376,7 +391,7 @@ def render(**kwargs) -> None:
         st.info(
             "🧠 **Ningún spread pasa los filtros inteligentes.**\n\n"
             "El mercado actual no ofrece spreads con edge matemático verificado. "
-            "Considera: desactivar filtros inteligentes, reducir min_score, "
+            "Considera: desmarcar algunos filtros, reducir min_score, "
             "o esperar mayor volatilidad (IV Percentile > 50%)."
         )
     else:
