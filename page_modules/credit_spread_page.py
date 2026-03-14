@@ -16,9 +16,14 @@ from datetime import datetime, timedelta
 from st_aggrid import AgGrid
 
 from ui.components.aggrid_credit_spreads import build_aggrid_options
+from ui.optionkings_components import render_monte_carlo_section
 
 from core.container import get_container
-from core.optionkings_analytic import enrich_dataframe_with_ev, ev_label
+from core.optionkings_analytic import (
+    enrich_dataframe_with_ev,
+    ev_label,
+    monte_carlo_spread_simulation,
+)
 from core.backtester import Backtester, BacktestResult
 from utils.state import save_page_data, load_page_data
 from ui.plotly_professional_theme import COLORS
@@ -573,6 +578,8 @@ def render(**kwargs) -> None:
                 _a_sc = a_row.get("Strike Comprado", 0)
                 _a_dte = a_row.get("DTE", 0)
                 _a_dist = a_row.get("Dist Strike %", 0)
+                _a_iv = float(a_row.get("IV %", a_row.get("IV Short %", a_row.get("IV", 0))) or 0)
+                _a_hv = float(a_row.get("HV 20D", a_row.get("HV 20d", 0)) or 0)
                 _a_opp = a_row.get("Score Oportunidad", 0)
                 _opt = "Put" if "Put" in _a_tipo else "Call"
                 _border_c = "#22c55e" if "Put" in _a_tipo else "#ef4444"
@@ -683,6 +690,63 @@ def render(**kwargs) -> None:
                             pass
                         st.success(
                             f"⭐ **{_a_tk} {_a_sv}/{_a_sc} {_opt}** guardado en Favoritos."
+                        )
+
+                _mc_state_key = (
+                    f"cs_mc_res_{a_idx}_{_a_tk}_{int(float(_a_sv or 0))}_"
+                    f"{int(float(_a_sc or 0))}_{int(float(_a_dte or 0))}"
+                )
+                _mc_spread_label = (
+                    f"cs_alert_{a_idx}_{_a_tk}_{int(float(_a_sv or 0))}/"
+                    f"{int(float(_a_sc or 0))}_{int(float(_a_dte or 0))}d"
+                )
+
+                with st.expander(
+                    f"🎲 Ejecutar Prueba de Estrés (Monte Carlo) — {_a_tk} {_a_sv:.0f}/{_a_sc:.0f} {_opt}",
+                    expanded=False,
+                ):
+                    st.markdown(
+                        '<p style="color:#94a3b8;font-size:0.8rem;margin:0 0 8px 0;">'
+                        "Simula 1,000 escenarios para estimar % ganador, drawdown y distribución de PnL."
+                        "</p>",
+                        unsafe_allow_html=True,
+                    )
+
+                    _mc_payload = {
+                        "Ticker": _a_tk,
+                        "Spot": float(_a_spot or 0),
+                        "Strike Vendido": float(_a_sv or 0),
+                        "Strike Comprado": float(_a_sc or 0),
+                        "DTE": int(float(_a_dte or 0)),
+                        "Crédito": float(_a_cr or 0),
+                        "Tipo": _a_tipo,
+                        "IV %": _a_iv,
+                        "HV 20D": _a_hv,
+                    }
+
+                    if st.button(
+                        "▶ Ejecutar simulación (1,000 escenarios)",
+                        key=f"cs_mc_run_{a_idx}",
+                        use_container_width=True,
+                    ):
+                        with st.spinner("Simulando Monte Carlo..."):
+                            st.session_state[_mc_state_key] = monte_carlo_spread_simulation(
+                                _mc_payload,
+                                n_sim=1000,
+                                seed=42,
+                            )
+
+                    if _mc_state_key in st.session_state:
+                        render_monte_carlo_section(
+                            st.session_state[_mc_state_key],
+                            spread_label=_mc_spread_label,
+                        )
+                    else:
+                        st.markdown(
+                            '<p style="color:#64748b;font-size:0.78rem;">'
+                            "Pulsa el botón para generar el Stress Test de esta alerta."
+                            "</p>",
+                            unsafe_allow_html=True,
                         )
 
             st.markdown("---")
