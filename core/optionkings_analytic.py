@@ -401,10 +401,11 @@ def passes_smart_filters(
     metrics: dict,
     account_size: float = 25_000.0,
     max_loss_pct_account: float = 0.05,
+    enabled_filters: set[str] | list[str] | tuple[str, ...] | None = None,
 ) -> tuple[bool, list[str]]:
     """Verifica si un spread pasa los filtros inteligentes del PDF.
 
-    Filtros aplicados:
+    Filtros aplicados (si están habilitados):
         1. EV > 0  (spread con edge positivo)
         2. IV Percentile > 50  (IV más cara que la mitad histórica)
         3. Liquidez < 5% del crédito  (spread bid-ask ajustado)
@@ -414,26 +415,37 @@ def passes_smart_filters(
     Returns:
         Tuple de (pasa: bool, razones_rechazo: list[str])
     """
+    if enabled_filters is None:
+        enabled_filters = {
+            "ev_positive",
+            "iv_pctil",
+            "liquidez",
+            "prob_touch",
+            "max_loss_account",
+        }
+    else:
+        enabled_filters = set(enabled_filters)
+
     rechazos: list[str] = []
 
-    if not metrics.get("ev_is_positive", False):
+    if "ev_positive" in enabled_filters and not metrics.get("ev_is_positive", False):
         rechazos.append("EV ≤ $0 — sin edge matemático")
 
     iv_pctil = float(row.get("IV Pctil", 0))
-    if iv_pctil <= 50:
+    if "iv_pctil" in enabled_filters and iv_pctil <= 50:
         rechazos.append(f"IV Pctil {iv_pctil:.0f}% ≤ 50% — prima no inflada")
 
     liq = metrics.get("liquidez_pct", 999.0)
-    if liq >= 5.0:
+    if "liquidez" in enabled_filters and liq >= 5.0:
         rechazos.append(f"Liquidez {liq:.1f}% ≥ 5% del crédito")
 
     pt = metrics.get("prob_touch_pct", 100.0)
-    if pt >= 35.0:
+    if "prob_touch" in enabled_filters and pt >= 35.0:
         rechazos.append(f"Prob Touch {pt:.1f}% ≥ 35% — strike demasiado cercano")
 
     ml = metrics.get("max_loss_dollars", 0.0)
     max_allowed = account_size * max_loss_pct_account
-    if ml > max_allowed:
+    if "max_loss_account" in enabled_filters and ml > max_allowed:
         rechazos.append(
             f"Max Loss ${ml:.0f} > {max_loss_pct_account*100:.0f}% cuenta (${max_allowed:.0f})"
         )
@@ -532,6 +544,7 @@ def apply_intelligent_filters(
     spreads_data: list,
     account_size: float,
     risk_pct: float,
+    enabled_filters: set[str] | list[str] | tuple[str, ...] | None = None,
 ) -> list:
     """Re-aplica los 5 filtros inteligentes del PDF sobre una lista ya computada.
 
@@ -549,6 +562,7 @@ def apply_intelligent_filters(
         spreads_data: lista de dicts con claves 'row', 'metrics', 'score'.
         account_size: tamaño de cuenta en $.
         risk_pct:     % de riesgo por trade (ej 2.0 = 2%).
+        enabled_filters: filtros inteligentes a aplicar. Si es None, aplica todos.
 
     Returns:
         Misma lista con 'pasa' y 'rechazos' actualizados según los parámetros.
@@ -561,6 +575,7 @@ def apply_intelligent_filters(
             item["metrics"],
             account_size=account_size,
             max_loss_pct_account=max_loss_pct_account,
+            enabled_filters=enabled_filters,
         )
         result.append({**item, "pasa": pasa, "rechazos": rechazos})
     return result

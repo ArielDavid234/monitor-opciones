@@ -46,6 +46,15 @@ _ALL_TICKERS = [
 ]
 _DEFAULT_TICKERS = ["SPY", "QQQ", "IWM", "NVDA"]
 
+_SMART_FILTER_OPTIONS: dict[str, str] = {
+    "ev_positive": "EV > $0",
+    "iv_pctil": "IV Percentile > 50%",
+    "liquidez": "Liquidez < 5% del crédito",
+    "prob_touch": "Prob Touch < 35%",
+    "max_loss_account": "Max Loss < % de cuenta",
+}
+_SMART_FILTER_DEFAULTS = list(_SMART_FILTER_OPTIONS.keys())
+
 
 def render(**kwargs) -> None:
     """Renderiza la página OptionKings Analytic."""
@@ -207,15 +216,25 @@ def render(**kwargs) -> None:
         fi_col1, fi_col2 = st.columns(2)
         with fi_col1:
             apply_smart = st.checkbox(
-                "🔬 Aplicar filtros inteligentes del PDF",
+                "🔬 Activar filtros inteligentes del PDF",
                 value=True,
                 key="ok_smart_filters",
                 help=(
-                    "EV > $0 · IV Percentile > 50% · "
-                    "Liquidez < 5% · Prob Touch < 35% · "
-                    "Max Loss < 5% cuenta"
+                    "Puedes activar solo los filtros que quieras. "
+                    "Si no eliges ninguno, no se descarta ningún spread por este bloque."
                 ),
             )
+            selected_filter_labels = st.multiselect(
+                "🎚️ Elige qué filtros aplicar",
+                options=list(_SMART_FILTER_OPTIONS.values()),
+                default=list(_SMART_FILTER_OPTIONS.values()),
+                key="ok_smart_filter_labels",
+                disabled=not apply_smart,
+            )
+            selected_filters = [
+                key for key, label in _SMART_FILTER_OPTIONS.items()
+                if label in selected_filter_labels
+            ]
         with fi_col2:
             show_rejected = st.checkbox(
                 "👁 Mostrar spreads rechazados (transparencia)",
@@ -268,13 +287,17 @@ def render(**kwargs) -> None:
             "apply_smart": apply_smart,
             "show_rejected": show_rejected,
             "min_score": min_score,
+            "selected_filters": selected_filters,
         }
 
     # ── Mostrar resultados ────────────────────────────────────────────────
     df: pd.DataFrame | None = st.session_state.get("ok_results")
     scan_time: str | None   = st.session_state.get("ok_scan_time")
     settings: dict          = st.session_state.get("ok_settings", {
-        "apply_smart": True, "show_rejected": False, "min_score": 40,
+        "apply_smart": True,
+        "show_rejected": False,
+        "min_score": 40,
+        "selected_filters": _SMART_FILTER_DEFAULTS,
     })
     # account_size y risk_pct ya están en session_state (escritos por el sidebar)
     acc_size: float  = float(account_size)
@@ -316,8 +339,14 @@ def render(**kwargs) -> None:
     apply_sf = settings.get("apply_smart", True)
     show_rej = settings.get("show_rejected", False)
     min_sc   = settings.get("min_score", 40)
+    selected_filters = settings.get("selected_filters", _SMART_FILTER_DEFAULTS)
 
-    spreads_data = apply_intelligent_filters(spreads_raw, acc_size, risk_pct_val)
+    spreads_data = apply_intelligent_filters(
+        spreads_raw,
+        acc_size,
+        risk_pct_val,
+        enabled_filters=selected_filters,
+    )
 
     aprobados  = [s for s in spreads_data if (not apply_sf or s["pasa"]) and s["score"]["score"] >= min_sc]
     rechazados = [s for s in spreads_data if (apply_sf and not s["pasa"]) or s["score"]["score"] < min_sc]
