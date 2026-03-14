@@ -22,6 +22,11 @@ import pandas as pd
 import streamlit as st
 
 from core.container import get_container
+from core.ai_signal_engine import generate_master_signal
+from core.dealer_positioning import (
+    detect_gamma_squeeze_conditions,
+    infer_dealer_position,
+)
 from core.optionkings_analytic import (
     apply_intelligent_filters,
     calculate_account_management,
@@ -361,6 +366,159 @@ def render(**kwargs) -> None:
         acc_size,
         risk_pct_val,
         enabled_filters=selected_filters,
+    )
+
+    # ── Consola del Analista Cuántico (AI Signal Engine) ───────────────
+    _bull_flow = 0.0
+    _bear_flow = 0.0
+    _call_vol = 0.0
+    _put_vol = 0.0
+    _iv_vals: list[float] = []
+    _hv_vals: list[float] = []
+    _gex_total_proxy = 0.0
+    _spot_vals: list[float] = []
+    _zero_gamma_proxy_vals: list[float] = []
+    _edge_vals: list[float] = []
+    _liq_vals: list[float] = []
+
+    for _item in spreads_data:
+        _row = _item.get("row", {})
+        _mtx = _item.get("metrics", {})
+        _score_data = _item.get("score", {})
+
+        _tipo = str(_row.get("Tipo", ""))
+        _credit_d = float(_mtx.get("credit_dollars", 0.0) or 0.0)
+        _ev_d = float(_mtx.get("ev_dollars", 0.0) or 0.0)
+        _flow_unit = max(_credit_d, 0.0) + max(_ev_d, 0.0)
+        if "Bull Put" in _tipo:
+            _bull_flow += _flow_unit
+            _put_vol += float(_row.get("Volumen Vendido", _row.get("Volumen", 1.0)) or 1.0)
+        else:
+            _bear_flow += _flow_unit
+            _call_vol += float(_row.get("Volumen Vendido", _row.get("Volumen", 1.0)) or 1.0)
+
+        _iv_vals.append(float(_mtx.get("iv_pct", _row.get("IV %", 0.0)) or 0.0))
+        _hv_vals.append(float(_mtx.get("hv_20d", _row.get("HV 20D", 0.0)) or 0.0))
+        _edge_vals.append(float(_score_data.get("score", 50.0) or 50.0))
+        _liq_vals.append(float(_mtx.get("liquidez_pct", 10.0) or 10.0))
+
+        _spot = float(_row.get("Spot", 0.0) or 0.0)
+        _sv = float(_row.get("Strike Vendido", 0.0) or 0.0)
+        if _spot > 0:
+            _spot_vals.append(_spot)
+        if _sv > 0:
+            _zero_gamma_proxy_vals.append(_sv)
+
+        _gamma_proxy = abs(float(_row.get("Gamma Neto", _row.get("Gamma", 0.0)) or 0.0))
+        _oi_proxy = float(_row.get("OI Vendido", _row.get("OI", 100.0)) or 100.0)
+        _spot_for_gex = _spot if _spot > 0 else 100.0
+        _gex_piece = _gamma_proxy * _oi_proxy * 100.0 * (_spot_for_gex ** 2) * 0.01
+        _gex_total_proxy += _gex_piece if "Bull Put" in _tipo else -_gex_piece
+
+    _flow_total = _bull_flow + _bear_flow
+    _sentiment_score = 50.0 + (((_bull_flow - _bear_flow) / _flow_total) * 50.0 if _flow_total > 0 else 0.0)
+    _sentiment_score = max(0.0, min(100.0, _sentiment_score))
+
+    _flow_hist = st.session_state.get("ok_flow_history", [])
+    if not isinstance(_flow_hist, list):
+        _flow_hist = []
+    _net_flow = _bull_flow - _bear_flow
+    _flow_hist.append(_net_flow)
+    if len(_flow_hist) > 60:
+        _flow_hist = _flow_hist[-60:]
+    st.session_state["ok_flow_history"] = _flow_hist
+
+    if len(_flow_hist) >= 10:
+        _mean = float(pd.Series(_flow_hist).mean())
+        _std = float(pd.Series(_flow_hist).std())
+        _flow_z = ((_net_flow - _mean) / _std) if _std > 1e-9 else 0.0
+    else:
+        _flow_z = 0.0
+
+    _spot_now = float(pd.Series(_spot_vals).median()) if _spot_vals else 0.0
+    _zero_gamma_level = float(pd.Series(_zero_gamma_proxy_vals).median()) if _zero_gamma_proxy_vals else 0.0
+    _prev_spot_key = "ok_ai_prev_spot"
+    _spot_prev = float(st.session_state.get(_prev_spot_key, _spot_now) or _spot_now)
+    st.session_state[_prev_spot_key] = _spot_now
+
+    _current_iv = float(pd.Series(_iv_vals).mean()) if _iv_vals else 25.0
+    _hv20 = float(pd.Series(_hv_vals).mean()) if _hv_vals else 20.0
+    _edge_score = float(pd.Series(_edge_vals).mean()) if _edge_vals else 50.0
+    _liq_mean = float(pd.Series(_liq_vals).mean()) if _liq_vals else 10.0
+    _liq_score = max(0.0, min(100.0, 100.0 - (_liq_mean * 10.0)))
+
+    _dealer_info = infer_dealer_position(
+        call_volume=_call_vol if _call_vol > 0 else max(len(spreads_data), 1),
+        put_volume=_put_vol if _put_vol > 0 else max(len(spreads_data), 1),
+        bullish_flow=_bull_flow,
+        bearish_flow=_bear_flow,
+    )
+    _short_proxy = float(max((_put_vol / _call_vol), 1.0) if _call_vol > 0 else 1.0)
+    _squeeze_info = detect_gamma_squeeze_conditions(
+        gex_total=_gex_total_proxy,
+        bullish_flow_ratio=(_bull_flow / _flow_total) if _flow_total > 0 else 0.5,
+        current_iv=_current_iv,
+        short_interest_proxy=_short_proxy,
+    )
+    _dealer_info["squeeze_alert"] = bool(_squeeze_info.get("squeeze_alert", False))
+
+    _master_signal = generate_master_signal(
+        oka_sentiment={
+            "score": _sentiment_score,
+            "flow_zscore": _flow_z,
+            "current_iv": _current_iv,
+            "hv_20d": _hv20,
+        },
+        gex_data={
+            "gex_total": _gex_total_proxy,
+            "spot": _spot_now,
+            "prev_spot": _spot_prev,
+            "zero_gamma_level": _zero_gamma_level,
+        },
+        dealer_positioning=_dealer_info,
+        mc_results={
+            "edge_score": _edge_score,
+            "liquidity_score": _liq_score,
+        },
+    )
+
+    _sig_score = float(_master_signal.get("signal_score", 50.0))
+    _sig_regime = str(_master_signal.get("regime", "Tactical / Mixed"))
+    _alerts = _master_signal.get("alerts", {}) or {}
+
+    st.markdown("### 🧠 Consola del Analista Cuántico (AI Signal Engine)")
+    st.markdown(
+        f"""
+        <div style="background:linear-gradient(135deg,#0a1220,#0d1b2e);border:1px solid #334155;
+                    border-radius:12px;padding:12px 14px;margin:0.25rem 0 0.9rem 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <div style="color:#94a3b8;font-size:0.82rem;">Signal Score</div>
+                <div style="color:#e2e8f0;font-size:0.8rem;">Regime: <b style="color:#22d3ee;">{_sig_regime}</b></div>
+            </div>
+            <div style="font-size:2.35rem;font-weight:800;line-height:1.1;
+                        color:{'#22c55e' if _sig_score >= 65 else ('#ef4444' if _sig_score <= 35 else '#fbbf24')};">
+                {_sig_score:.1f}/100
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if bool(_alerts.get("gamma_flip_alert", False)):
+        st.error("⚠️ ALERTA CRITICA: Gamma Flip detectado (Spot cruzando Zero Gamma).")
+    if bool(_alerts.get("iv_spike_alert", False)):
+        st.warning("⚠️ ALERTA: IV Spike activo (IV >= 130% de HV 20D).")
+    if bool(_alerts.get("flow_zscore_alert", False)):
+        st.warning("⚠️ ALERTA: Flow Z-score > 3 (actividad institucional altamente inusual).")
+    if bool(_alerts.get("squeeze_alert", False)):
+        st.error("⚠️ ALERTA DE GAMMA SQUEEZE: cobertura mecánica de dealers en curso.")
+
+    st.markdown(
+        f'<div style="background:#0d1117;border:1px solid #1f2937;border-radius:10px;padding:10px 12px;'
+        f'margin-bottom:1rem;color:#cbd5e1;font-size:0.84rem;line-height:1.55;">'
+        f'{_master_signal.get("recommendation", "Sin recomendación.")}'
+        f"</div>",
+        unsafe_allow_html=True,
     )
 
     aprobados  = [s for s in spreads_data if s["pasa"] and s["score"]["score"] >= min_sc]
