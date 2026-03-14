@@ -21,6 +21,11 @@ from ui.charts import (
 from ui.plotly_professional_theme import apply_theme, COLORS, pro_gauge_layout
 from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
 from core.gex_engine import build_gex_profile, calculate_volatility_skew
+from core.dealer_positioning import (
+    infer_dealer_position,
+    detect_gamma_squeeze_conditions,
+    detect_liquidity_magnet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +40,34 @@ def render(ticker_symbol, **kwargs):
     df_analisis = pd.DataFrame(st.session_state.datos_completos)
     if "Prima_Volumen" in df_analisis.columns:
         df_analisis = df_analisis.rename(columns={"Prima_Volumen": "Prima_Vol"})
+
+    # Base para modelos de dealer positioning / squeeze.
+    _call_vol = float(df_analisis.loc[df_analisis["Tipo"] == "CALL", "Volumen"].sum()) if "Volumen" in df_analisis.columns else 0.0
+    _put_vol = float(df_analisis.loc[df_analisis["Tipo"] == "PUT", "Volumen"].sum()) if "Volumen" in df_analisis.columns else 0.0
+
+    _bullish_flow = 0.0
+    _bearish_flow = 0.0
+    if all(c in df_analisis.columns for c in ["Ask", "Bid", "Ultimo", "Tipo"]) and "Prima_Vol" in df_analisis.columns:
+        _df_flow = df_analisis.copy()
+        _df_flow["_mid"] = (_df_flow["Ask"] + _df_flow["Bid"]) / 2.0
+        _mask_call = _df_flow["Tipo"] == "CALL"
+        _mask_put = _df_flow["Tipo"] == "PUT"
+        _mask_ask = _df_flow["Ultimo"] >= _df_flow["_mid"]
+        _mask_bid = _df_flow["Ultimo"] < _df_flow["_mid"]
+        _bullish_flow = float(_df_flow.loc[_mask_call & _mask_ask, "Prima_Vol"].sum() + _df_flow.loc[_mask_put & _mask_bid, "Prima_Vol"].sum())
+        _bearish_flow = float(_df_flow.loc[_mask_call & _mask_bid, "Prima_Vol"].sum() + _df_flow.loc[_mask_put & _mask_ask, "Prima_Vol"].sum())
+    elif all(c in df_analisis.columns for c in ["Ultimo", "Volumen", "Tipo"]):
+        _df_flow = df_analisis.copy()
+        _df_flow["_prem"] = _df_flow["Ultimo"].fillna(0) * _df_flow["Volumen"].fillna(0) * 100.0
+        _bullish_flow = float(_df_flow.loc[_df_flow["Tipo"] == "CALL", "_prem"].sum())
+        _bearish_flow = float(_df_flow.loc[_df_flow["Tipo"] == "PUT", "_prem"].sum())
+
+    _dealer_state = infer_dealer_position(
+        call_volume=_call_vol,
+        put_volume=_put_vol,
+        bullish_flow=_bullish_flow,
+        bearish_flow=_bearish_flow,
+    )
 
     # ================================================================
     # GAMMA EXPOSURE (GEX) + VOLATILITY ENGINE
@@ -70,6 +103,62 @@ def render(ticker_symbol, **kwargs):
             "skew": 0.0,
             "regime": "Sin datos",
         }
+
+    _gex_total = float(gex_profile["Net GEX"].sum()) if not gex_profile.empty and "Net GEX" in gex_profile.columns else 0.0
+    _flow_total = _bullish_flow + _bearish_flow
+    _bull_ratio = (_bullish_flow / _flow_total) if _flow_total > 0 else 0.5
+    _iv_now = float(df_analisis["IV"].dropna().mean()) if "IV" in df_analisis.columns and not df_analisis["IV"].dropna().empty else 30.0
+    _oi_calls = float(df_analisis.loc[df_analisis["Tipo"] == "CALL", "OI"].sum()) if "OI" in df_analisis.columns else 0.0
+    _oi_puts = float(df_analisis.loc[df_analisis["Tipo"] == "PUT", "OI"].sum()) if "OI" in df_analisis.columns else 0.0
+    _short_proxy = (_oi_puts / _oi_calls) if _oi_calls > 0 else 1.0
+
+    _squeeze = detect_gamma_squeeze_conditions(
+        gex_total=_gex_total,
+        bullish_flow_ratio=float(_bull_ratio),
+        current_iv=float(_iv_now),
+        short_interest_proxy=float(_short_proxy),
+    )
+    _magnet = detect_liquidity_magnet(df_analisis, spot_price=spot_gex, move_pct=0.01)
+
+    if bool(_squeeze.get("squeeze_alert", False)):
+        st.markdown(
+            """
+            <style>
+            @keyframes okaPulseAlert {
+                0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.65); }
+                70% { box-shadow: 0 0 0 12px rgba(239,68,68,0.00); }
+                100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.00); }
+            }
+            </style>
+            <div style="background:linear-gradient(135deg,#3b0a0a,#210707);
+                        border:2px solid #ef4444;border-radius:12px;padding:12px 14px;
+                        margin:8px 0 12px 0;animation:okaPulseAlert 1.6s infinite;">
+                <div style="color:#fecaca;font-size:1rem;font-weight:800;">
+                    ⚠️ ALERTA DE GAMMA SQUEEZE DETECTADA
+                </div>
+                <div style="color:#fca5a5;font-size:0.82rem;margin-top:4px;">
+                    Los Market Makers están posicionados al descubierto y están siendo
+                    forzados a comprar/vender acciones mecánicamente. Riesgo de
+                    movimiento violento al alza/baja.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    _dp1, _dp2, _dp3, _dp4 = st.columns(4)
+    _dp1.metric("Dealer Regime", str(_dealer_state.get("regime", "N/A")))
+    _dp2.metric("Squeeze Score", f"{float(_squeeze.get('score', 0.0)):.1f}/100")
+    _dp3.metric("Liquidity Magnet", f"{float(_magnet.get('primary_magnet', 0.0)):.2f}" if float(_magnet.get("primary_magnet", 0.0)) > 0 else "N/A")
+    _dp4.metric("Magnet Side", str(_magnet.get("direction", "N/A")))
+
+    st.markdown(
+        f'<p style="color:#94a3b8;font-size:0.78rem;margin:0.1rem 0 1rem 0;">'
+        f'Dealer positioning: <b style="color:#cbd5e1;">{_dealer_state.get("regime", "N/A")}</b> '
+        f'· {str(_squeeze.get("explanation", ""))}'
+        f"</p>",
+        unsafe_allow_html=True,
+    )
 
     if not gex_profile.empty:
         zero_gamma = float(gex_res.get("zero_gamma_level", 0.0) or 0.0)
