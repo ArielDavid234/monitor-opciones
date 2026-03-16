@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Página: ⭐ Favorites — Contratos y Spreads Favoritos."""
 import streamlit as st
 import pandas as pd
