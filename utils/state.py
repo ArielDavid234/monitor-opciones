@@ -91,6 +91,9 @@ _GLOBAL_DEFAULTS: dict[str, Any] = {
     "_enrich_cache_key": None,
     "_gex_cache": None,
     "_gex_cache_key": None,
+    # Admin / OptionKings runtime keys
+    "admin_metric_filter": "Todos",
+    "ok_flow_history": [],
 
     # Background updater (arranque una sola vez por sesión)
     "background_running": False,
@@ -166,6 +169,16 @@ _LEGACY_ALIASES: dict[str, str] = {
     "ok_page": "ok_page",
     "ok_settings": "ok_settings",
 }
+
+
+# Backward-compatibility shim for legacy tooling/tests that still expects
+# a flat ``_DEFAULTS`` dictionary in this module.
+_DEFAULTS: dict[str, Any] = dict(_GLOBAL_DEFAULTS)
+for _page_key, _defaults in _PAGE_DEFAULTS.items():
+    for _k, _v in _defaults.items():
+        _DEFAULTS[f"{_page_key}_{_k}"] = _v
+for _legacy_key in _LEGACY_ALIASES.keys():
+    _DEFAULTS.setdefault(_legacy_key, None)
 
 
 def _safe_default(value: Any) -> Any:

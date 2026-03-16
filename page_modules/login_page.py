@@ -89,11 +89,17 @@ def _render_logo_html() -> str:
 # ============================================================================
 #                    RENDER PRINCIPAL
 # ============================================================================
-def render(auth: Optional["SupabaseAuth"] = None) -> bool:
+def render(
+    auth: Optional["SupabaseAuth"] = None,
+    ticker_symbol: str | None = None,
+    **kwargs,
+) -> bool:
     """Renderiza la pantalla de login/registro.
 
     Args:
         auth: instancia compartida de SupabaseAuth. Si None, crea una nueva.
+        ticker_symbol: parámetro de compatibilidad con la firma estándar de páginas.
+        **kwargs: parámetros extra ignorados por la pantalla de login.
 
     Returns True si el usuario quedó autenticado (para que app_web.py
     sepa que puede continuar). False = seguir mostrando login.
