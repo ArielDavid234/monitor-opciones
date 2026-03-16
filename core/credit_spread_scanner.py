@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 
 from config.constants import (
     RISK_FREE_RATE,
@@ -79,8 +79,9 @@ logger = logging.getLogger(__name__)
 def _dte_from_expiry(exp_str: str) -> int:
     """Calcula días hasta el vencimiento desde una fecha YYYY-MM-DD."""
     try:
-        exp = datetime.strptime(exp_str, "%Y-%m-%d")
-        return max((exp - datetime.now()).days, 0)
+        exp_date = datetime.strptime(exp_str, "%Y-%m-%d").date()
+        today = date.today()
+        return max((exp_date - today).days, 0)
     except Exception:
         return 0
 
