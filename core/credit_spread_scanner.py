@@ -15,6 +15,11 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, date
 
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore[assignment]
+
 from config.constants import (
     RISK_FREE_RATE,
     DAYS_PER_YEAR,
@@ -80,7 +85,12 @@ def _dte_from_expiry(exp_str: str) -> int:
     """Calcula días hasta el vencimiento desde una fecha YYYY-MM-DD."""
     try:
         exp_date = datetime.strptime(exp_str, "%Y-%m-%d").date()
-        today = date.today()
+        # Usar fecha de mercado (US/Eastern) evita desfases de ±1 día cuando
+        # el servidor está en otra zona horaria (UTC/latam/eu).
+        if ZoneInfo is not None:
+            today = datetime.now(ZoneInfo("America/New_York")).date()
+        else:
+            today = date.today()
         return max((exp_date - today).days, 0)
     except Exception:
         return 0
