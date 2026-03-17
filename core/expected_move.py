@@ -13,9 +13,8 @@ from typing import Dict
 
 
 def calculate_expected_move(spot_price: float, iv_decimal: float, dte: int) -> float:
-    """Calcula el movimiento esperado del Market Maker a 1 Desviacion Estandar."""
-    if dte <= 0 or iv_decimal <= 0:
-        return 0.0
+    """Calcula el movimiento esperado del Market Maker a 1 Desviación Estándar."""
+    if dte <= 0 or iv_decimal <= 0: return 0.0
     return spot_price * iv_decimal * math.sqrt(dte / 365.0)
 
 
