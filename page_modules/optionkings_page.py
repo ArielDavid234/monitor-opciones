@@ -521,6 +521,92 @@ def render(**kwargs) -> None:
     aprobados  = [s for s in spreads_data if s["pasa"] and s["score"]["score"] >= min_sc]
     rechazados = [s for s in spreads_data if (not s["pasa"]) or s["score"]["score"] < min_sc]
 
+    # ── Evaluador de Estrategias Neutrales (Iron Condor) ──────────────────
+    st.markdown("### ⚖️ Análisis de Viabilidad No Direccional (Iron Condor)")
+    with st.expander("Ver análisis para posiciones Neutrales", expanded=True):
+        # Usa aprobados si hay datos; si no, toda la muestra escaneada
+        _ic_pool = aprobados if aprobados else spreads_data
+
+        # Agrupa IV Pctil y Vol Edge por ticker
+        _ic_tickers: dict[str, dict] = {}
+        for _item in _ic_pool:
+            _r = _item.get("row", {})
+            _m = _item.get("metrics", {})
+            _tk = str(_r.get("Ticker", "??"))
+            _ivp = float(_m.get("iv_pctil", _r.get("IV Pctil", 0.0)) or 0.0)
+            _iv_raw = float(_m.get("iv_pct", _r.get("IV %", 0.0)) or 0.0)
+            _hv = float(_m.get("hv_20d", _r.get("HV 20D", 0.0)) or 0.0)
+            if _tk not in _ic_tickers:
+                _ic_tickers[_tk] = {"ivp": [], "ve": []}
+            _ic_tickers[_tk]["ivp"].append(_ivp)
+            _ic_tickers[_tk]["ve"].append(_iv_raw - _hv)
+
+        if not _ic_tickers:
+            st.info("Sin datos suficientes. Lanza un escaneo para ver el análisis.")
+        else:
+            # Contexto direccional derivado del AI Signal Score (ya calculado arriba)
+            _is_neutral_sig = 40.0 <= _sig_score <= 60.0
+            if _is_neutral_sig:
+                st.markdown(
+                    f'<div style="background:#1c1f2e;border-left:4px solid #fbbf24;'
+                    f'border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:0.84rem;">'
+                    f'<b style="color:#fbbf24;">⚖️ Señal Ambigua detectada</b>'
+                    f' <span style="color:#94a3b8;">(AI Signal Score: '
+                    f'<b style="color:#fbbf24;">{_sig_score:.1f}</b>/100) — Sesgo direccional '
+                    f'no claro. Evaluación de estrategias neutrales activada '
+                    f'automáticamente.</span></div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                _ic_dir_word = "ALCISTA 📈" if _sig_score > 60.0 else "BAJISTA 📉"
+                _ic_dir_color = "#22c55e" if _sig_score > 60.0 else "#ef4444"
+                st.markdown(
+                    f'<div style="background:#0d1117;border-left:4px solid {_ic_dir_color};'
+                    f'border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:0.84rem;">'
+                    f'<b style="color:{_ic_dir_color};">📊 Señal Direccional {_ic_dir_word}</b>'
+                    f' <span style="color:#94a3b8;">(Score: <b>{_sig_score:.1f}</b>/100) '
+                    f'— El Iron Condor es menos óptimo en entornos con sesgo claro, pero los '
+                    f'niveles de IV siguen siendo relevantes para validar primas.</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Tarjetas por ticker en filas de máximo 3 columnas
+            _ic_sorted_tks = sorted(_ic_tickers.keys())
+            for _ic_row_start in range(0, len(_ic_sorted_tks), 3):
+                _ic_batch = _ic_sorted_tks[_ic_row_start : _ic_row_start + 3]
+                _ic_cols = st.columns(len(_ic_batch))
+                for _ci, _tk in enumerate(_ic_batch):
+                    _d = _ic_tickers[_tk]
+                    _avg_ivp = sum(_d["ivp"]) / len(_d["ivp"]) if _d["ivp"] else 0.0
+                    _avg_ve  = sum(_d["ve"]) / len(_d["ve"]) if _d["ve"] else 0.0
+                    _n_sp = len(_d["ivp"])
+                    _sp_label = f"{_n_sp} spread{'s' if _n_sp != 1 else ''} analizados"
+                    with _ic_cols[_ci]:
+                        if _avg_ivp > 50.0:
+                            st.success(
+                                f"**{_tk}**\n\n"
+                                f"**IV Pctil prom:** {_avg_ivp:.1f}%  \n"
+                                f"**Vol Edge prom:** {_avg_ve:+.1f}%  \n"
+                                f"*({_sp_label})*\n\n"
+                                f"✅ **Escenario Óptimo para IRON CONDOR:** La Volatilidad "
+                                f"Implícita (IV Pctil > 50%) está inflada. Este entorno "
+                                f"lateral/neutral permite combinar las mejores patas de Call y "
+                                f"Put cobrando primas altas a la espera de que la volatilidad "
+                                f"colapse (Vol Crush) y el tiempo pase."
+                            )
+                        else:
+                            st.warning(
+                                f"**{_tk}**\n\n"
+                                f"**IV Pctil prom:** {_avg_ivp:.1f}%  \n"
+                                f"**Vol Edge prom:** {_avg_ve:+.1f}%  \n"
+                                f"*({_sp_label})*\n\n"
+                                f"⚠️ **Baja Volatilidad (IV Pctil < 50%).** VENDER un Iron "
+                                f"Condor aquí NO es óptimo porque las primas cobradas son muy "
+                                f"bajas para el riesgo asumido. En este entorno neutral se "
+                                f"recomienda: Esperar una explosión de IV, o usar estrategias "
+                                f"compradoras como el 'Double Calendar Spread'."
+                            )
+
     # ── Métricas resumen ──────────────────────────────────────────────────
     st.markdown(
         f"""
