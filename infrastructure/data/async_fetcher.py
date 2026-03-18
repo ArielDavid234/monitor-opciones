@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from datetime import datetime, timezone
 
 import aiohttp
@@ -32,10 +33,19 @@ async def fetch_chain_async(session, ticker, exp_date, semaphore_limit):
             "Accept": "application/json,text/plain,*/*",
             "Accept-Language": "en-US,en;q=0.9",
             "Connection": "keep-alive",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+        }
+        cookies = {
+            "B": "client-clean",
         }
 
         async with semaphore_limit:
-            async with session.get(url, headers=headers) as response:
+            await asyncio.sleep(random.uniform(0.5, 1.8))
+            async with session.get(url, headers=headers, cookies=cookies) as response:
                 if response.status != 200:
                     logger.warning(
                         "Async chain fetch status=%s for %s %s",
@@ -64,10 +74,15 @@ async def fetch_chain_async(session, ticker, exp_date, semaphore_limit):
 
 async def _run_bulk_fetch(ticker_sym: str, exp_dates: list[str]) -> dict:
     connector = aiohttp.TCPConnector(limit=5)
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(2)
     timeout = aiohttp.ClientTimeout(total=20)
+    cookie_jar = aiohttp.CookieJar(unsafe=True)
 
-    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+    async with aiohttp.ClientSession(
+        connector=connector,
+        timeout=timeout,
+        cookie_jar=cookie_jar,
+    ) as session:
         tasks = [
             fetch_chain_async(session, ticker_sym, exp_date, semaphore)
             for exp_date in exp_dates
