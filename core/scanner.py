@@ -33,7 +33,7 @@ except ImportError:
     logger.warning("curl_cffi no disponible — usando requests estándar (sin TLS fingerprint)")
 
 from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from core.async_fetcher import get_multiple_chains_fast
 from infrastructure.caching import get_cache as _get_cache
 from utils.retry_utils import (
     retry_yfinance, cb_yfinance, RateLimitError, CircuitOpenError,
@@ -627,44 +627,47 @@ def ejecutar_escaneo(
     # Limitar fechas para evitar rate-limiting y mejorar performance
     dates_to_scan = list(options_dates)[:MAX_EXPIRATION_DATES]
     
-    # Fetch de cadenas de opciones (paralelo o secuencial)
+    # Fetch de cadenas: cache primero, luego bulk async para fechas faltantes
     chains_map = {}  # {exp_date: chain_data}
-    
-    if paralelo and len(dates_to_scan) > 2:
-        # Modo paralelo: máx 2 workers simultáneos para no saturar Yahoo Finance
-        logger.info("Escaneo paralelo activado para %d fechas (max_workers=2)", len(dates_to_scan))
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_to_date = {}
-            for _i, _exp in enumerate(dates_to_scan):
-                # Escalonar envíos: pequeña pausa entre cada submit
-                # evita que Yahoo vea un pico de N requests simultáneos
-                if _i > 0:
-                    time.sleep(uniform(0.8, 1.5))
-                _f = executor.submit(fetch_with_cache, ticker_sym, _exp)
-                future_to_date[_f] = _exp
+    missing_dates = []
+    for exp_date in dates_to_scan:
+        cached = get_cached_chain(ticker_sym, exp_date)
+        if cached is not None:
+            chains_map[exp_date] = cached
+        else:
+            missing_dates.append(exp_date)
 
-            for future in as_completed(future_to_date):
-                exp_date, chain_data, error = future.result()
-                if chain_data:
-                    chains_map[exp_date] = chain_data
-                elif error:
-                    # Solo loguear si no es rate-limit (ya fue reintentado por tenacity)
-                    _rl = any(kw in str(error).lower() for kw in ["429", "rate limit", "too many"])
-                    if _rl:
-                        logger.info("Rate-limit en %s (agotados reintentos) — fecha omitida", exp_date)
-                    else:
-                        logger.warning("Error fetch paralelo %s: %s", exp_date, error)
-    else:
-        # Modo secuencial — usa _fetch_single_chain que ya tiene tenacity retry
-        for idx, exp_date in enumerate(dates_to_scan):
-            if idx > 0:
-                time.sleep(uniform(*SCAN_SLEEP_RANGE))
-
-            _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
-            if chain_data:
+    if missing_dates:
+        try:
+            logger.info(
+                "Escaneo async bulk para %d fechas faltantes (%s)",
+                len(missing_dates),
+                ticker_sym,
+            )
+            async_chains = get_multiple_chains_fast(ticker_sym, missing_dates)
+            for exp_date, chain_data in async_chains.items():
+                if not isinstance(chain_data, dict):
+                    continue
+                _calls = chain_data.get("calls")
+                _puts = chain_data.get("puts")
+                if _calls is None or _puts is None:
+                    continue
                 chains_map[exp_date] = chain_data
-            elif error:
-                logger.warning("Error secuencial %s: %s", exp_date, error)
+                if not (_calls.empty and _puts.empty):
+                    cache_chain(ticker_sym, exp_date, chain_data)
+        except Exception as e:
+            logger.warning("Fallo async bulk %s: %s", ticker_sym, e)
+
+    # Fallback puntual para fechas que aun no se pudieron obtener
+    still_missing = [d for d in dates_to_scan if d not in chains_map]
+    for idx, exp_date in enumerate(still_missing):
+        if idx > 0:
+            time.sleep(uniform(*SCAN_SLEEP_RANGE))
+        _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
+        if chain_data:
+            chains_map[exp_date] = chain_data
+        elif error:
+            logger.warning("Error fallback %s: %s", exp_date, error)
     
     # Procesar todas las cadenas obtenidas — VECTORIZADO
 

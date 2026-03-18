@@ -15,6 +15,7 @@ scipy>=1.14,<2
 # HTTP / Scraping
 curl_cffi>=0.13,<1
 requests>=2.32,<3
+aiohttp>=3.10,<4
 beautifulsoup4>=4.12,<5
 feedparser>=6.0,<7
 
