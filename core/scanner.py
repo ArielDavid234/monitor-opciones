@@ -598,6 +598,22 @@ def ejecutar_escaneo(
     Args:
         paralelo: Si True, procesa múltiples fechas simultáneamente (más rápido)
     """
+    _scan_start_ts = time.perf_counter()
+    _cache_hits = 0
+    _async_downloaded = 0
+    _fallback_sync_used = 0
+
+    def _log_scan_telemetry() -> None:
+        _elapsed = time.perf_counter() - _scan_start_ts
+        logger.info(
+            "scan telemetry | ticker=%s | total_time=%.2fs | cache_chains=%d | async_chains=%d | fallback_sync_chains=%d",
+            ticker_sym,
+            _elapsed,
+            _cache_hits,
+            _async_downloaded,
+            _fallback_sync_used,
+        )
+
     alertas = []
     datos = []
     perfil = "cached"
@@ -616,12 +632,15 @@ def ejecutar_escaneo(
             options_dates = _yf_fetch_options_dates(ticker_sym)
             cb_yfinance.record_success()
         except CircuitOpenError as ce:
+            _log_scan_telemetry()
             return [], [], str(ce), perfil, []
         except (RetryError, Exception) as e2:
             cb_yfinance.record_failure()
+            _log_scan_telemetry()
             return [], [], str(e2), perfil, []
 
     if not options_dates:
+        _log_scan_telemetry()
         return [], [], "No se encontraron fechas de vencimiento", perfil, []
 
     # Limitar fechas para evitar rate-limiting y mejorar performance
@@ -634,6 +653,7 @@ def ejecutar_escaneo(
         cached = get_cached_chain(ticker_sym, exp_date)
         if cached is not None:
             chains_map[exp_date] = cached
+            _cache_hits += 1
         else:
             missing_dates.append(exp_date)
 
@@ -653,6 +673,7 @@ def ejecutar_escaneo(
                 if _calls is None or _puts is None:
                     continue
                 chains_map[exp_date] = chain_data
+                _async_downloaded += 1
                 if not (_calls.empty and _puts.empty):
                     cache_chain(ticker_sym, exp_date, chain_data)
         except Exception as e:
@@ -661,6 +682,7 @@ def ejecutar_escaneo(
     # Fallback puntual para fechas que aun no se pudieron obtener
     still_missing = [d for d in dates_to_scan if d not in chains_map]
     for idx, exp_date in enumerate(still_missing):
+        _fallback_sync_used += 1
         if idx > 0:
             time.sleep(uniform(*SCAN_SLEEP_RANGE))
         _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
@@ -822,6 +844,7 @@ def ejecutar_escaneo(
     # un número mayor al real en el status bar y ocultaba fechas que no llegaron a escanearse
     # por el límite MAX_EXPIRATION_DATES o por fallos de red en modo paralelo.
     fechas_procesadas = [d for d in dates_to_scan if d in chains_map]
+    _log_scan_telemetry()
     return alertas, datos, None, perfil, fechas_procesadas
 
 
