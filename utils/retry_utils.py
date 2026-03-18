@@ -444,7 +444,7 @@ class TokenBucketRateLimiter:
 
 
 # ── Instancias globales de rate limiter ──
-rl_yfinance = TokenBucketRateLimiter(rate=10, per=60.0, name="yfinance")
+rl_yfinance = TokenBucketRateLimiter(rate=40, per=60.0, name="yfinance")
 rl_scraping = TokenBucketRateLimiter(rate=3, per=60.0, name="scraping")
 
 
