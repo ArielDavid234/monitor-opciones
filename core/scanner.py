@@ -157,6 +157,7 @@ def _cached_options_dates(ticker_sym):
             )
             time.sleep(_wait)
         try:
+            rl_yfinance.acquire(timeout=15)
             session, _ = crear_sesion_nueva()
             ticker = yf.Ticker(ticker_sym, session=session)
             return tuple(ticker.options)  # tuple para ser hashable
@@ -188,6 +189,7 @@ def _cached_option_chain(ticker_sym, exp_date):
             )
             time.sleep(_wait)
         try:
+            rl_yfinance.acquire(timeout=15)
             session, _ = crear_sesion_nueva()
             ticker = yf.Ticker(ticker_sym, session=session)
             chain = ticker.option_chain(exp_date)
@@ -227,6 +229,7 @@ def _cached_history(ticker_sym, period="1d"):
 
     Los historiales vacíos NO se cachean para evitar envenenar el cache.
     """
+    rl_yfinance.acquire(timeout=15)
     session, _ = crear_sesion_nueva()
     ticker = yf.Ticker(ticker_sym, session=session)
     return ticker.history(period=period)
