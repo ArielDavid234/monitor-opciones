@@ -147,12 +147,15 @@ def _cached_options_dates(ticker_sym):
                 _wait,
             )
             time.sleep(_wait)
+        session, perfil = _get_pooled_session()
         try:
             rl_yfinance.acquire(timeout=15)
-            session, _ = crear_sesion_nueva()
             ticker = yf.Ticker(ticker_sym, session=session)
-            return tuple(ticker.options)
+            res = tuple(ticker.options)
+            _return_session(session, perfil)
+            return res
         except Exception as _e:
+            _return_session(session, perfil)
             last_exc = _e
             _msg = str(_e).lower()
             if not any(kw in _msg for kw in _RETRIABLE_KEYWORDS):
@@ -176,9 +179,9 @@ def _cached_option_chain(ticker_sym, exp_date):
                 _wait,
             )
             time.sleep(_wait)
+        session, perfil = _get_pooled_session()
         try:
             rl_yfinance.acquire(timeout=15)
-            session, _ = crear_sesion_nueva()
             ticker = yf.Ticker(ticker_sym, session=session)
             chain = ticker.option_chain(exp_date)
             result = {"calls": chain.calls.copy(), "puts": chain.puts.copy()}
@@ -189,9 +192,12 @@ def _cached_option_chain(ticker_sym, exp_date):
                     exp_date,
                     _attempt + 1,
                 )
+                _return_session(session, perfil)
                 continue
+            _return_session(session, perfil)
             return result
         except KeyboardInterrupt:
+            _return_session(session, perfil)
             last_exc = RuntimeError(f"curl interrupt for {ticker_sym} {exp_date}")
             logger.warning(
                 "KeyboardInterrupt (curl_cffi) cadena (%s %s) - reintentando",
@@ -199,6 +205,7 @@ def _cached_option_chain(ticker_sym, exp_date):
                 exp_date,
             )
         except Exception as _e:
+            _return_session(session, perfil)
             last_exc = _e
             _msg = str(_e).lower()
             if not any(kw in _msg for kw in _RETRIABLE_KEYWORDS):
@@ -218,9 +225,15 @@ def _cached_option_chain(ticker_sym, exp_date):
 def _cached_history(ticker_sym, period="1d"):
     """Obtiene y cachea el historial de precios."""
     rl_yfinance.acquire(timeout=15)
-    session, _ = crear_sesion_nueva()
-    ticker = yf.Ticker(ticker_sym, session=session)
-    return ticker.history(period=period)
+    session, perfil = _get_pooled_session()
+    try:
+        ticker = yf.Ticker(ticker_sym, session=session)
+        hist = ticker.history(period=period)
+        _return_session(session, perfil)
+        return hist
+    except Exception as e:
+        _return_session(session, perfil)
+        raise
 
 
 def limpiar_cache_ticker(ticker_sym=None):
