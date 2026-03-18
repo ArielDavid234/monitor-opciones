@@ -44,6 +44,8 @@ _*.py
 alertas/
 alertas_test/
 data/
+!infrastructure/data/
+!infrastructure/data/*.py
 Cositas/
 *.csv
 *.docx

@@ -17,7 +17,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
-from core.scanner import crear_sesion_nueva
+from infrastructure.data.yahoo_finance_client import crear_sesion_nueva
 from utils.retry_utils import cb_yfinance, rl_yfinance
 
 logger = logging.getLogger(__name__)

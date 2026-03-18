@@ -11,7 +11,7 @@ import pandas as pd
 import yfinance as yf
 
 from config.constants import SCORE_THRESHOLD_ALTA, SCORE_THRESHOLD_MEDIA
-from core.scanner import crear_sesion_nueva
+from infrastructure.data.yahoo_finance_client import crear_sesion_nueva
 
 logger = logging.getLogger(__name__)
 

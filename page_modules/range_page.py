@@ -8,7 +8,8 @@ import streamlit as st
 import yfinance as yf
 from datetime import datetime
 
-from core.scanner import crear_sesion_nueva, obtener_precio_actual
+from core.scanner import obtener_precio_actual
+from infrastructure.data.yahoo_finance_client import crear_sesion_nueva
 from core.expected_move import calcular_expected_move, calcular_em_straddle
 from ui.components import render_pro_table
 from utils.retry_utils import cb_yfinance, rl_yfinance

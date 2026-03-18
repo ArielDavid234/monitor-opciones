@@ -84,7 +84,7 @@ async def _run_bulk_fetch(ticker_sym: str, exp_dates: list[str]) -> dict:
 
 
 def get_multiple_chains_fast(ticker_sym: str, exp_dates: list[str]) -> dict:
-    """Bridge síncrono para disparar fetch asíncrono en lote."""
+    """Bridge sincrono para disparar fetch asincrono en lote."""
     if not exp_dates:
         return {}
     try:
