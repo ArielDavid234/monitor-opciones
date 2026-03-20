@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+import urllib.request
+import json
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -44,7 +47,7 @@ def obtener_precio_actual(ticker_sym: str):
     """Obtiene precio de cierre previo desde Polygon."""
     try:
         client = _client()
-        prev = client.get_previous_close(ticker_sym, adjusted=True)
+        prev = client.get_previous_close_agg(ticker_sym, adjusted=True)
         results = getattr(prev, "results", None) or []
         if not results:
             return None, "Sin datos de precio"
@@ -60,19 +63,38 @@ def obtener_precio_actual(ticker_sym: str):
 
 
 def fetch_options_dates(ticker_sym: str):
-    """Lista fechas de expiración de opciones disponibles para el subyacente."""
+    """Lista fechas de exp usando URL raw para evitar la auto-paginación de la SDK."""
+    import requests
+
     try:
-        client = _client()
+        api_key = os.getenv("POLYGON_API_KEY")
+        if not api_key:
+            logger.warning("POLYGON_API_KEY no configurada")
+            return tuple()
+
+        url = (
+            "https://api.polygon.io/v3/reference/options/contracts"
+            f"?underlying_ticker={ticker_sym}&expired=false&limit=1000&apiKey={api_key}"
+        )
+
+        # Solo un request para no quemar cuota free-tier por auto-paginacion
+        response = requests.get(url, timeout=10)
+        if response.status_code == 429:
+            logger.warning("Polygon Rate Limit en dates, esperando 13 segs...")
+            time.sleep(13)
+            response = requests.get(url, timeout=10)
+
+        data = response.json()
+        results = data.get("results", [])
+
         expirations = set()
-        for contract in client.list_options_contracts(
-            underlying_ticker=ticker_sym,
-            expired=False,
-            limit=1000,
-        ):
-            exp = getattr(contract, "expiration_date", None)
+        for contract in results:
+            exp = contract.get("expiration_date", None)
             if exp:
                 expirations.add(str(exp))
-        return tuple(sorted(expirations))
+
+        fechas_ordenadas = sorted(expirations)
+        return tuple(fechas_ordenadas[:10])
     except Exception as exc:
         logger.warning("Polygon expiraciones fallo (%s): %s", ticker_sym, exc)
         return tuple()
@@ -124,6 +146,92 @@ def fetch_single_chain(ticker_sym: str, exp_date: str):
         puts_df = pd.DataFrame(puts_rows, columns=cols)
         return exp_date, {"calls": calls_df, "puts": puts_df}, None
     except Exception as exc:
+        err_msg = str(exc)
+        if "429" in err_msg or "rate limit" in err_msg.lower():
+            logger.warning("Polygon chain 429 (%s %s), esperando 13s y reintentando...", ticker_sym, exp_date)
+            time.sleep(13)
+            try:
+                client = _client()
+                snapshots = client.list_snapshot_options_chain(
+                    ticker_sym,
+                    params={"expiration_date": exp_date, "limit": 250},
+                )
+
+                for snap in snapshots:
+                    details = getattr(snap, "details", None)
+                    side = (getattr(details, "contract_type", "") or "").lower()
+                    if side not in {"call", "put"}:
+                        continue
+
+                    quote = getattr(snap, "last_quote", None)
+                    trade = getattr(snap, "last_trade", None)
+                    day = getattr(snap, "day", None)
+
+                    row = {
+                        "strike": _safe_float(getattr(details, "strike_price", None), 0.0),
+                        "lastPrice": _safe_float(getattr(trade, "price", None), 0.0),
+                        "bid": _safe_float(getattr(quote, "bid", None), 0.0),
+                        "ask": _safe_float(getattr(quote, "ask", None), 0.0),
+                        "volume": _safe_int(getattr(day, "volume", None), 0),
+                        "openInterest": _safe_int(getattr(snap, "open_interest", None), 0),
+                        "impliedVolatility": _safe_float(getattr(snap, "implied_volatility", None), 0.0),
+                    }
+
+                    if side == "call":
+                        calls_rows.append(row)
+                    else:
+                        puts_rows.append(row)
+
+                calls_df = pd.DataFrame(calls_rows, columns=cols)
+                puts_df = pd.DataFrame(puts_rows, columns=cols)
+                return exp_date, {"calls": calls_df, "puts": puts_df}, None
+            except Exception as retry_exc:
+                logger.warning("Retry SDK chain fallo (%s %s): %s", ticker_sym, exp_date, retry_exc)
+
+        # Fallback manual (raw request) tolerante
+        try:
+            api_key = os.getenv("POLYGON_API_KEY")
+            if api_key:
+                url = (
+                    "https://api.polygon.io/v3/snapshot/options/"
+                    f"{ticker_sym}?expiration_date={exp_date}&limit=250&apiKey={api_key}"
+                )
+                req = urllib.request.Request(url, method="GET")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+
+                results = payload.get("results", []) or []
+                for snap in results:
+                    details = snap.get("details", {}) or {}
+                    side = (details.get("contract_type") or "").lower()
+                    if side not in {"call", "put"}:
+                        continue
+
+                    quote = snap.get("last_quote", {}) or {}
+                    trade = snap.get("last_trade", {}) or {}
+                    day = snap.get("day", {}) or {}
+
+                    row = {
+                        "strike": _safe_float(details.get("strike_price"), 0.0),
+                        "lastPrice": _safe_float(trade.get("price"), 0.0),
+                        "bid": _safe_float(quote.get("bid"), 0.0),
+                        "ask": _safe_float(quote.get("ask"), 0.0),
+                        "volume": _safe_int(day.get("volume"), 0),
+                        "openInterest": _safe_int(snap.get("open_interest"), 0),
+                        "impliedVolatility": _safe_float(snap.get("implied_volatility"), 0.0),
+                    }
+
+                    if side == "call":
+                        calls_rows.append(row)
+                    else:
+                        puts_rows.append(row)
+
+                calls_df = pd.DataFrame(calls_rows, columns=cols)
+                puts_df = pd.DataFrame(puts_rows, columns=cols)
+                return exp_date, {"calls": calls_df, "puts": puts_df}, None
+        except Exception as raw_exc:
+            logger.warning("Fallback raw chain fallo (%s %s): %s", ticker_sym, exp_date, raw_exc)
+
         logger.warning("Polygon chain fallo (%s %s): %s", ticker_sym, exp_date, exc)
         return exp_date, {"calls": pd.DataFrame(columns=cols), "puts": pd.DataFrame(columns=cols)}, str(exc)
 
