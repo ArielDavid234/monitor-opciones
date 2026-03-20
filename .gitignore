@@ -58,3 +58,6 @@ test_*.py
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
+# ── Persistent local cache (runtime artifact) ───────
+.app_cache/

@@ -265,8 +265,7 @@ def ejecutar_escaneo(
     still_missing = [d for d in dates_to_scan if d not in chains_map]
     for idx, exp_date in enumerate(still_missing):
         _fallback_sync_used += 1
-        if idx > 0:
-            time.sleep(uniform(*SCAN_SLEEP_RANGE))
+        # Sleep removido para evitar estrangulamiento pasivo del fallback sync.
         _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
         if chain_data:
             chains_map[exp_date] = chain_data

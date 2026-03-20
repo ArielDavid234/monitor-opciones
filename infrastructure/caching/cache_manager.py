@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import logging
 import pickle
-import time
 from functools import lru_cache
 from typing import Any, Optional
+
+import diskcache
 
 from config.settings import get_settings
 
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class CacheManager:
-    """Caché unificada: Redis si disponible, dict en memoria como fallback.
+    """Caché unificada: Redis si disponible, diskcache en disco como fallback.
 
     Implementa el protocolo ``CacheProvider`` de ``core.protocols``.
 
@@ -37,7 +38,7 @@ class CacheManager:
 
     El backend se elige automáticamente:
         - Si ``REDIS_URL`` está configurado y se puede conectar → Redis.
-        - Si no → dict en memoria con TTL y eviction LRU.
+        - Si no → diskcache persistente en disco (compartida entre workers).
     """
 
     def __init__(self, redis_url: Optional[str] = None) -> None:
@@ -45,14 +46,14 @@ class CacheManager:
         Args:
             redis_url: URL de Redis (p.ej. "redis://localhost:6379"). Si es None,
                        se lee de ``config.settings`` o de la variable de entorno
-                       ``REDIS_URL``.  Si Redis no está disponible, se usa caché
-                       en memoria.
+                       ``REDIS_URL``. Si Redis no está disponible, se usa caché
+                       persistente en disco.
         """
         cfg = get_settings()
         self._default_ttl: int = cfg.cache_ttl_seconds
         self._max_memory: int = cfg.cache_max_memory_entries
         self._redis = self._connect_redis(redis_url or cfg.redis_url)
-        self._memory: dict[str, tuple[Any, float]] = {}  # key → (value, expires_at)
+        self._disk_cache = diskcache.Cache(".app_cache", size_limit=1e9)
         self._hits: int = 0
         self._misses: int = 0
 
@@ -64,7 +65,7 @@ class CacheManager:
         import os
         url = redis_url or os.getenv("REDIS_URL")
         if not url:
-            logger.info("CacheManager: REDIS_URL no configurado — usando memory cache")
+            logger.info("CacheManager: REDIS_URL no configurado — usando disk cache")
             return None
         try:
             import redis
@@ -78,13 +79,13 @@ class CacheManager:
             logger.info("CacheManager: Redis conectado en %s", url)
             return client
         except Exception as exc:
-            logger.warning("CacheManager: Redis no disponible (%s) — usando memory cache", exc)
+            logger.warning("CacheManager: Redis no disponible (%s) — usando disk cache", exc)
             return None
 
     @property
     def backend(self) -> str:
-        """Devuelve 'redis' o 'memory' según el backend activo."""
-        return "redis" if self._redis is not None else "memory"
+        """Devuelve 'redis' o 'disk' según el backend activo."""
+        return "redis" if self._redis is not None else "disk"
 
     @property
     def stats(self) -> dict[str, int]:
@@ -98,7 +99,7 @@ class CacheManager:
         if self._redis is not None:
             result = self._redis_get(key)
         else:
-            result = self._memory_get(key)
+            result = self._disk_get(key)
         if result is not None:
             self._hits += 1
         else:
@@ -117,7 +118,7 @@ class CacheManager:
         if self._redis is not None:
             self._redis_set(key, value, effective_ttl)
         else:
-            self._memory_set(key, value, effective_ttl)
+            self._disk_set(key, value, effective_ttl)
 
     def delete(self, key: str) -> None:
         """Elimina una entrada del caché."""
@@ -127,7 +128,12 @@ class CacheManager:
             except Exception as exc:
                 logger.debug("Redis delete error: %s", exc)
         else:
-            self._memory.pop(key, None)
+            try:
+                del self._disk_cache[key]
+            except KeyError:
+                pass
+            except Exception as exc:
+                logger.debug("Disk delete error (%s): %s", key, exc)
 
     def clear_prefix(self, prefix: str) -> None:
         """Elimina todas las entradas cuya clave empieza con ``prefix``."""
@@ -139,9 +145,12 @@ class CacheManager:
             except Exception as exc:
                 logger.debug("Redis clear_prefix error: %s", exc)
         else:
-            to_delete = [k for k in self._memory if k.startswith(prefix)]
-            for k in to_delete:
-                del self._memory[k]
+            try:
+                for k in list(self._disk_cache.iterkeys()):
+                    if str(k).startswith(prefix):
+                        del self._disk_cache[k]
+            except Exception as exc:
+                logger.debug("Disk clear_prefix error (%s): %s", prefix, exc)
 
     def clear_all(self) -> None:
         """Limpia todo el caché (útil para tests)."""
@@ -151,7 +160,10 @@ class CacheManager:
             except Exception as exc:
                 logger.debug("Redis flushdb error: %s", exc)
         else:
-            self._memory.clear()
+            try:
+                self._disk_cache.clear()
+            except Exception as exc:
+                logger.debug("Disk clear error: %s", exc)
 
     # ── Redis internals ────────────────────────────────────────────────────
 
@@ -171,26 +183,22 @@ class CacheManager:
         except Exception as exc:
             logger.debug("Redis set error (%s): %s", key, exc)
 
-    # ── Memory internals ───────────────────────────────────────────────────
+    # ── Disk cache internals ───────────────────────────────────────────────
 
-    def _memory_get(self, key: str) -> Optional[Any]:
-        """Lee un valor del dict en memoria, verificando expiración."""
-        entry = self._memory.get(key)
-        if entry is None:
+    def _disk_get(self, key: str) -> Optional[Any]:
+        """Lee un valor desde diskcache (retorna None si no existe/expiró)."""
+        try:
+            return self._disk_cache.get(key, default=None)
+        except Exception as exc:
+            logger.debug("Disk get error (%s): %s", key, exc)
             return None
-        value, expires_at = entry
-        if time.time() > expires_at:
-            del self._memory[key]
-            return None
-        return value
 
-    def _memory_set(self, key: str, value: Any, ttl: int) -> None:
-        """Guarda en el dict en memoria con eviction LRU si supera el límite."""
-        if len(self._memory) >= self._max_memory:
-            # Evict la entrada más antigua
-            oldest = min(self._memory, key=lambda k: self._memory[k][1])
-            del self._memory[oldest]
-        self._memory[key] = (value, time.time() + ttl)
+    def _disk_set(self, key: str, value: Any, ttl: int) -> None:
+        """Guarda en diskcache con TTL en segundos."""
+        try:
+            self._disk_cache.set(key, value, expire=ttl)
+        except Exception as exc:
+            logger.debug("Disk set error (%s): %s", key, exc)
 
 
 @lru_cache(maxsize=1)

@@ -13,8 +13,8 @@ def get_multiple_chains_fast(ticker_sym: str, exp_dates: list[str]) -> dict:
         return {}
 
     out = {}
-    # Usamos workers reducidos para no alertar al firewall de Yahoo (max 5 paralelamente).
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    # Burst control: 10 workers para acelerar descarga de expiraciones.
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
             executor.submit(fetch_single_chain, ticker_sym, exp_date): exp_date
             for exp_date in exp_dates
