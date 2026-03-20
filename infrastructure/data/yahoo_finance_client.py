@@ -7,6 +7,7 @@ Core business modules should consume these helpers and avoid direct network logi
 from __future__ import annotations
 
 import logging
+import random
 import threading
 import time
 from functools import wraps
@@ -277,6 +278,16 @@ BROWSER_PROFILES = [
     "safari17_0",
 ]
 
+FREE_PROXIES = [
+    # Proxies publicos de prueba
+    {"http": "http://188.166.192.176:8080", "https": "http://188.166.192.176:8080"},
+    {"http": "http://152.67.66.45:80", "https": "http://152.67.66.45:80"},
+    {"http": "http://139.144.116.10:3128", "https": "http://139.144.116.10:3128"},
+    {"http": "http://188.166.162.247:3128", "https": "http://188.166.162.247:3128"},
+    {"http": "http://67.43.228.251:2490", "https": "http://67.43.228.251:2490"},
+    None,
+]
+
 
 _SESSION_POOL: list = []
 _SESSION_POOL_SIZE = 4
@@ -302,6 +313,13 @@ def crear_sesion_nueva():
             "Accept-Language": "en-US,en;q=0.9",
         }
     )
+
+    # Inyectar proxy rotativo en la sesion HTTP
+    proxy_activo = random.choice(FREE_PROXIES)
+    if proxy_activo:
+        session.proxies.update(proxy_activo)
+        logger.debug("Asignado Proxy rotativo a la conexion YF: %s", proxy_activo)
+
     return session, "requests-fallback"
 
 
