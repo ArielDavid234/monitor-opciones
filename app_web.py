@@ -12,7 +12,6 @@ Orquestador limpio:
 from __future__ import annotations
 
 import logging
-import time
 from typing import Callable
 
 import streamlit as st
@@ -41,7 +40,6 @@ from page_modules import (
 from presentation.components import render_sidebar_user_block
 from presentation.layouts import build_sidebar_nav, render_main_header
 from ui.shared import inject_all_css, render_footer, render_sidebar_logo
-from utils.background_updater import get_updater_state, start_background_updater
 from utils.state import initialize_session_state, persist_shared_state
 
 logger = logging.getLogger(__name__)
@@ -86,41 +84,11 @@ def _sync_user_lists_once(user_id: str, user_service) -> None:
     st.session_state["_favs_synced"] = True
 
 
-def _start_background_once() -> None:
-    """Inicia updater de background (idempotente a nivel de proceso)."""
-    bg_state = get_updater_state()
-    # Si ya corre a nivel de proceso, solo marcar la sesión sin tocar el lock
-    if bg_state.running and bg_state._thread and bg_state._thread.is_alive():
-        st.session_state.setdefault("background_running", True)
-        return
-    start_background_updater()
-    st.session_state["background_running"] = True
-    st.session_state["background_started_at"] = time.time()
-
-
 def _render_sidebar(current_user: User, auth: SupabaseAuth) -> str:
     """Renderiza sidebar y retorna página seleccionada."""
     with st.sidebar:
         render_sidebar_logo()
         effective_page = build_sidebar_nav(current_user)
-
-        bg_state = get_updater_state()
-        show_bg_status = "Administrar Usuarios" not in str(effective_page)
-        if bg_state.running and show_bg_status:
-            if bg_state.last_update > 0:
-                age_seconds = max(0, int(time.time() - bg_state.last_update))
-                age_txt = f"Datos actualizados hace {age_seconds}s"
-            else:
-                age_txt = "Cargando datos de mercado..."
-
-            st.markdown(
-                f'<div style="padding:0.45rem 0.6rem;margin:0.35rem 0;'
-                f'background:#0d1117;border:1px solid #1e293b;border-radius:8px;'
-                f'font-size:0.76rem;color:#94a3b8;">'
-                f'\U0001f4e1 Top {bg_state.tickers_loaded} S&P 500<br>'
-                f'{age_txt}</div>',
-                unsafe_allow_html=True,
-            )
 
         render_sidebar_user_block(current_user, auth)
 
@@ -220,8 +188,6 @@ def main() -> None:
 
     auth, current_user = _bootstrap_auth()
     container = get_container(auth=auth)
-
-    # _start_background_once()
 
     if st.session_state.pop("_show_welcome_splash", False):
         from page_modules.login_page import show_welcome_splash
