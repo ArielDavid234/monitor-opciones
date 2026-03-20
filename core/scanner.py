@@ -12,7 +12,6 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from random import uniform
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ try:
 except ImportError:
     _HAS_SCIPY = False
 
-from config.constants import SCAN_SLEEP_RANGE, MAX_EXPIRATION_DATES, RISK_FREE_RATE
+from config.constants import MAX_EXPIRATION_DATES, RISK_FREE_RATE
 from infrastructure.data.async_fetcher import get_multiple_chains_fast
 from infrastructure.data.yahoo_finance_client import (
     _cached_history,

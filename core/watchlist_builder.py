@@ -21,7 +21,7 @@ import logging
 import time
 from typing import Optional
 
-import yfinance as yf
+from infrastructure.data.polygon_client import get_ticker_details
 
 logger = logging.getLogger(__name__)
 
@@ -118,36 +118,18 @@ def construir_watchlist_consolidadas(
     market_caps = {}
 
     try:
-        # Descarga en batch para eficiencia (una sola llamada)
-        tickers_str = " ".join(_CANDIDATOS)
-        data = yf.download(
-            tickers_str,
-            period="1d",
-            progress=False,
-            auto_adjust=True,
-            group_by="ticker",
-        )
-
-        # Consultar market cap individualmente (no viene en download)
         _consecutive_failures = 0
         for idx, sym in enumerate(_CANDIDATOS):
             try:
-                t = yf.Ticker(sym)
-                info = t.fast_info  # mucho más rápido que .info
-                mc = getattr(info, "market_cap", None)
+                details = get_ticker_details(sym)
+                if details is None:
+                    continue
+                mc = getattr(details, "market_cap", None)
                 if mc and mc > 0:
                     market_caps[sym] = mc
                     _consecutive_failures = 0
-                else:
-                    # Fallback: estimar desde precio × shares
-                    mc2 = getattr(info, "shares", None)
-                    price = getattr(info, "last_price", None)
-                    if mc2 and price:
-                        market_caps[sym] = mc2 * price
-                        _consecutive_failures = 0
-                # Pequeña pausa entre calls para no saturar Yahoo
                 if idx < len(_CANDIDATOS) - 1:
-                    time.sleep(0.3)
+                    time.sleep(0.25)
             except Exception as e:
                 _msg = str(e).lower()
                 if any(kw in _msg for kw in ["429", "rate limit", "too many"]):
@@ -156,13 +138,13 @@ def construir_watchlist_consolidadas(
                     if _consecutive_failures >= 3:
                         logger.warning("Abortando loop de market caps por rate limit sostenido")
                         break
-                    time.sleep(2.0)  # esperar antes de reintentar
+                    time.sleep(2.0)
                 else:
                     logger.debug("No se pudo obtener market cap de %s: %s", sym, e)
                 continue
 
     except Exception as e:
-        logger.warning("Error en descarga batch yfinance: %s", e)
+        logger.warning("Error consultando Polygon details: %s", e)
 
     if not market_caps:
         logger.warning("No se obtuvo ningún market cap — usando watchlist estática.")
@@ -185,8 +167,8 @@ def construir_watchlist_consolidadas(
             entry = dict(_METADATA[sym])
         else:
             # Empresa nueva en el top que no tiene metadatos curados
-            # → intentar obtenerlos de yfinance
-            entry = _obtener_metadata_yfinance(sym)
+            # → intentar obtenerlos de Polygon
+            entry = _obtener_metadata_polygon(sym)
 
         entry["market_cap_live"] = mc  # guardar para referencia
         watchlist[sym] = entry
@@ -199,16 +181,17 @@ def construir_watchlist_consolidadas(
     return watchlist
 
 
-def _obtener_metadata_yfinance(sym: str) -> dict:
+def _obtener_metadata_polygon(sym: str) -> dict:
     """
-    Obtiene nombre, sector y una descripción corta desde yfinance
+    Obtiene nombre, sector y una descripción corta desde Polygon
     para empresas sin metadatos curados.
     """
     try:
-        info = yf.Ticker(sym).info
-        nombre = info.get("longName") or info.get("shortName") or sym
-        sector = info.get("sector") or info.get("industry") or "N/D"
-        desc = info.get("longBusinessSummary", "")
+        details = get_ticker_details(sym)
+        info = details.__dict__ if details is not None else {}
+        nombre = info.get("name") or sym
+        sector = info.get("sic_description") or "N/D"
+        desc = info.get("description", "")
         # Recortar a 300 caracteres para no saturar la UI
         if desc and len(desc) > 300:
             desc = desc[:297] + "..."
@@ -330,16 +313,16 @@ def construir_watchlist_emergentes(
 
     Metodología:
       1. Universo candidato: ~45 disruptores y empresas de hipercrecimiento
-      2. Obtener market cap y momentum de 52 semanas via yfinance (fast_info)
+    2. Obtener market cap y momentum de 52 semanas via Polygon details
       3. Filtrar: excluir mega-caps (>$250B) que ya deberían estar en consolidadas
                  y micro-caps (<$150M) con poco liquidity
       4. Calcular score de disrupción = momentum_52w * 0.6 + (market_cap relativo) * 0.4
       5. Ordenar por score → tomar top N
-      6. Si yfinance falla → usar fallback estático (WATCHLIST_EMERGENTES)
+    6. Si Polygon falla → usar fallback estático (WATCHLIST_EMERGENTES)
 
     Args:
         n: Número de empresas a devolver (default 18).
-        fallback: Watchlist estática a devolver si yfinance falla completamente.
+        fallback: Watchlist estática a devolver si Polygon falla completamente.
 
     Returns:
         dict {ticker: {nombre, descripcion, sector, por_que_grande, ...}}
@@ -350,9 +333,11 @@ def construir_watchlist_emergentes(
     _consecutive_failures = 0
     for idx, sym in enumerate(_CANDIDATOS_EMERGENTES):
         try:
-            fi = yf.Ticker(sym).fast_info
-            mc = getattr(fi, "market_cap", None) or 0.0
-            yc = getattr(fi, "year_change", None)  # fracción, ej: 0.45 = +45%
+            details = get_ticker_details(sym)
+            if details is None:
+                continue
+            mc = getattr(details, "market_cap", None) or 0.0
+            yc = 0.0
 
             # Filtrar mega-caps (ya pertenecen a consolidadas) y micro-caps
             if mc > 250e9 or mc < 150e6:
@@ -397,7 +382,7 @@ def construir_watchlist_emergentes(
         if sym in _METADATA_EMERGENTES:
             entry = dict(_METADATA_EMERGENTES[sym])
         else:
-            entry = _obtener_metadata_yfinance(sym)
+            entry = _obtener_metadata_polygon(sym)
 
         entry["market_cap_live"] = market_caps.get(sym, 0)
         entry["momentum_52w"] = momentum

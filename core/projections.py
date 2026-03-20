@@ -8,10 +8,9 @@ Incluye predicción básica de volatilidad implícita (IV) con regresión lineal
 import logging
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 from config.constants import SCORE_THRESHOLD_ALTA, SCORE_THRESHOLD_MEDIA
-from infrastructure.data.yahoo_finance_client import crear_sesion_nueva
+from infrastructure.data.polygon_client import get_price_history, get_ticker_details
 
 logger = logging.getLogger(__name__)
 
@@ -162,15 +161,14 @@ def predict_implied_volatility(
 #        ENRICHMENT — Datos fundamentales vía Alpha Vantage
 # ============================================================================
 
-def _get_fundamentals_yfinance(ticker: str) -> dict:
-    """Obtiene fundamentales desde yfinance (fallback gratuito sin API key).
+def _get_fundamentals_polygon(ticker: str) -> dict:
+    """Obtiene fundamentales desde Polygon.
 
     Devuelve el mismo esquema de dict que get_alpha_vantage_fundamentals.
     """
     try:
-        session, _ = crear_sesion_nueva()
-        t = yf.Ticker(ticker, session=session)
-        info = t.info or {}
+        details = get_ticker_details(ticker)
+        info = details.__dict__ if details is not None else {}
 
         def _sf(key, factor=1.0):
             v = info.get(key)
@@ -180,39 +178,11 @@ def _get_fundamentals_yfinance(ticker: str) -> dict:
             except (TypeError, ValueError):
                 return None
 
-        # Earnings history (surprise %)
+        # Earnings history no disponible en free-tier de Polygon
         quarterly_earnings = []
         last_surprise_pct = None
         last_reported_date = "N/A"
         earnings_beat_streak = 0
-        try:
-            eh = t.earnings_history
-            if eh is not None and not eh.empty:
-                for _, row in eh.head(8).iterrows():
-                    eps_est = row.get("epsEstimate") if hasattr(row, "get") else row["epsEstimate"]
-                    eps_rep = row.get("epsActual") if hasattr(row, "get") else row["epsActual"]
-                    surp = row.get("surprisePercent") if hasattr(row, "get") else row["surprisePercent"]
-                    date_str = str(row.name.date()) if hasattr(row.name, "date") else str(row.name)
-                    try:
-                        surp_f = float(surp) * 100 if surp is not None else 0.0
-                    except (TypeError, ValueError):
-                        surp_f = 0.0
-                    quarterly_earnings.append({
-                        "date": date_str,
-                        "reported_eps": float(eps_rep) if eps_rep is not None else 0.0,
-                        "estimated_eps": float(eps_est) if eps_est is not None else 0.0,
-                        "surprise_pct": round(surp_f, 2),
-                    })
-                if quarterly_earnings:
-                    last_surprise_pct = quarterly_earnings[0]["surprise_pct"]
-                    last_reported_date = quarterly_earnings[0]["date"]
-                    for q in quarterly_earnings:
-                        if q["surprise_pct"] > 0:
-                            earnings_beat_streak += 1
-                        else:
-                            break
-        except Exception:
-            pass
 
         short_pct = _sf("shortPercentOfFloat", 100) or 0.0
 
@@ -239,14 +209,14 @@ def _get_fundamentals_yfinance(ticker: str) -> dict:
             "last_surprise_pct": last_surprise_pct,
             "earnings_beat_streak": earnings_beat_streak,
             "quarterly_earnings": quarterly_earnings,
-            "name": info.get("longName") or info.get("shortName", ticker),
+            "name": info.get("name") or ticker,
             "sector": info.get("sector", "N/A"),
-            "industry": info.get("industry", "N/A"),
-            "description": info.get("longBusinessSummary", ""),
-            "source": "Yahoo Finance",
+            "industry": info.get("sic_description", "N/A"),
+            "description": info.get("description", ""),
+            "source": "Polygon.io",
         }
     except Exception as e:
-        return {"error": f"yfinance fundamentals error: {e}"}
+        return {"error": f"polygon fundamentals error: {e}"}
 
 
 def enrich_with_fundamentals(ticker: str) -> dict:
@@ -267,10 +237,10 @@ def enrich_with_fundamentals(ticker: str) -> dict:
     except ImportError:
         raw = {"error": "api_integrations no disponible"}
 
-    # Si Alpha Vantage falla por falta de key (o cualquier error), usar yfinance
+    # Si Alpha Vantage falla por falta de key (o cualquier error), usar Polygon
     if "error" in raw:
-        logger.info("%s: Alpha Vantage no disponible (%s) — usando yfinance fallback", ticker, raw["error"][:60])
-        raw = _get_fundamentals_yfinance(ticker)
+        logger.info("%s: Alpha Vantage no disponible (%s) — usando Polygon fallback", ticker, raw["error"][:60])
+        raw = _get_fundamentals_polygon(ticker)
 
     if "error" in raw:
         return raw
@@ -380,7 +350,7 @@ def enrich_with_fundamentals(ticker: str) -> dict:
 
 def analizar_proyeccion_empresa(symbol, info_empresa=None):
     """
-    Analiza los fundamentales de una empresa vía yfinance para evaluar
+    Analiza los fundamentales de una empresa vía Polygon para evaluar
     su potencial de crecimiento a largo plazo (10 años).
 
     Usa datos gratuitos: crecimiento de ingresos, márgenes,
@@ -390,17 +360,15 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
         dict con métricas y score, o None + error
     """
     try:
-        session, perfil = crear_sesion_nueva()
-        ticker = yf.Ticker(symbol, session=session)
-
-        info = ticker.info or {}
+        details = get_ticker_details(symbol)
+        info = details.__dict__ if details is not None else {}
 
         # Datos básicos
-        nombre = info.get("longName") or info.get("shortName", symbol)
-        precio = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        nombre = info.get("name") or symbol
+        precio = info.get("close", 0)
         market_cap = info.get("marketCap", 0)
         sector_yf = info.get("sector", "N/A")
-        industria = info.get("industry", "N/A")
+        industria = info.get("sic_description", "N/A")
 
         # Métricas de crecimiento
         revenue_growth = info.get("revenueGrowth", 0)  # QoQ
@@ -457,7 +425,7 @@ def analizar_proyeccion_empresa(symbol, info_empresa=None):
         # === ANÁLISIS TÉCNICO (Precio, Indicadores, Volumen) ===
         tecnico = {}
         try:
-            hist = ticker.history(period="1y")
+            hist = get_price_history(symbol, period="1y")
             if not hist.empty and len(hist) >= 20:
                 close = hist['Close']
                 high = hist['High']

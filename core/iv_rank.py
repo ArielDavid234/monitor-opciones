@@ -15,10 +15,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 import streamlit as st
-import yfinance as yf
 
-from infrastructure.data.yahoo_finance_client import crear_sesion_nueva
-from utils.retry_utils import cb_yfinance, rl_yfinance
+from infrastructure.data.polygon_client import get_price_history
 
 logger = logging.getLogger(__name__)
 
@@ -67,13 +65,8 @@ def calcular_iv_rank_percentile(
     }
 
     try:
-        cb_yfinance.check()
-        rl_yfinance.acquire(timeout=15)
-        session, _ = crear_sesion_nueva()
-        ticker = yf.Ticker(symbol, session=session)
-
-        # Descargar histórico
-        hist = ticker.history(period=periodo)
+        # Descargar histórico desde Polygon
+        hist = get_price_history(symbol, period=periodo)
         if hist.empty or len(hist) < 30:
             logger.warning(f"{symbol}: Historial insuficiente ({len(hist)} días)")
             return result
@@ -122,7 +115,6 @@ def calcular_iv_rank_percentile(
         )
     except Exception as e:
         logger.error(f"{symbol}: Error calculando IV Rank: {e}")
-        cb_yfinance.record_failure()
 
     return result
 
@@ -174,13 +166,8 @@ def get_historical_iv(
         pd.DataFrame con las columnas descritas, o DataFrame vacío si falla.
     """
     try:
-        cb_yfinance.check()
-        rl_yfinance.acquire(timeout=15)
-        session, _ = crear_sesion_nueva()
-        ticker = yf.Ticker(symbol, session=session)
-
         # Histórico del subyacente
-        hist = ticker.history(period=period)
+        hist = get_price_history(symbol, period=period)
         if hist.empty or len(hist) < hv_window + 5:
             logger.warning(f"{symbol}: historial insuficiente para IV histórica")
             return pd.DataFrame()
@@ -191,9 +178,7 @@ def get_historical_iv(
 
         # VIX como proxy de IV de mercado
         try:
-            rl_yfinance.acquire(timeout=15)
-            vix = yf.Ticker("^VIX", session=session)
-            vix_hist = vix.history(period=period)
+            vix_hist = get_price_history("I:VIX", period=period)
             vix_close = vix_hist["Close"].reindex(hist.index, method="ffill")
         except Exception:
             logger.debug(f"{symbol}: No se pudo obtener VIX, usando HV como fallback")

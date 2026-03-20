@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
 """Página: 📐 Range — Expected Move (Thinkorswim Style)."""
 import logging
-import time
 
 import pandas as pd
 import streamlit as st
-import yfinance as yf
 from datetime import datetime
 
 from core.scanner import obtener_precio_actual
-from infrastructure.data.yahoo_finance_client import crear_sesion_nueva
+from infrastructure.data.yahoo_finance_client import fetch_options_dates, fetch_single_chain
 from core.expected_move import calcular_expected_move, calcular_em_straddle
 from ui.components import render_pro_table
-from utils.retry_utils import cb_yfinance, rl_yfinance
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +22,7 @@ def render(ticker_symbol, **kwargs):
     fechas_exp_disponibles = list(st.session_state.get("fechas_escaneadas", []))
     if not fechas_exp_disponibles:
         try:
-            cb_yfinance.check()
-            session_rango, _ = crear_sesion_nueva()
-            ticker_rango = yf.Ticker(ticker_symbol, session=session_rango)
-            fechas_exp_disponibles = list(ticker_rango.options)
+            fechas_exp_disponibles = list(fetch_options_dates(ticker_symbol))
         except Exception as e:
             logger.warning("Error obteniendo fechas de expiración: %s", e)
 
@@ -115,38 +109,33 @@ def render(ticker_symbol, **kwargs):
                 logger.warning("Range (scan data): error en %s: %s", exp_date, e)
                 continue
 
-    # PRIORIDAD 2: fallback — fetch desde yfinance si no hay datos escaneados
+    # PRIORIDAD 2: fallback — fetch desde Polygon si no hay datos escaneados
     if not em_results:
-        with st.spinner("Cargando opciones desde Yahoo Finance..."):
+        with st.spinner("Cargando opciones desde Polygon..."):
             try:
-                cb_yfinance.check()
-                session_em, _ = crear_sesion_nueva()
-                ticker_em = yf.Ticker(ticker_symbol, session=session_em)
-
                 for exp_date in fechas_exp_disponibles:
                     try:
-                        if not rl_yfinance.acquire(timeout=30):
-                            logger.warning("Range: timeout rate limiter para %s", exp_date)
+                        _, chain_data, error = fetch_single_chain(ticker_symbol, exp_date)
+                        if error or not chain_data:
+                            logger.warning("Range: fallo chain %s (%s)", exp_date, error)
                             continue
-
-                        chain = ticker_em.option_chain(exp_date)
                         exp_dt = datetime.strptime(exp_date, "%Y-%m-%d")
                         dte = max((exp_dt - datetime.now()).total_seconds() / 86400, 0.01)
 
-                        calls_df = chain.calls
-                        puts_df  = chain.puts
+                        calls_df = chain_data.get("calls", pd.DataFrame())
+                        puts_df = chain_data.get("puts", pd.DataFrame())
 
                         if calls_df.empty or puts_df.empty:
                             continue
 
                         calls_df = calls_df[calls_df["impliedVolatility"].notna() & (calls_df["impliedVolatility"] > 0)]
-                        puts_df  = puts_df[puts_df["impliedVolatility"].notna() & (puts_df["impliedVolatility"] > 0)]
+                        puts_df = puts_df[puts_df["impliedVolatility"].notna() & (puts_df["impliedVolatility"] > 0)]
 
                         if calls_df.empty or puts_df.empty:
                             continue
 
                         atm_call = calls_df.loc[(calls_df["strike"] - precio_actual_rango).abs().idxmin()]
-                        atm_put  = puts_df.loc[(puts_df["strike"] - precio_actual_rango).abs().idxmin()]
+                        atm_put = puts_df.loc[(puts_df["strike"] - precio_actual_rango).abs().idxmin()]
 
                         iv_call = float(atm_call.get("impliedVolatility", 0) or 0)
                         iv_put  = float(atm_put.get("impliedVolatility", 0) or 0)
@@ -156,7 +145,7 @@ def render(ticker_symbol, **kwargs):
 
                         em = calcular_expected_move(precio_actual_rango, iv_avg, dte)
                         call_price = float(atm_call.get("lastPrice", 0) or atm_call.get("ask", 0) or 0)
-                        put_price  = float(atm_put.get("lastPrice", 0) or atm_put.get("ask", 0) or 0)
+                        put_price = float(atm_put.get("lastPrice", 0) or atm_put.get("ask", 0) or 0)
                         em_straddle = calcular_em_straddle(precio_actual_rango, call_price, put_price) if call_price > 0 and put_price > 0 else None
 
                         em_results.append({
@@ -174,7 +163,7 @@ def render(ticker_symbol, **kwargs):
                         })
 
                     except Exception as e:
-                        logger.warning("Range (yfinance): error en %s: %s", exp_date, e)
+                        logger.warning("Range (polygon): error en %s: %s", exp_date, e)
                         continue
 
             except Exception as e:
