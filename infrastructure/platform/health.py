@@ -5,6 +5,7 @@ import time
 import uuid
 
 from infrastructure.caching import get_cache
+from infrastructure.data.env_resolver import get_env_value
 from infrastructure.data.provider_runtime import get_provider_circuit
 from infrastructure.data.yahoo_finance_client import get_active_provider
 
@@ -28,12 +29,12 @@ def provider_healthcheck() -> dict:
         return _degraded("provider", {"provider": provider, "circuit": circuit})
 
     if provider == "databento":
-        if not os.getenv("DATABENTO_API_KEY", "").strip():
+        if not get_env_value("DATABENTO_API_KEY", ""):
             return _down("provider", {"provider": provider, "reason": "missing DATABENTO_API_KEY"})
         return _ok("provider", {"provider": provider, "circuit": circuit})
 
     if provider == "polygon":
-        if not os.getenv("POLYGON_API_KEY", "").strip():
+        if not get_env_value("POLYGON_API_KEY", ""):
             return _down("provider", {"provider": provider, "reason": "missing POLYGON_API_KEY"})
         return _ok("provider", {"provider": provider, "circuit": circuit})
 
@@ -56,8 +57,8 @@ def cache_healthcheck() -> dict:
 
 
 def repository_healthcheck() -> dict:
-    has_url = bool(os.getenv("SUPABASE_URL", "").strip())
-    has_key = bool(os.getenv("SUPABASE_ANON_KEY", "").strip())
+    has_url = bool(get_env_value("SUPABASE_URL", ""))
+    has_key = bool(get_env_value("SUPABASE_ANON_KEY", ""))
     if has_url and has_key:
         return _ok("repository", {"backend": "supabase"})
     return _down("repository", {"backend": "supabase", "reason": "missing SUPABASE_URL/SUPABASE_ANON_KEY"})

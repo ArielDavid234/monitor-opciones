@@ -14,12 +14,13 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 from polygon import RESTClient
+from infrastructure.data.env_resolver import get_env_value
 
 logger = logging.getLogger(__name__)
 
 
 def _client() -> RESTClient:
-    api_key = os.getenv("POLYGON_API_KEY")
+    api_key = get_env_value("POLYGON_API_KEY", "")
     if not api_key:
         raise RuntimeError("POLYGON_API_KEY no configurada")
     return RESTClient(api_key)
@@ -67,7 +68,7 @@ def fetch_options_dates(ticker_sym: str):
     import requests
 
     try:
-        api_key = os.getenv("POLYGON_API_KEY")
+        api_key = get_env_value("POLYGON_API_KEY", "")
         if not api_key:
             logger.warning("POLYGON_API_KEY no configurada")
             return tuple()
@@ -190,7 +191,7 @@ def fetch_single_chain(ticker_sym: str, exp_date: str):
 
         # Fallback manual (raw request) tolerante
         try:
-            api_key = os.getenv("POLYGON_API_KEY")
+            api_key = get_env_value("POLYGON_API_KEY", "")
             if api_key:
                 url = (
                     "https://api.polygon.io/v3/snapshot/options/"

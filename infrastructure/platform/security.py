@@ -8,6 +8,7 @@ import re
 from typing import Any
 
 from config.settings import get_settings
+from infrastructure.data.env_resolver import get_env_value
 from infrastructure.platform.audit import record_audit_event
 
 logger = logging.getLogger(__name__)
@@ -122,13 +123,13 @@ def audit_critical_config_change() -> None:
 
 def validate_startup_secrets() -> list[str]:
     cfg = get_settings()
-    provider = os.getenv("DATA_PROVIDER", str(getattr(cfg, "data_provider", "databento"))).lower().strip()
+    provider = get_env_value("DATA_PROVIDER", str(getattr(cfg, "data_provider", "databento"))).lower()
     errors: list[str] = []
 
-    databento_key = os.getenv("DATABENTO_API_KEY", str(getattr(cfg, "databento_api_key", ""))).strip()
-    polygon_key = os.getenv("POLYGON_API_KEY", str(getattr(cfg, "polygon_api_key", ""))).strip()
-    supabase_url = os.getenv("SUPABASE_URL", str(getattr(cfg, "supabase_url", ""))).strip()
-    supabase_key = os.getenv("SUPABASE_ANON_KEY", str(getattr(cfg, "supabase_anon_key", ""))).strip()
+    databento_key = get_env_value("DATABENTO_API_KEY", str(getattr(cfg, "databento_api_key", "")))
+    polygon_key = get_env_value("POLYGON_API_KEY", str(getattr(cfg, "polygon_api_key", "")))
+    supabase_url = get_env_value("SUPABASE_URL", str(getattr(cfg, "supabase_url", "")))
+    supabase_key = get_env_value("SUPABASE_ANON_KEY", str(getattr(cfg, "supabase_anon_key", "")))
 
     if provider == "databento" and not databento_key:
         errors.append("DATABENTO_API_KEY ausente para DATA_PROVIDER=databento")

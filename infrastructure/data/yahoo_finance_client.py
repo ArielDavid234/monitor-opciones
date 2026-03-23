@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from infrastructure.caching import get_cache as _get_cache
+from infrastructure.data.env_resolver import get_env_value
 from infrastructure.data.provider_runtime import (
     CircuitOpenError,
     get_cross_user_dedupe,
@@ -39,9 +40,9 @@ _CHAIN_REQUIRED_COLUMNS = [
 
 
 def _estimate_dynamic_chain_ttl_seconds(chain_payload) -> int:
-    base = int(os.getenv("SNAPSHOT_CHAIN_FRESH_SEC", "240"))
-    min_ttl = int(os.getenv("SNAPSHOT_CHAIN_MIN_TTL_SEC", "60"))
-    max_ttl = int(os.getenv("SNAPSHOT_CHAIN_MAX_TTL_SEC", "900"))
+    base = int(get_env_value("SNAPSHOT_CHAIN_FRESH_SEC", "240"))
+    min_ttl = int(get_env_value("SNAPSHOT_CHAIN_MIN_TTL_SEC", "60"))
+    max_ttl = int(get_env_value("SNAPSHOT_CHAIN_MAX_TTL_SEC", "900"))
 
     if not isinstance(chain_payload, dict):
         return max(min(base, max_ttl), min_ttl)
@@ -77,7 +78,7 @@ def _estimate_dynamic_chain_ttl_seconds(chain_payload) -> int:
 
 
 def _cache_version() -> str:
-    return os.getenv("MARKET_CACHE_VERSION", "v1").strip() or "v1"
+    return get_env_value("MARKET_CACHE_VERSION", "v1") or "v1"
 
 
 def _cache_base_prefix() -> str:
@@ -85,17 +86,17 @@ def _cache_base_prefix() -> str:
 
 
 def _snapshot_hard_ttl() -> int:
-    return int(os.getenv("SNAPSHOT_HARD_TTL_SEC", "1800"))
+    return int(get_env_value("SNAPSHOT_HARD_TTL_SEC", "1800"))
 
 
 def _snapshot_fresh_seconds(kind: str) -> int:
     if kind == "price":
-        return int(os.getenv("SNAPSHOT_PRICE_FRESH_SEC", "60"))
+        return int(get_env_value("SNAPSHOT_PRICE_FRESH_SEC", "60"))
     if kind == "exp":
-        return int(os.getenv("SNAPSHOT_EXP_FRESH_SEC", "300"))
+        return int(get_env_value("SNAPSHOT_EXP_FRESH_SEC", "300"))
     if kind == "chain":
-        return int(os.getenv("SNAPSHOT_CHAIN_FRESH_SEC", "240"))
-    return int(os.getenv("SNAPSHOT_FRESH_SEC", "180"))
+        return int(get_env_value("SNAPSHOT_CHAIN_FRESH_SEC", "240"))
+    return int(get_env_value("SNAPSHOT_FRESH_SEC", "180"))
 
 
 def _meta_key(kind: str, ticker: str, expiration: str | None = None) -> str:
@@ -175,7 +176,7 @@ def _register_snapshot_access(ticker: str, priority: str = "normal") -> None:
 
 
 def _provider_name() -> str:
-    provider = os.getenv("DATA_PROVIDER", "databento").strip().lower()
+    provider = get_env_value("DATA_PROVIDER", "databento").lower()
     if provider not in {"databento", "polygon"}:
         provider = "databento"
     return provider

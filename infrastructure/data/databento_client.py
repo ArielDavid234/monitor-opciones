@@ -19,6 +19,7 @@ try:
 except Exception:  # pragma: no cover - import guard
     db = None
 
+from infrastructure.data.env_resolver import get_env_value
 from infrastructure.data.provider_runtime import (
     get_budget_manager,
     get_provider_metrics,
@@ -84,18 +85,18 @@ def _client():
     if db is None:
         raise RuntimeError("Dependencia 'databento' no instalada")
 
-    api_key = os.getenv("DATABENTO_API_KEY", "").strip()
+    api_key = get_env_value("DATABENTO_API_KEY", "")
     if not api_key:
         raise RuntimeError("DATABENTO_API_KEY no configurada")
     return db.Historical(api_key)
 
 
 def _options_dataset() -> str:
-    return os.getenv("DATABENTO_OPTIONS_DATASET", "OPRA.PILLAR").strip() or "OPRA.PILLAR"
+    return get_env_value("DATABENTO_OPTIONS_DATASET", "OPRA.PILLAR") or "OPRA.PILLAR"
 
 
 def _equity_datasets() -> list[str]:
-    raw = os.getenv("DATABENTO_EQUITY_DATASETS", "EQUS.MINI,DBEQ.BASIC,XNAS.BASIC")
+    raw = get_env_value("DATABENTO_EQUITY_DATASETS", "EQUS.MINI,DBEQ.BASIC,XNAS.BASIC")
     datasets = [x.strip() for x in raw.split(",") if x.strip()]
     return datasets or ["EQUS.MINI", "DBEQ.BASIC", "XNAS.BASIC"]
 
