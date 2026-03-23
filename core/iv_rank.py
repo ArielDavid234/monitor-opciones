@@ -65,7 +65,7 @@ def calcular_iv_rank_percentile(
     }
 
     try:
-        # Descargar histórico desde Polygon
+        # Descargar histórico desde el proveedor de mercado activo
         hist = get_price_history(symbol, period=periodo)
         if hist.empty or len(hist) < 30:
             logger.warning(f"{symbol}: Historial insuficiente ({len(hist)} días)")

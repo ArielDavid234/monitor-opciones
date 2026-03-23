@@ -37,14 +37,6 @@ def default_capability_map() -> list[CapabilityMap]:
             supports_options_chain=True,
         ),
         CapabilityMap(
-            provider="polygon",
-            market="US",
-            asset_type="options",
-            supports_realtime=True,
-            supports_historical=True,
-            supports_options_chain=True,
-        ),
-        CapabilityMap(
             provider="databento",
             market="US",
             asset_type="equities",

@@ -40,13 +40,13 @@ class TestDataProviderContract(unittest.TestCase):
         self.assertEqual(int(row["openInterest"]), 0)
         self.assertEqual(int(row["volume"]), 0)
 
-    def test_provider_selection_by_env_default_and_polygon(self):
+    def test_provider_selection_by_env_default_only_databento(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("DATA_PROVIDER", None)
             self.assertEqual(facade.get_active_provider(), "databento")
 
-        with patch.dict(os.environ, {"DATA_PROVIDER": "polygon"}, clear=False):
-            self.assertEqual(facade.get_active_provider(), "polygon")
+        with patch.dict(os.environ, {"DATA_PROVIDER": "legacy_provider"}, clear=False):
+            self.assertEqual(facade.get_active_provider(), "databento")
 
         with patch.dict(os.environ, {"DATA_PROVIDER": "unknown"}, clear=False):
             self.assertEqual(facade.get_active_provider(), "databento")

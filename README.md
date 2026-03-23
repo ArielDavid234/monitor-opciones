@@ -9,7 +9,6 @@
 
 Variables recomendadas para control operativo:
 
-- POLYGON_API_KEY=<tu_api_key> (solo rollback controlado)
 - CHAIN_FETCH_MAX_WORKERS=6
 - DATABENTO_QUOTA_TOTAL_PER_MIN=240
 - DATABENTO_QUOTA_RESERVED_LIVE_SCANNING=160
@@ -20,12 +19,12 @@ Variables recomendadas para control operativo:
 - LOG_RETENTION_DAYS=30
 - ERROR_BUDGET_MAX_ERROR_RATE_PCT_7D=2.0
 
-## Rollback Rapido a Polygon
+## Proveedor de Datos
 
-1. Cambiar variable: DATA_PROVIDER=polygon
-2. Verificar POLYGON_API_KEY presente.
+1. Mantener variable: DATA_PROVIDER=databento
+2. Verificar DATABENTO_API_KEY presente.
 3. Reiniciar proceso Streamlit.
-4. Confirmar en logs: provider=polygon.
+4. Confirmar en logs: provider=databento.
 
 ## Limpieza de Cache por Ticker
 
@@ -98,3 +97,4 @@ Controles principales:
 - redaccion de secretos en logs
 - anonimizacion de identificadores de usuario
 - auditoria de cambios en configuracion critica
+

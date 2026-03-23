@@ -127,14 +127,13 @@ def validate_startup_secrets() -> list[str]:
     errors: list[str] = []
 
     databento_key = get_env_value("DATABENTO_API_KEY", str(getattr(cfg, "databento_api_key", "")))
-    polygon_key = get_env_value("POLYGON_API_KEY", str(getattr(cfg, "polygon_api_key", "")))
     supabase_url = get_env_value("SUPABASE_URL", str(getattr(cfg, "supabase_url", "")))
     supabase_key = get_env_value("SUPABASE_ANON_KEY", str(getattr(cfg, "supabase_anon_key", "")))
 
+    if provider != "databento":
+        errors.append("DATA_PROVIDER invalido: solo se permite databento")
     if provider == "databento" and not databento_key:
         errors.append("DATABENTO_API_KEY ausente para DATA_PROVIDER=databento")
-    if provider == "polygon" and not polygon_key:
-        errors.append("POLYGON_API_KEY ausente para DATA_PROVIDER=polygon")
 
     if not supabase_url:
         errors.append("SUPABASE_URL ausente")
@@ -158,7 +157,7 @@ def env_by_stage(stage: str) -> dict[str, str]:
     """Expose required variable names by environment stage."""
     stage_key = (stage or "dev").lower().strip()
     common = {
-        "DATA_PROVIDER": "databento|polygon",
+        "DATA_PROVIDER": "databento",
         "SUPABASE_URL": "required",
         "SUPABASE_ANON_KEY": "required",
         "REDIS_URL": "optional",

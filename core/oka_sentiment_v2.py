@@ -11,7 +11,7 @@ Rediseño completo basado en flujo direccional institucional real:
 
 Phase 2 opcional: Gamma Weighting para ajuste de convexidad.
 
-Fuente de datos primaria: Polygon.io option trades (REST/streaming).
+Fuente de datos primaria: Databento (cadena de opciones).
 Fallback: mock data (para demos sin API key).
 
 Uso típico:
@@ -23,11 +23,15 @@ Uso típico:
 from __future__ import annotations
 
 import logging
-import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from core.option_greeks import quick_delta, quick_gamma
+from infrastructure.data.yahoo_finance_client import (
+    fetch_options_dates,
+    fetch_single_chain,
+    obtener_precio_actual,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,128 +307,90 @@ def interpret_oka_index(index: float) -> dict:
 
 
 # ---------------------------------------------------------------------------
-#   DATA FETCHING — Polygon.io con fallback mock
+#   DATA FETCHING — Databento con fallback mock
 # ---------------------------------------------------------------------------
 
-def _fetch_polygon_option_flow(
+def _fetch_databento_option_flow(
     symbol: str,
     lookback_minutes: int = 60,
 ) -> list[dict]:
-    """Obtiene trades de opciones desde Polygon.io REST API.
+    """Construye flujo sintético desde cadenas Databento para el índice OKA.
 
-    Requiere variable de entorno POLYGON_API_KEY.
-    Devuelve lista de dicts con campos estandarizados.
+    Convierte opciones con volumen en una lista de trades normalizados
+    compatible con el pipeline institucional existente.
     """
-    api_key = os.environ.get("POLYGON_API_KEY", "")
-    if not api_key:
-        logger.warning("POLYGON_API_KEY no configurada — usando mock data")
-        return []
-
-    try:
-        import requests  # type: ignore[import]
-        now  = datetime.now(timezone.utc)
-        from_ts = int((now - timedelta(minutes=lookback_minutes)).timestamp() * 1_000)
-        to_ts   = int(now.timestamp() * 1_000)
-
-        # Obtener opciones activas del ticker con volumen razonable
-        # Usamos la API de option trades (snapshot may be more reliable)
-        url = (
-            f"https://api.polygon.io/v3/trades"
-            f"?ticker=O:{symbol.upper()}"
-            f"&timestamp.gte={from_ts}"
-            f"&timestamp.lte={to_ts}"
-            f"&limit=200"
-            f"&apiKey={api_key}"
-        )
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-
-        raw_trades: list[dict] = data.get("results", [])
-        return raw_trades
-
-    except Exception as exc:
-        logger.error("Error fetching Polygon trades: %s", exc)
-        return []
-
-
-def _fetch_polygon_snapshots(symbol: str) -> list[dict]:
-    """Obtiene snapshots de opciones del subyacente desde Polygon.io.
-
-    Usa el endpoint /v3/snapshot/options/{underlyingAsset} que devuelve
-    greeks, IV, bid, ask y volumen en una sola llamada.
-    """
-    api_key = os.environ.get("POLYGON_API_KEY", "")
-    if not api_key:
-        return []
-
-    try:
-        import requests  # type: ignore[import]
-        url = (
-            f"https://api.polygon.io/v3/snapshot/options/{symbol.upper()}"
-            f"?limit=100"
-            f"&apiKey={api_key}"
-        )
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("results", [])
-    except Exception as exc:
-        logger.error("Error fetching Polygon snapshots: %s", exc)
-        return []
-
-
-def _build_trades_from_snapshots(
-    snapshots: list[dict],
-    symbol: str,
-) -> list[dict]:
-    """Convierte snapshots de Polygon (con greeks+quotes) a formato de trades.
-
-    Esto permite usar la arquitectura de clasificación sin tener stream
-    de trades histórico — aproximamos usando el volumen diario total.
-    """
-    import random  # solo para simular aggression sin datos reales de tick
-    random.seed(42)
-
     trades: list[dict] = []
-    for snap in snapshots:
-        details = snap.get("details", {})
-        greeks  = snap.get("greeks", {})
-        day     = snap.get("day",    {})
-        quote   = snap.get("last_quote", snap.get("lastQuote", {}))
+    try:
+        expirations = list(fetch_options_dates(symbol))[:2]
+    except Exception as exc:
+        logger.error("Error obteniendo expiraciones Databento: %s", exc)
+        return trades
 
-        strike      = float(details.get("strike_price",   0) or 0)
-        exp         = details.get("expiration_date", "")
-        opt_type    = details.get("contract_type",  "call").lower()
-        price       = float(day.get("close",    day.get("vwap", 0)) or 0)
-        volume      = float(day.get("volume",   0) or 0)
-        oi          = float(snap.get("open_interest", 0) or 0)
-        bid         = float(quote.get("bid",  quote.get("P", 0)) or 0)
-        ask         = float(quote.get("ask",  quote.get("p", price)) or price)
-        delta       = float(greeks.get("delta", 0) or 0)
-        gamma_val   = float(greeks.get("gamma", 0) or 0)
-        iv          = float(snap.get("implied_volatility", 0.25) or 0.25)
+    if not expirations:
+        return trades
 
-        if price <= 0 or volume <= 0:
+    spot, _ = obtener_precio_actual(symbol)
+    spot_price = float(spot or 0)
+
+    for exp in expirations:
+        try:
+            _, chain_data, err = fetch_single_chain(symbol, exp)
+            if err or not chain_data:
+                continue
+
+            exp_date = datetime.strptime(exp, "%Y-%m-%d")
+            dte = max((exp_date - datetime.now()).days, 1)
+
+            for option_type, key in (("call", "calls"), ("put", "puts")):
+                df = chain_data.get(key)
+                if df is None or getattr(df, "empty", True):
+                    continue
+
+                for _, row in df.iterrows():
+                    strike = float(row.get("strike", 0) or 0)
+                    volume = float(row.get("volume", 0) or 0)
+                    oi = float(row.get("openInterest", 0) or 0)
+                    bid = float(row.get("bid", 0) or 0)
+                    ask = float(row.get("ask", 0) or 0)
+                    price = float(row.get("lastPrice", 0) or 0)
+                    if price <= 0:
+                        price = ask if ask > 0 else bid
+                    iv = float(row.get("impliedVolatility", 0) or 0)
+                    if iv > 1:
+                        iv /= 100.0
+
+                    if strike <= 0 or volume <= 0 or price <= 0:
+                        continue
+
+                    base_spot = spot_price if spot_price > 0 else strike
+                    T = max(dte / 365.0, 1 / 365.0)
+                    delta = _approx_delta(base_spot, strike, T, iv or 0.25, option_type)
+                    gamma_val = _approx_gamma(base_spot, strike, T, iv or 0.25)
+
+                    trades.append(
+                        {
+                            "symbol": f"{symbol.upper()}_{exp}_{strike:.0f}{option_type[0].upper()}",
+                            "ticker": symbol.upper(),
+                            "option_type": option_type,
+                            "strike": strike,
+                            "expiration": exp,
+                            "price": round(price, 2),
+                            "size": volume,
+                            "volume": volume,
+                            "open_interest": oi,
+                            "bid": round(bid, 2),
+                            "ask": round(ask if ask > 0 else price, 2),
+                            "delta": round(float(delta), 4),
+                            "gamma": round(float(gamma_val), 6),
+                            "iv": round(float(iv or 0.25), 4),
+                            "sweep_flag": None,
+                            "spot": base_spot,
+                            "dte": dte,
+                        }
+                    )
+        except Exception as exc:
+            logger.warning("Error construyendo flujo Databento para %s %s: %s", symbol, exp, exc)
             continue
-
-        trades.append({
-            "symbol":       f"{symbol.upper()}_{exp}_{strike:.0f}{opt_type[0].upper()}",
-            "ticker":       symbol.upper(),
-            "option_type":  opt_type,
-            "strike":       strike,
-            "expiration":   exp,
-            "price":        price,
-            "size":         volume,
-            "volume":       volume,
-            "open_interest": oi,
-            "bid":          bid,
-            "ask":          ask,
-            "delta":        delta,
-            "gamma":        gamma_val,
-            "iv":           iv,
-            "sweep_flag":   None,   # no disponible en snapshot
-        })
 
     return trades
 
@@ -531,7 +497,7 @@ def compute_oka_index(
     """Pipeline completo del OKA Sentiment Index v2.
 
     Pasos:
-        1. Fetch trades (Polygon o mock)
+        1. Fetch trades (Databento o mock)
         2. Enriquecer con greeks si faltan
         3. Classify aggression
         4. Apply institutional filters
@@ -561,20 +527,14 @@ def compute_oka_index(
             symbol             — str ticker
     """
     # ── 1. Fetch ──────────────────────────────────────────────────────────
-    api_key = os.environ.get("POLYGON_API_KEY", "")
-    _use_mock = use_mock if use_mock is not None else (not bool(api_key))
+    _use_mock = bool(use_mock) if use_mock is not None else False
 
     if _use_mock:
         raw_trades = _generate_mock_trades(symbol, n=120)
     else:
-        # Intentar snapshots primero (más ricos en greeks)
-        snaps = _fetch_polygon_snapshots(symbol)
-        if snaps:
-            raw_trades = _build_trades_from_snapshots(snaps, symbol)
-        else:
-            raw_trades = _fetch_polygon_option_flow(symbol, lookback_minutes)
-            if not raw_trades:
-                raw_trades = _generate_mock_trades(symbol, n=120)
+        raw_trades = _fetch_databento_option_flow(symbol, lookback_minutes)
+        if not raw_trades:
+            raw_trades = _generate_mock_trades(symbol, n=120)
 
     total_raw = len(raw_trades)
 

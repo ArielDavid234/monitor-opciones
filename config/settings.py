@@ -48,7 +48,6 @@ try:
         # ── Data providers ─────────────────────────────────────────────────
         data_provider: str = Field(default="databento", alias="DATA_PROVIDER")
         databento_api_key: str = Field(default="", alias="DATABENTO_API_KEY")
-        polygon_api_key: str = Field(default="", alias="POLYGON_API_KEY")
         chain_fetch_max_workers: int = Field(default=6, alias="CHAIN_FETCH_MAX_WORKERS")
         databento_quota_total_per_min: int = Field(default=240, alias="DATABENTO_QUOTA_TOTAL_PER_MIN")
         databento_quota_reserved_live_scanning: int = Field(
@@ -140,7 +139,6 @@ except ImportError:  # pydantic-settings no instalado → fallback
         scanner_auto_refresh_secs: int = 600
         data_provider: str = "databento"
         databento_api_key: str = ""
-        polygon_api_key: str = ""
         chain_fetch_max_workers: int = 6
         databento_quota_total_per_min: int = 240
         databento_quota_reserved_live_scanning: int = 160

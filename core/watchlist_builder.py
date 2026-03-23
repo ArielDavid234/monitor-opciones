@@ -144,7 +144,7 @@ def construir_watchlist_consolidadas(
                 continue
 
     except Exception as e:
-        logger.warning("Error consultando Polygon details: %s", e)
+        logger.warning("Error consultando market details: %s", e)
 
     if not market_caps:
         logger.warning("No se obtuvo ningún market cap — usando watchlist estática.")
@@ -167,8 +167,8 @@ def construir_watchlist_consolidadas(
             entry = dict(_METADATA[sym])
         else:
             # Empresa nueva en el top que no tiene metadatos curados
-            # → intentar obtenerlos de Polygon
-            entry = _obtener_metadata_polygon(sym)
+            # → intentar obtenerlos del proveedor de mercado
+            entry = _obtener_metadata_market(sym)
 
         entry["market_cap_live"] = mc  # guardar para referencia
         watchlist[sym] = entry
@@ -181,9 +181,9 @@ def construir_watchlist_consolidadas(
     return watchlist
 
 
-def _obtener_metadata_polygon(sym: str) -> dict:
+def _obtener_metadata_market(sym: str) -> dict:
     """
-    Obtiene nombre, sector y una descripción corta desde Polygon
+    Obtiene nombre, sector y una descripción corta desde el proveedor activo
     para empresas sin metadatos curados.
     """
     try:
@@ -313,16 +313,16 @@ def construir_watchlist_emergentes(
 
     Metodología:
       1. Universo candidato: ~45 disruptores y empresas de hipercrecimiento
-    2. Obtener market cap y momentum de 52 semanas via Polygon details
+    2. Obtener market cap y momentum de 52 semanas via market details
       3. Filtrar: excluir mega-caps (>$250B) que ya deberían estar en consolidadas
                  y micro-caps (<$150M) con poco liquidity
       4. Calcular score de disrupción = momentum_52w * 0.6 + (market_cap relativo) * 0.4
       5. Ordenar por score → tomar top N
-    6. Si Polygon falla → usar fallback estático (WATCHLIST_EMERGENTES)
+    6. Si el proveedor falla → usar fallback estático (WATCHLIST_EMERGENTES)
 
     Args:
         n: Número de empresas a devolver (default 18).
-        fallback: Watchlist estática a devolver si Polygon falla completamente.
+        fallback: Watchlist estática a devolver si el proveedor falla completamente.
 
     Returns:
         dict {ticker: {nombre, descripcion, sector, por_que_grande, ...}}
@@ -382,7 +382,7 @@ def construir_watchlist_emergentes(
         if sym in _METADATA_EMERGENTES:
             entry = dict(_METADATA_EMERGENTES[sym])
         else:
-            entry = _obtener_metadata_polygon(sym)
+            entry = _obtener_metadata_market(sym)
 
         entry["market_cap_live"] = market_caps.get(sym, 0)
         entry["momentum_52w"] = momentum

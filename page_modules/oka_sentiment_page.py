@@ -23,6 +23,7 @@ import streamlit as st
 import time
 
 from core.oka_sentiment_v2 import compute_oka_index
+from infrastructure.data.env_resolver import get_env_value
 from ui.oka_components import render_oka_page
 
 logger = logging.getLogger(__name__)
@@ -188,7 +189,7 @@ def render(**kwargs) -> None:
             logger.error("Error en compute_oka_index: %s", exc, exc_info=True)
             st.error(
                 f"❌ Error al obtener datos de flujo: {exc}\n\n"
-                "Verifica tu `POLYGON_API_KEY` o inténtalo de nuevo.",
+                "Verifica tu `DATABENTO_API_KEY` o inténtalo de nuevo.",
                 icon="❌",
             )
             return
@@ -197,8 +198,8 @@ def render(**kwargs) -> None:
         ts     = result.get("timestamp", "—")
         total_r = result.get("total_raw_trades", 0)
         total_i = result.get("total_institutional", 0)
-        api_key_set = __import__("os").environ.get("POLYGON_API_KEY", "")
-        data_label = "Polygon.io" if api_key_set else "Demo (mock)"
+        api_key_set = get_env_value("DATABENTO_API_KEY", "")
+        data_label = "Databento" if api_key_set else "Demo (mock)"
         st.markdown(
             f'<div style="padding:4px 0;font-size:0.75rem;color:#64748b;">'
             f'🕐 {ts[:16]} &nbsp;|&nbsp; '
@@ -210,10 +211,10 @@ def render(**kwargs) -> None:
         )
 
     # Aviso si no hay API key (modo demo)
-    if not __import__("os").environ.get("POLYGON_API_KEY", ""):
+    if not get_env_value("DATABENTO_API_KEY", ""):
         st.info(
             "🧪 **Modo Demo** — Los datos mostrados son simulados (mock) para demostración.\n\n"
-            "Configura la variable de entorno `POLYGON_API_KEY` con tu clave de Polygon.io "
+            "Configura la variable de entorno `DATABENTO_API_KEY` con tu clave de Databento "
             "para datos reales en tiempo real.",
             icon="💡",
         )

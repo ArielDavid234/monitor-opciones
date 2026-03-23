@@ -33,11 +33,6 @@ def provider_healthcheck() -> dict:
             return _down("provider", {"provider": provider, "reason": "missing DATABENTO_API_KEY"})
         return _ok("provider", {"provider": provider, "circuit": circuit})
 
-    if provider == "polygon":
-        if not get_env_value("POLYGON_API_KEY", ""):
-            return _down("provider", {"provider": provider, "reason": "missing POLYGON_API_KEY"})
-        return _ok("provider", {"provider": provider, "circuit": circuit})
-
     return _down("provider", {"provider": provider, "reason": "invalid provider"})
 
 

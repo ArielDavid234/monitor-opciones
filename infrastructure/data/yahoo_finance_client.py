@@ -177,33 +177,12 @@ def _register_snapshot_access(ticker: str, priority: str = "normal") -> None:
 
 def _provider_name() -> str:
     provider = get_env_value("DATA_PROVIDER", "databento").lower()
-    if provider not in {"databento", "polygon"}:
+    if provider != "databento":
         provider = "databento"
     return provider
 
 
 def _provider_impls():
-    provider = _provider_name()
-    if provider == "polygon":
-        from infrastructure.data.polygon_client import (
-            fetch_options_dates as _polygon_fetch_options_dates,
-            fetch_single_chain as _polygon_fetch_single_chain,
-            get_contract_history as _polygon_get_contract_history,
-            get_ticker_details as _polygon_get_ticker_details,
-            get_price_history as _polygon_get_price_history,
-            obtener_precio_actual as _polygon_obtener_precio_actual,
-        )
-
-        return {
-            "name": "polygon",
-            "fetch_options_dates": _polygon_fetch_options_dates,
-            "fetch_single_chain": _polygon_fetch_single_chain,
-            "get_price_history": _polygon_get_price_history,
-            "get_contract_history": _polygon_get_contract_history,
-            "get_ticker_details": _polygon_get_ticker_details,
-            "obtener_precio_actual": _polygon_obtener_precio_actual,
-        }
-
     from infrastructure.data.databento_client import (
         fetch_options_dates as _databento_fetch_options_dates,
         fetch_single_chain as _databento_fetch_single_chain,

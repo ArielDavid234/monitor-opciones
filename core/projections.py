@@ -161,8 +161,8 @@ def predict_implied_volatility(
 #        ENRICHMENT — Datos fundamentales vía Alpha Vantage
 # ============================================================================
 
-def _get_fundamentals_polygon(ticker: str) -> dict:
-    """Obtiene fundamentales desde Polygon.
+def _get_fundamentals_market(ticker: str) -> dict:
+    """Obtiene fundamentales desde el proveedor de mercado.
 
     Devuelve el mismo esquema de dict que get_alpha_vantage_fundamentals.
     """
@@ -178,7 +178,7 @@ def _get_fundamentals_polygon(ticker: str) -> dict:
             except (TypeError, ValueError):
                 return None
 
-        # Earnings history no disponible en free-tier de Polygon
+        # Earnings history no disponible en este flujo de mercado
         quarterly_earnings = []
         last_surprise_pct = None
         last_reported_date = "N/A"
@@ -213,10 +213,10 @@ def _get_fundamentals_polygon(ticker: str) -> dict:
             "sector": info.get("sector", "N/A"),
             "industry": info.get("sic_description", "N/A"),
             "description": info.get("description", ""),
-            "source": "Polygon.io",
+            "source": "Databento",
         }
     except Exception as e:
-        return {"error": f"polygon fundamentals error: {e}"}
+        return {"error": f"market fundamentals error: {e}"}
 
 
 def enrich_with_fundamentals(ticker: str) -> dict:
@@ -237,10 +237,10 @@ def enrich_with_fundamentals(ticker: str) -> dict:
     except ImportError:
         raw = {"error": "api_integrations no disponible"}
 
-    # Si Alpha Vantage falla por falta de key (o cualquier error), usar Polygon
+    # Si Alpha Vantage falla por falta de key (o cualquier error), usar market fallback
     if "error" in raw:
-        logger.info("%s: Alpha Vantage no disponible (%s) — usando Polygon fallback", ticker, raw["error"][:60])
-        raw = _get_fundamentals_polygon(ticker)
+        logger.info("%s: Alpha Vantage no disponible (%s) — usando market fallback", ticker, raw["error"][:60])
+        raw = _get_fundamentals_market(ticker)
 
     if "error" in raw:
         return raw
@@ -350,7 +350,7 @@ def enrich_with_fundamentals(ticker: str) -> dict:
 
 def analizar_proyeccion_empresa(symbol, info_empresa=None):
     """
-    Analiza los fundamentales de una empresa vía Polygon para evaluar
+    Analiza los fundamentales de una empresa vía proveedor de mercado para evaluar
     su potencial de crecimiento a largo plazo (10 años).
 
     Usa datos gratuitos: crecimiento de ingresos, márgenes,
