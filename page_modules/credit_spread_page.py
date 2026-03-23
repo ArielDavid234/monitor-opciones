@@ -8,7 +8,6 @@ Usa AgGrid para tabla interactiva (sortable, filterable, color-coded).
 """
 from __future__ import annotations
 
-import logging
 import pandas as pd
 import streamlit as st
 from datetime import datetime, timedelta
@@ -25,10 +24,24 @@ from core.optionkings_analytic import (
     monte_carlo_spread_simulation,
 )
 from core.backtester import Backtester, BacktestResult
+from infrastructure.platform.business_value import (
+    export_executive_summary,
+    get_rollout_cohort,
+    get_user_plan,
+    has_feature_access,
+    is_feature_enabled_for_user,
+    run_autonomy_cycle,
+    record_intelligence_snapshot,
+    record_product_event,
+)
+from core.autonomy.feedback_loop import FeedbackLoopEngine
 from utils.state import save_page_data, load_page_data
 from ui.plotly_professional_theme import COLORS
 
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
+from config.settings import get_settings
+
+_feedback_loop = FeedbackLoopEngine()
 
 # ── Tickers populares por defecto ────────────────────────────────────────
 _DEFAULT_TICKERS = ["SPY", "QQQ", "IWM", "NVDA", "AAPL", "TSLA", "AMD"]
@@ -243,6 +256,26 @@ def _render_backtester_fragment() -> None:
 def render(**kwargs) -> None:
     """Renderiza la página de Venta de Prima — Credit Spread Scanner."""
     _cs_service = get_container().credit_spread_service
+    _container = get_container()
+    _auth = _container.auth
+    _user = _auth.get_current_user() or {}
+    _user_id = str(_user.get("id") or "")
+    _plan = get_user_plan(_user)
+    _cohort = get_rollout_cohort(_user_id or "anonymous")
+    _settings = get_settings()
+    _ff_advanced_score = is_feature_enabled_for_user(
+        feature_name="advanced_score", plan=_plan, user_id=_user_id or "anonymous", cohort=_cohort
+    )
+    _ff_explainability = is_feature_enabled_for_user(
+        feature_name="explainability", plan=_plan, user_id=_user_id or "anonymous", cohort=_cohort
+    )
+    _ff_smart_alerts = is_feature_enabled_for_user(
+        feature_name="smart_alerts", plan=_plan, user_id=_user_id or "anonymous", cohort=_cohort
+    )
+    _ff_auto_reports = is_feature_enabled_for_user(
+        feature_name="auto_reports", plan=_plan, user_id=_user_id or "anonymous", cohort=_cohort
+    )
+    _can_stress_tests = has_feature_access(_plan, "stress_tests")
 
     # ── Header ───────────────────────────────────────────────────────────
     st.markdown(
@@ -429,6 +462,53 @@ def render(**kwargs) -> None:
         )
         st.markdown("---")
 
+        smart_alert_preferences = {
+            "min_score": float(_settings.smart_alert_min_score_default),
+            "dte_min": int(_settings.smart_alert_dte_min_default),
+            "dte_max": int(_settings.smart_alert_dte_max_default),
+            "max_spread": float(_settings.smart_alert_max_spread_default),
+            "min_premium": float(_settings.smart_alert_min_premium_default),
+        }
+        if _ff_smart_alerts:
+            st.markdown("#### 🧠 Alertas Inteligentes (personalizadas)")
+            smart_alert_preferences["min_score"] = st.slider(
+                "Score mínimo",
+                min_value=50,
+                max_value=95,
+                value=int(_settings.smart_alert_min_score_default),
+                step=1,
+                key="cs_smart_min_score",
+            )
+            _dte_range = st.slider(
+                "Rango DTE",
+                min_value=7,
+                max_value=90,
+                value=(
+                    int(_settings.smart_alert_dte_min_default),
+                    int(_settings.smart_alert_dte_max_default),
+                ),
+                step=1,
+                key="cs_smart_dte_range",
+            )
+            smart_alert_preferences["dte_min"] = int(_dte_range[0])
+            smart_alert_preferences["dte_max"] = int(_dte_range[1])
+            smart_alert_preferences["max_spread"] = st.slider(
+                "Max Bid-Ask ($)",
+                min_value=0.05,
+                max_value=1.00,
+                value=float(_settings.smart_alert_max_spread_default),
+                step=0.01,
+                key="cs_smart_max_spread",
+            )
+            smart_alert_preferences["min_premium"] = st.slider(
+                "Prima mínima ($)",
+                min_value=0.10,
+                max_value=3.00,
+                value=float(_settings.smart_alert_min_premium_default),
+                step=0.05,
+                key="cs_smart_min_premium",
+            )
+
     # ── Indicador de datos pre-cargados en background ──────────────────
     from utils.background_updater import read_fast_data
     _cached_count = sum(1 for t in selected_tickers if read_fast_data(t))
@@ -451,6 +531,14 @@ def render(**kwargs) -> None:
         if not selected_tickers:
             st.warning("⚠️ Selecciona al menos un ticker en el panel de filtros.")
             return
+
+        if _user_id:
+            record_product_event(
+                _auth,
+                _user_id,
+                "user_scan_started",
+                {"plan": _plan, "cohort": _cohort, "feature_smart_alerts": _ff_smart_alerts},
+            )
 
         progress_bar = st.progress(0.0)
         status_text = st.empty()
@@ -476,6 +564,10 @@ def render(**kwargs) -> None:
                     strict_rules=strict_rules,
                     account_size=account_size,
                     progress_callback=_progress_cb,
+                    user_plan=_plan,
+                    user_id=_user_id or "anonymous",
+                    user_cohort=_cohort,
+                    auth=_auth,
                 )
             except BaseException as _scan_exc:
                 import logging as _logging
@@ -499,8 +591,78 @@ def render(**kwargs) -> None:
         )
 
         # ── Generar alertas (10 reglas) via service ───────────────────────
-        alerts_df = _cs_service.get_alerts(df, account_size=account_size, strict_rules=strict_rules)
+        alerts_df = _cs_service.get_alerts(
+            df,
+            account_size=account_size,
+            strict_rules=strict_rules,
+            user_plan=_plan,
+            user_id=_user_id or "anonymous",
+            user_cohort=_cohort,
+            alert_preferences=smart_alert_preferences if _ff_smart_alerts else None,
+            external_hook=None,
+            auth=_auth,
+        )
         st.session_state["cs_alerts"] = alerts_df
+
+        if _user_id:
+            record_product_event(
+                _auth,
+                _user_id,
+                "user_scan_completed",
+                {
+                    "plan": _plan,
+                    "rows": int(len(df) if df is not None else 0),
+                    "alerts": int(len(alerts_df) if alerts_df is not None else 0),
+                },
+            )
+
+            _risk_series = (df["Perfil Riesgo"] if df is not None and "Perfil Riesgo" in df.columns else pd.Series(dtype=str))
+            _snapshot = {
+                "rows_seen": int(len(df) if df is not None else 0),
+                "high_score_rows": int((df["Score Unificado"] >= 75).sum()) if df is not None and "Score Unificado" in df.columns else 0,
+                "avg_score": float(df["Score Unificado"].mean()) if df is not None and "Score Unificado" in df.columns and not df.empty else 0.0,
+                "risk_conservadora": int((_risk_series == "Conservadora").sum()),
+                "risk_balanceada": int((_risk_series == "Balanceada").sum()),
+                "risk_agresiva": int((_risk_series == "Agresiva").sum()),
+                "decision_time_seconds": 0.0,
+                "decision_events": 0,
+            }
+            record_intelligence_snapshot(_auth, _user_id, _plan, _snapshot)
+
+            # Closed-loop: registrar señales emitidas con contexto y horizontes.
+            if df is not None and not df.empty:
+                _emitted = df.head(25).to_dict("records")
+                _scan_market_ctx = {
+                    "scan_time": st.session_state.get("cs_scan_time"),
+                    "tickers": selected_tickers,
+                    "min_pop": min_pop_pct,
+                    "max_dte": max_dte,
+                    "min_credit": min_credit,
+                    "plan": _plan,
+                }
+                for i, r in enumerate(_emitted):
+                    _sig_id = (
+                        f"cs_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_"
+                        f"{r.get('Ticker','NA')}_{r.get('Tipo','NA')}_{i}"
+                    )
+                    _feedback_loop.emit_signal(
+                        _auth,
+                        _user_id,
+                        signal_id=_sig_id,
+                        signal_payload=r,
+                        market_context=_scan_market_ctx,
+                        horizons=["1d", "5d", "21d"],
+                    )
+
+                # Ejecutar ciclo autónomo (walk-forward + recalibración + drift + registry).
+                _autonomy_out = run_autonomy_cycle(_auth, _user_id, _plan)
+                st.session_state["cs_autonomy_cycle"] = _autonomy_out
+
+            if _ff_auto_reports:
+                export_executive_summary(_auth, period="daily")
+                if datetime.utcnow().weekday() == 0:
+                    export_executive_summary(_auth, period="weekly")
+                record_product_event(_auth, _user_id, "auto_report_generated", {"period": "daily", "plan": _plan})
 
         # ── Guardar snapshot de filtros para mostrar al volver a la página ─
         save_page_data("cs", {
@@ -580,7 +742,8 @@ def render(**kwargs) -> None:
                 _a_dist = a_row.get("Dist Strike %", 0)
                 _a_iv = float(a_row.get("IV %", a_row.get("IV Short %", a_row.get("IV", 0))) or 0)
                 _a_hv = float(a_row.get("HV 20D", a_row.get("HV 20d", 0)) or 0)
-                _a_opp = a_row.get("Score Oportunidad", 0)
+                _score_col = "Score Unificado" if "Score Unificado" in alerts_df.columns else "Score Oportunidad"
+                _a_opp = a_row.get(_score_col, 0)
                 _opt = "Put" if "Put" in _a_tipo else "Call"
                 _border_c = "#22c55e" if "Put" in _a_tipo else "#ef4444"
 
@@ -597,7 +760,7 @@ def render(**kwargs) -> None:
                             <span style="background:rgba(0,255,136,0.1);color:#00ff88;
                                         padding:3px 10px;border-radius:12px;
                                         font-size:0.75rem;font-weight:700;">
-                                Score: {_a_opp:.0f}/100
+                                {_score_col}: {_a_opp:.0f}/100
                             </span>
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;color:#cbd5e1;">
@@ -663,6 +826,7 @@ def render(**kwargs) -> None:
                         "score": _a_opp,
                         "saved_at": datetime.now().isoformat(),
                         "source": "alert_10_rules",
+                        "signal_id": _contract_id,
                     }
                     favs = st.session_state.get("favoritos", [])
                     # Evitar duplicados
@@ -691,6 +855,60 @@ def render(**kwargs) -> None:
                         st.success(
                             f"⭐ **{_a_tk} {_a_sv}/{_a_sc} {_opt}** guardado en Favoritos."
                         )
+                        if _user_id:
+                            _scan_ts = st.session_state.get("cs_scan_time")
+                            _decision_secs = 0.0
+                            if isinstance(_scan_ts, str) and _scan_ts:
+                                try:
+                                    _decision_secs = max(
+                                        (datetime.now() - datetime.strptime(_scan_ts, "%Y-%m-%d %H:%M:%S")).total_seconds(),
+                                        0.0,
+                                    )
+                                except Exception:
+                                    _decision_secs = 0.0
+                            record_product_event(
+                                _auth,
+                                _user_id,
+                                "scan_decision_made",
+                                {
+                                    "plan": _plan,
+                                    "ticker": _a_tk,
+                                    "score": float(_a_opp or 0),
+                                    "score_column": _score_col,
+                                    "decision_time_seconds": round(_decision_secs, 2),
+                                },
+                            )
+                            record_intelligence_snapshot(
+                                _auth,
+                                _user_id,
+                                _plan,
+                                {
+                                    "rows_seen": 0,
+                                    "high_score_rows": 0,
+                                    "avg_score": 0.0,
+                                    "risk_conservadora": 0,
+                                    "risk_balanceada": 0,
+                                    "risk_agresiva": 0,
+                                    "decision_time_seconds": round(_decision_secs, 2),
+                                    "decision_events": 1,
+                                },
+                            )
+                            _expected = float(a_row.get("EV $", 0.0) or 0.0)
+                            _realized_proxy = float((_a_pop / 100.0) * (_a_cr * 100.0) - (1.0 - (_a_pop / 100.0)) * (_a_risk * 100.0))
+                            _feedback_loop.record_outcome(
+                                _auth,
+                                _user_id,
+                                signal_id=_contract_id,
+                                horizon="decision_1",
+                                realized_pnl=_realized_proxy,
+                                expected_pnl=_expected,
+                                extra_context={
+                                    "ticker": _a_tk,
+                                    "plan": _plan,
+                                    "score": float(_a_opp or 0),
+                                    "profile": a_row.get("Perfil Riesgo", "Balanceada"),
+                                },
+                            )
 
                 _mc_state_key = (
                     f"cs_mc_res_{a_idx}_{_a_tk}_{int(float(_a_sv or 0))}_"
@@ -724,17 +942,25 @@ def render(**kwargs) -> None:
                         "HV 20D": _a_hv,
                     }
 
-                    if st.button(
-                        "▶ Ejecutar simulación (1,000 escenarios)",
-                        key=f"cs_mc_run_{a_idx}",
-                        use_container_width=True,
-                    ):
-                        with st.spinner("Simulando Monte Carlo..."):
-                            st.session_state[_mc_state_key] = monte_carlo_spread_simulation(
-                                _mc_payload,
-                                n_sim=1000,
-                                seed=42,
-                            )
+                    if _can_stress_tests:
+                        if st.button(
+                            "▶ Ejecutar simulación (1,000 escenarios)",
+                            key=f"cs_mc_run_{a_idx}",
+                            use_container_width=True,
+                        ):
+                            with st.spinner("Simulando Monte Carlo..."):
+                                st.session_state[_mc_state_key] = monte_carlo_spread_simulation(
+                                    _mc_payload,
+                                    n_sim=1000,
+                                    seed=42,
+                                )
+                    else:
+                        st.info("Stress Test es una feature premium disponible en planes Pro y Enterprise.")
+                        _evt_key = f"_stress_prompt_{a_idx}_{_a_tk}_{_a_sv}_{_a_sc}"
+                        if _user_id and not st.session_state.get(_evt_key):
+                            record_product_event(_auth, _user_id, "user_hit_plan_limit", {"reason": "stress_tests", "plan": _plan})
+                            record_product_event(_auth, _user_id, "user_opened_upgrade_prompt", {"reason": "stress_tests", "plan": _plan})
+                            st.session_state[_evt_key] = True
 
                     if _mc_state_key in st.session_state:
                         render_monte_carlo_section(
@@ -925,7 +1151,7 @@ def render(**kwargs) -> None:
             )
         st.markdown("")
 
-    # ── Hero Cards — Score Final + Score Oportunidad ──────────────────────
+    # ── Hero Cards — Score Final + Score Unificado/Oportunidad ─────────────
     _hero_col1, _hero_col2 = st.columns(2)
 
     # Score Final (Fase 1+2) — card principal
@@ -962,12 +1188,10 @@ def render(**kwargs) -> None:
             unsafe_allow_html=True,
         )
 
-    # Score de Oportunidad — card secundario
+    # Score Unificado (si está habilitado) o Score de Oportunidad
     with _hero_col2:
-        _best_opp = (
-            df_filtered["Score Oportunidad"].max()
-            if "Score Oportunidad" in df_filtered.columns else 0
-        )
+        _score_name = "Score Unificado" if "Score Unificado" in df_filtered.columns else "Score Oportunidad"
+        _best_opp = df_filtered[_score_name].max() if _score_name in df_filtered.columns else 0
         _best_opp_label = "Excelente" if _best_opp >= 80 else "Buena"
         _best_opp_color = "#00ff00" if _best_opp >= 80 else "#ffaa00"
         st.markdown(
@@ -978,7 +1202,7 @@ def render(**kwargs) -> None:
                         align-items:center;gap:16px;">
                 <span style="font-size:2rem;">🏆</span>
                 <div>
-                    <div style="color:#94a3b8;font-size:0.78rem;">MEJOR SCORE DE OPORTUNIDAD</div>
+                    <div style="color:#94a3b8;font-size:0.78rem;">MEJOR {_score_name.upper()}</div>
                     <div style="color:{_best_opp_color};font-size:1.5rem;font-weight:800;">
                         {_best_opp:.0f}/100
                         <span style="font-size:0.9rem;font-weight:600;margin-left:8px;">
@@ -990,6 +1214,37 @@ def render(**kwargs) -> None:
             """,
             unsafe_allow_html=True,
         )
+
+    if _ff_explainability and "Explicacion Ejecutiva" in df_filtered.columns:
+        with st.expander("🧠 Explicabilidad Ejecutiva (Top oportunidades)", expanded=False):
+            _cols = [
+                c
+                for c in [
+                    "Ticker",
+                    "Tipo",
+                    "Score Unificado",
+                    "Perfil Riesgo",
+                    "Explicacion Ejecutiva",
+                    "Senales Positivas",
+                    "Senales Negativas",
+                    "Riesgos Clave",
+                ]
+                if c in df_filtered.columns
+            ]
+            _top_explain = df_filtered[_cols].head(5)
+            for _, _r in _top_explain.iterrows():
+                _tk = _r.get("Ticker", "")
+                _tp = _r.get("Tipo", "")
+                _sc = _r.get("Score Unificado", _r.get("Score Oportunidad", 0))
+                _pf = _r.get("Perfil Riesgo", "Balanceada")
+                st.markdown(
+                    f"**{_tk} · {_tp} · Score {_sc:.1f} · Perfil {_pf}**\n\n"
+                    f"{_r.get('Explicacion Ejecutiva', '')}\n\n"
+                    f"Positivas: {_r.get('Senales Positivas', 'N/A')}\n\n"
+                    f"Negativas: {_r.get('Senales Negativas', 'N/A')}\n\n"
+                    f"Riesgos: {_r.get('Riesgos Clave', 'N/A')}"
+                )
+                st.markdown("---")
 
     # ── Métricas rápidas — fila 1: resultados clave ─────────────────────
     st.markdown(

@@ -13,8 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from ui.plotly_professional_theme import (
-    apply_theme, COLORS, DIVERGING_SCALE, SEQUENTIAL_BLUE, SEQUENTIAL_PURPLE,
-    pro_gauge_layout,
+    apply_theme, COLORS, SEQUENTIAL_BLUE, SEQUENTIAL_PURPLE, pro_gauge_layout,
 )
 
 logger = logging.getLogger(__name__)

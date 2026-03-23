@@ -1,0 +1,92 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version/tag"
+        required: true
+      rollback_target:
+        description: "Last stable version/tag"
+        required: true
+
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Change freeze gate
+        run: python scripts/error_budget_gate.py
+        env:
+          CHANGE_FREEZE_ENABLED: ${{ vars.CHANGE_FREEZE_ENABLED || 'true' }}
+          ERROR_RATE_7D_PCT: ${{ vars.ERROR_RATE_7D_PCT || '0' }}
+          ERROR_BUDGET_MAX_ERROR_RATE_PCT_7D: ${{ vars.ERROR_BUDGET_MAX_ERROR_RATE_PCT_7D || '2.0' }}
+
+      - name: Staging deploy
+        run: python scripts/deploy_release.py --environment staging --version "${{ github.event.inputs.version }}"
+        env:
+          DEPLOY_CMD_STAGING: ${{ secrets.DEPLOY_CMD_STAGING }}
+
+      - name: Staging E2E
+        run: python scripts/staging_e2e.py --liquid SPY,QQQ,AAPL --non-liquid IWM,TLT
+        env:
+          DATA_PROVIDER: databento
+          DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY_STAGING }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_STAGING }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY_STAGING }}
+
+      - name: Rollback staging on failure
+        if: failure()
+        run: python scripts/rollback_release.py --environment staging --target "${{ github.event.inputs.rollback_target }}"
+        env:
+          ROLLBACK_CMD: ${{ secrets.ROLLBACK_CMD }}
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Production canary deploy
+        run: python scripts/deploy_release.py --environment production --version "${{ github.event.inputs.version }}"
+        env:
+          DEPLOY_CMD_PRODUCTION: ${{ secrets.DEPLOY_CMD_PRODUCTION }}
+
+      - name: Canary reinforced monitoring
+        run: python scripts/canary_monitor.py
+        env:
+          CANARY_ERROR_RATE_PCT: ${{ vars.CANARY_ERROR_RATE_PCT || '0' }}
+          CANARY_P90_MS: ${{ vars.CANARY_P90_MS || '0' }}
+          CANARY_MAX_ERROR_RATE_PCT: ${{ vars.CANARY_MAX_ERROR_RATE_PCT || '2.0' }}
+          CANARY_MAX_P90_MS: ${{ vars.CANARY_MAX_P90_MS || '60000' }}
+
+      - name: Rollback production on degradation
+        if: failure()
+        run: python scripts/rollback_release.py --environment production --target "${{ github.event.inputs.rollback_target }}"
+        env:
+          ROLLBACK_CMD: ${{ secrets.ROLLBACK_CMD }}

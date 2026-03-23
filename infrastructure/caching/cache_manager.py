@@ -19,6 +19,7 @@ from typing import Any, Optional
 import diskcache
 
 from config.settings import get_settings
+from infrastructure.platform.tenant import tenant_key
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,9 @@ class CacheManager:
             self._misses += 1
         return result
 
+    def get_tenant(self, tenant_id: str, key: str) -> Optional[Any]:
+        return self.get(tenant_key(tenant_id, key))
+
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         """Almacena un valor en caché con TTL en segundos.
 
@@ -119,6 +123,9 @@ class CacheManager:
             self._redis_set(key, value, effective_ttl)
         else:
             self._disk_set(key, value, effective_ttl)
+
+    def set_tenant(self, tenant_id: str, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        self.set(tenant_key(tenant_id, key), value, ttl=ttl)
 
     def delete(self, key: str) -> None:
         """Elimina una entrada del caché."""
@@ -134,6 +141,9 @@ class CacheManager:
                 pass
             except Exception as exc:
                 logger.debug("Disk delete error (%s): %s", key, exc)
+
+    def delete_tenant(self, tenant_id: str, key: str) -> None:
+        self.delete(tenant_key(tenant_id, key))
 
     def clear_prefix(self, prefix: str) -> None:
         """Elimina todas las entradas cuya clave empieza con ``prefix``."""
@@ -151,6 +161,9 @@ class CacheManager:
                         del self._disk_cache[k]
             except Exception as exc:
                 logger.debug("Disk clear_prefix error (%s): %s", prefix, exc)
+
+    def clear_tenant_prefix(self, tenant_id: str, prefix: str) -> None:
+        self.clear_prefix(tenant_key(tenant_id, prefix))
 
     def clear_all(self) -> None:
         """Limpia todo el caché (útil para tests)."""

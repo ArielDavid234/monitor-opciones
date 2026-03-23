@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy
+
+      - name: Embedded secrets scan
+        run: python scripts/check_no_embedded_secrets.py
+
+      - name: Validate environment shape
+        run: python scripts/validate_environment.py --stage dev
+        env:
+          DATA_PROVIDER: databento
+          DATABENTO_API_KEY: fake
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: fake
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Static checks
+        run: mypy config core infrastructure scripts tests --ignore-missing-imports
+
+      - name: Unit tests
+        run: python -m unittest -v tests.test_provider_runtime tests.test_snapshot_pipeline tests.test_snapshot_load
+
+      - name: Provider contract tests
+        run: python -m unittest -v tests.test_dataprovider_contract
+
+      - name: Smoke scan flow
+        run: python scripts/smoke_scan.py

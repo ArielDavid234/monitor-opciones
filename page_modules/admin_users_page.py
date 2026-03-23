@@ -11,6 +11,7 @@ import streamlit as st
 import pandas as pd
 
 from core.container import get_container
+from infrastructure.platform.business_value import record_product_event
 from ui.components import render_pro_table
 
 
@@ -84,13 +85,24 @@ def render(**kwargs) -> None:
         with col_a:
             new_role = st.selectbox(
                 "Cambiar rol",
-                ["user", "admin"],
-                index=0 if selected_profile.get("role") == "user" else 1,
+                ["free", "pro", "enterprise", "admin"],
+                index=["free", "pro", "enterprise", "admin"].index(
+                    selected_profile.get("role") if selected_profile.get("role") in {"free", "pro", "enterprise", "admin"} else "free"
+                ),
                 key="admin_new_role",
             )
             if st.button("💾 Guardar Rol", use_container_width=True, key="btn_save_role"):
+                old_role = selected_profile.get("role", "free")
                 if auth.update_profile(selected_id, {"role": new_role}):
                     st.success(f"Rol actualizado a '{new_role}'.")
+                    _rank = {"free": 1, "pro": 2, "enterprise": 3, "admin": 4}
+                    if _rank.get(new_role, 0) > _rank.get(old_role, 0):
+                        record_product_event(
+                            auth,
+                            selected_id,
+                            "user_upgraded_plan",
+                            {"from": old_role, "to": new_role, "source": "admin_panel"},
+                        )
                     st.rerun()
                 else:
                     st.error("Error al actualizar el rol.")
@@ -155,7 +167,15 @@ def render(**kwargs) -> None:
     }
     df_display = df_display.rename(columns=col_map)
 
-    df_display["Rol"] = df_display["Rol"].map({"admin": "👑 Admin", "user": "👤 Usuario"}).fillna("👤 Usuario")
+    df_display["Rol"] = df_display["Rol"].map(
+        {
+            "free": "Free",
+            "pro": "Pro",
+            "enterprise": "Enterprise",
+            "admin": "Admin",
+            "user": "Free",
+        }
+    ).fillna("Free")
     df_display["Activo"] = df_display["Activo"].map({True: "✅ Sí", False: "❌ No"}).fillna("✅ Sí")
 
     # ── Tabla de usuarios ────────────────────────────────────────────────

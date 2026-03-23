@@ -20,12 +20,11 @@ Uso típico::
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from core.auth import SupabaseAuth
-    from core.protocols import AuthProvider, CacheProvider, UserRepository
+    from core.protocols import CacheProvider, UserRepository
     from core.services.credit_spread_service import CreditSpreadService
     from core.services.scan_service import ScanService
     from core.services.user_service import UserService

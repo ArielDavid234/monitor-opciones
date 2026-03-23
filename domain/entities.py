@@ -22,7 +22,7 @@ from typing import Any, Optional
 # Pydantic v2 — graceful fallback a dataclass si no está disponible
 # ---------------------------------------------------------------------------
 try:
-    from pydantic import BaseModel, Field, field_validator
+    from pydantic import BaseModel, Field
 
     _USE_PYDANTIC = True
 except ImportError:
@@ -52,6 +52,7 @@ class Trend(str, Enum):
 class UserRole(str, Enum):
     """Rol del usuario en la plataforma."""
     ADMIN = "admin"
+    ENTERPRISE = "enterprise"
     PRO = "pro"
     FREE = "free"
     USER = "user"  # rol genérico almacenado por _ensure_profile
@@ -152,7 +153,14 @@ class User(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     @property
     def role_label(self) -> str:
         """Etiqueta legible del rol para mostrar en sidebar."""
-        return "👑 Admin" if self.is_admin else "● Pro Plan"
+        role = str(self.role or "free").lower()
+        if role == "admin":
+            return "Admin"
+        if role == "enterprise":
+            return "Enterprise"
+        if role == "pro":
+            return "Pro"
+        return "Free"
 
     @classmethod
     def from_auth_dict(cls, raw: dict[str, Any]) -> "User":

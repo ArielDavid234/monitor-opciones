@@ -135,7 +135,6 @@ def enrich_dataframe_with_ev(df) -> "pd.DataFrame":  # type: ignore[name-defined
     Returns:
         Copia del DataFrame con columnas ``'EV $'`` y ``'EV %'`` añadidas.
     """
-    import pandas as pd
 
     df = df.copy()
 

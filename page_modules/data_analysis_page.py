@@ -19,7 +19,7 @@ from ui.charts import (
     render_vol_surface, render_monte_carlo_chart, render_anomaly_scatter,
 )
 from ui.plotly_professional_theme import apply_theme, COLORS, pro_gauge_layout
-from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge
+from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge
 from core.gex_engine import build_gex_profile, calculate_volatility_skew
 from core.dealer_positioning import (
     infer_dealer_position,
@@ -1028,7 +1028,6 @@ def render(ticker_symbol, **kwargs):
         # Mostrar top anomalías como tabla
         top_anom = df_anomalies[df_anomalies["is_anomaly"]].nlargest(10, "anomaly_score")
         if not top_anom.empty:
-            from core.anomaly_detector import anomaly_badge
             anom_display_cols = ["Tipo", "Strike", "Vencimiento", "Volumen", "OI", "IV", "anomaly_score"]
             anom_display_cols = [c for c in anom_display_cols if c in top_anom.columns]
             anom_show = top_anom[anom_display_cols].copy()

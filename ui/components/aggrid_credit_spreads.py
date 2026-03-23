@@ -113,6 +113,22 @@ function(params) {
 }
 """)
 
+_JS_UNIFIED_SCORE_STYLE = JsCode("""
+function(params) {
+    if (params.value >= 80) return {'backgroundColor': '#14532d', 'color': '#86efac', 'fontWeight': '700'};
+    if (params.value >= 65) return {'backgroundColor': '#78350f', 'color': '#fde68a', 'fontWeight': '600'};
+    return {'backgroundColor': '#3f1219', 'color': '#fca5a5', 'fontWeight': '600'};
+}
+""")
+
+_JS_RISK_PROFILE_STYLE = JsCode("""
+function(params) {
+    if (params.value === 'Conservadora') return {'color': '#4ade80', 'fontWeight': '700'};
+    if (params.value === 'Balanceada') return {'color': '#fbbf24', 'fontWeight': '600'};
+    return {'color': '#f87171', 'fontWeight': '700'};
+}
+""")
+
 _JS_EV_DOLLAR_STYLE = JsCode("""
 function(params) {
     if (params.value >= 80)  return {'backgroundColor': '#166534', 'color': '#4ade80', 'fontWeight': '700'};
@@ -221,6 +237,16 @@ def build_aggrid_options(df: pd.DataFrame) -> tuple[dict, dict]:
         sort="desc",
         valueFormatter="x.toFixed(0)",
     )
+    gb.configure_column(
+        "Score Unificado",
+        headerName="🧠 Score Unificado",
+        width=150,
+        type=["numericColumn"],
+        cellStyle=_JS_UNIFIED_SCORE_STYLE,
+        sort="desc",
+        valueFormatter="x.toFixed(1)",
+    )
+    gb.configure_column("Perfil Riesgo", headerName="Perfil Riesgo", width=120, cellStyle=_JS_RISK_PROFILE_STYLE)
     gb.configure_column("Nivel", headerName="Nivel", width=100, cellStyle=_JS_OPP_LABEL_STYLE)
     gb.configure_column(
         "Income Score",
@@ -311,6 +337,10 @@ def build_aggrid_options(df: pd.DataFrame) -> tuple[dict, dict]:
         cellStyle=_JS_POP_STYLE,
         valueFormatter="x.toFixed(1) + '%'",
     )
+    gb.configure_column("Explicacion Ejecutiva", width=320)
+    gb.configure_column("Senales Positivas", width=320)
+    gb.configure_column("Senales Negativas", width=320)
+    gb.configure_column("Riesgos Clave", width=300)
     gb.configure_column(
         "Prob OTM %",
         width=95,

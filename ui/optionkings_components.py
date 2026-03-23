@@ -18,7 +18,7 @@ from __future__ import annotations
 import streamlit as st
 
 from config.constants import ALERT_DEFAULT_ACCOUNT_SIZE
-from ui.plotly_professional_theme import apply_theme, COLORS, pro_gauge_layout
+from ui.plotly_professional_theme import COLORS, pro_gauge_layout
 
 try:
     import plotly.graph_objects as go

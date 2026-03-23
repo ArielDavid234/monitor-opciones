@@ -21,6 +21,7 @@ from config.constants import (
     CS_WHITELIST,
     OPP_SCORE_MIN_SHOW,
 )
+from config.settings import get_settings
 from core.credit_spread_scanner import (
     scan_credit_spreads as _scan,
     generate_alerts as _gen_alerts,
@@ -29,8 +30,22 @@ from core.credit_spread_scanner import (
     compute_opportunity_score as _opp_score,
     calculate_probability_of_touch,          # Fase 1 — PoT
 )
+from core.intelligence_layer import (
+    IntelligenceWeights,
+    dispatch_smart_alerts,
+    enrich_scanner_dataframe,
+    filter_smart_alerts,
+)
+from core.autonomy.personalization import AdaptivePersonalizationEngine
+from core.autonomy.safety import SafetyGuardrails
+from core.autonomy.shadow import ShadowDeploymentEngine
+from infrastructure.platform.business_value import is_feature_enabled_for_user
 
 logger = logging.getLogger(__name__)
+
+_personalization = AdaptivePersonalizationEngine()
+_safety = SafetyGuardrails()
+_shadow = ShadowDeploymentEngine()
 
 
 class CreditSpreadService:
@@ -60,6 +75,10 @@ class CreditSpreadService:
         strict_rules: dict | None = None,
         account_size: float = ALERT_DEFAULT_ACCOUNT_SIZE,
         progress_callback: Optional[Callable[[str, int, int], None]] = None,
+        user_plan: str = "free",
+        user_id: str = "",
+        user_cohort: int | None = None,
+        auth: Any | None = None,
     ) -> tuple[pd.DataFrame, dict[str, dict[str, Any]]]:
         """Ejecuta el scanner completo y devuelve DataFrame + indicadores por ticker.
 
@@ -91,6 +110,62 @@ class CreditSpreadService:
             strict=strict,
             strict_rules=strict_rules,
         )
+
+        if df is not None and not df.empty and is_feature_enabled_for_user(
+            feature_name="advanced_score",
+            plan=user_plan,
+            user_id=user_id,
+            cohort=user_cohort,
+        ):
+            cfg = get_settings()
+            weights = IntelligenceWeights(
+                liquidity=float(cfg.intelligence_score_weight_liquidity),
+                bid_ask=float(cfg.intelligence_score_weight_bid_ask),
+                relative_iv=float(cfg.intelligence_score_weight_relative_iv),
+                oi_volume=float(cfg.intelligence_score_weight_oi_volume),
+                strike_distance=float(cfg.intelligence_score_weight_strike_distance),
+                estimated_risk=float(cfg.intelligence_score_weight_estimated_risk),
+            )
+            df = enrich_scanner_dataframe(df, weights=weights)
+
+            if not is_feature_enabled_for_user(
+                feature_name="explainability",
+                plan=user_plan,
+                user_id=user_id,
+                cohort=user_cohort,
+            ):
+                for col in [
+                    "Explicacion Ejecutiva",
+                    "Senales Positivas",
+                    "Senales Negativas",
+                    "Riesgos Clave",
+                ]:
+                    if col in df.columns:
+                        df = df.drop(columns=[col])
+
+            if auth is not None and user_id:
+                profile = _personalization.infer_profile(auth, user_id)
+                df = _personalization.personalize_ranking(df, profile)
+
+            # Shadow execution in parallel against current ordering as quality/cost/latency guardrail preview.
+            shadow_cmp = _shadow.compare(
+                current_fn=lambda x: x.sort_values("Score Oportunidad", ascending=False)
+                if "Score Oportunidad" in x.columns else x,
+                candidate_fn=lambda x: x.sort_values(
+                    ["Score Unificado", "Score Oportunidad"], ascending=[False, False]
+                ) if "Score Unificado" in x.columns else x,
+                df=df,
+                cost_current_usd=0.001,
+                cost_candidate_usd=0.0016,
+            )
+            ticker_indicators["_shadow"] = {
+                "quality_delta": shadow_cmp.quality_delta,
+                "latency_delta_ms": shadow_cmp.latency_delta_ms,
+                "cost_delta_usd": shadow_cmp.cost_delta_usd,
+                "promoted": shadow_cmp.promoted,
+                "reason": shadow_cmp.reason,
+            }
+
         return df, ticker_indicators
 
     def get_alerts(
@@ -98,6 +173,12 @@ class CreditSpreadService:
         df: pd.DataFrame,
         account_size: float = ALERT_DEFAULT_ACCOUNT_SIZE,
         strict_rules: dict | None = None,
+        user_plan: str = "free",
+        user_id: str = "",
+        user_cohort: int | None = None,
+        alert_preferences: dict[str, Any] | None = None,
+        external_hook: Optional[Callable[[list[dict[str, Any]]], Any]] = None,
+        auth: Any | None = None,
     ) -> pd.DataFrame:
         """Aplica las reglas de seguridad y devuelve las alertas accionables.
 
@@ -106,7 +187,37 @@ class CreditSpreadService:
         """
         if df is None or df.empty:
             return pd.DataFrame()
-        return _gen_alerts(df, account_size=account_size, strict_rules=strict_rules)
+        alerts = _gen_alerts(df, account_size=account_size, strict_rules=strict_rules)
+
+        if alerts is None or alerts.empty:
+            return pd.DataFrame()
+
+        if is_feature_enabled_for_user(
+            feature_name="smart_alerts",
+            plan=user_plan,
+            user_id=user_id,
+            cohort=user_cohort,
+        ):
+            cfg = get_settings()
+            prefs = {
+                "min_score": cfg.smart_alert_min_score_default,
+                "dte_min": cfg.smart_alert_dte_min_default,
+                "dte_max": cfg.smart_alert_dte_max_default,
+                "max_spread": cfg.smart_alert_max_spread_default,
+                "min_premium": cfg.smart_alert_min_premium_default,
+            }
+            if alert_preferences:
+                prefs.update(alert_preferences)
+            alerts = filter_smart_alerts(alerts, preferences=prefs)
+            dispatch_smart_alerts(alerts, external_hook=external_hook)
+
+        alerts = _safety.enforce(alerts)
+
+        if auth is not None and user_id and not alerts.empty:
+            profile = _personalization.load_profile(auth, user_id)
+            alerts = _personalization.personalize_ranking(alerts, profile)
+
+        return alerts
 
     def score_breakdown(self, row: dict[str, Any]) -> list[dict[str, Any]]:
         """Devuelve el desglose de puntaje para un spread específico.

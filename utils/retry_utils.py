@@ -18,7 +18,7 @@ o timeouts transitorios de yfinance/Alpha Vantage/Barchart.
 import logging
 import time
 import threading
-from typing import Callable, Optional, Tuple, Type, Union
+from typing import Optional, Tuple, Type
 
 import requests
 from tenacity import (
@@ -28,7 +28,6 @@ from tenacity import (
     stop_after_attempt,
     wait_random_exponential,
     before_sleep_log,
-    RetryError,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,12 +39,10 @@ logger = logging.getLogger(__name__)
 
 class RateLimitError(Exception):
     """Indica que la API devolvió 429 o su equivalente de rate-limit."""
-    pass
 
 
 class CircuitOpenError(Exception):
     """El circuit breaker está abierto — la API se pausó por fallos repetidos."""
-    pass
 
 
 # ============================================================================

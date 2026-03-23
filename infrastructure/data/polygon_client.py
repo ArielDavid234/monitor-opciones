@@ -77,26 +77,15 @@ def fetch_options_dates(ticker_sym: str):
             f"?underlying_ticker={ticker_sym}&expired=false&limit=1000&apiKey={api_key}"
         )
 
-        # Intentar hasta 3 veces con backoff
-        results = []
-        for attempt in range(3):
+        # Solo un request para no quemar cuota free-tier por auto-paginacion
+        response = requests.get(url, timeout=10)
+        if response.status_code == 429:
+            logger.warning("Polygon Rate Limit en dates, esperando 13 segs...")
+            time.sleep(13)
             response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get("results", [])
-                break
-            elif response.status_code == 429:
-                espera = 15 + (attempt * 5)
-                logger.warning("Polygon Rate Limit en dates, esperando %s segs...", espera)
-                time.sleep(espera)
-            else:
-                logger.warning("Error %s al obtener dates: %s", response.status_code, response.text)
-                break
-                
-        if not results:
-            if 'response' in locals() and response.status_code == 429:
-                raise RuntimeError("Límite de peticiones a la API de Polygon superado (429). Por favor, intenta de nuevo en 1 minuto.")
-            return tuple()
+
+        data = response.json()
+        results = data.get("results", [])
 
         expirations = set()
         for contract in results:
@@ -105,12 +94,10 @@ def fetch_options_dates(ticker_sym: str):
                 expirations.add(str(exp))
 
         fechas_ordenadas = sorted(expirations)
-        if not fechas_ordenadas:
-            raise RuntimeError("No se encontraron fechas de expiración en la API (respuesta vacía).")
         return tuple(fechas_ordenadas[:10])
     except Exception as exc:
         logger.warning("Polygon expiraciones fallo (%s): %s", ticker_sym, exc)
-        raise RuntimeError(f"Error al conectar con la API de opciones: {str(exc)}")
+        return tuple()
 
 
 def fetch_single_chain(ticker_sym: str, exp_date: str):

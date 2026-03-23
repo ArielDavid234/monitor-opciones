@@ -225,7 +225,13 @@ def render(**kwargs):
     #  Hero — Avatar + Info básica
     # ====================================================================
     role_badge_cls = "role-admin" if user_role == "admin" else "role-user"
-    role_label = "👑 Administrador" if user_role == "admin" else "⚡ Pro Plan"
+    role_label = {
+        "admin": "Administrador",
+        "enterprise": "Enterprise",
+        "pro": "Pro",
+        "free": "Free",
+        "user": "Free",
+    }.get(str(user_role).lower(), "Free")
 
     st.markdown(
         f"""

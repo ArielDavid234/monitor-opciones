@@ -21,7 +21,7 @@ import logging
 import time
 from typing import Optional
 
-from infrastructure.data.polygon_client import get_ticker_details
+from infrastructure.data.yahoo_finance_client import get_ticker_details
 
 logger = logging.getLogger(__name__)
 

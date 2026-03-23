@@ -13,7 +13,6 @@ Estas métricas ayudan al usuario a contextualizar datos de opciones
 """
 import logging
 import os
-import time
 from typing import Optional
 
 import requests
@@ -22,7 +21,6 @@ import streamlit as st
 from utils.retry_utils import (
     retry_alpha_vantage, cb_alpha_vantage,
     RateLimitError, CircuitOpenError,
-    notify_retry_exhausted, notify_circuit_open,
 )
 from tenacity import RetryError
 

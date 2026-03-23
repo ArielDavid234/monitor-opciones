@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from infrastructure.data.polygon_client import get_price_history
+from infrastructure.data.yahoo_finance_client import get_price_history
 
 logger = logging.getLogger(__name__)
 

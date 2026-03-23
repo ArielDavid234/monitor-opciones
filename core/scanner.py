@@ -5,24 +5,33 @@ construcción de símbolos y persistencia CSV.
 Incluye sistema de caché TTL para evitar rate-limiting de Yahoo Finance.
 """
 import os
-import csv
-import glob
 import time
 import logging
+from collections import deque
 import numpy as np
-import pandas as pd
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-try:
-    import scipy.stats  # noqa: F401 – presence check for greeks guard
-    _HAS_SCIPY = True
-except ImportError:
-    _HAS_SCIPY = False
-
 from config.constants import MAX_EXPIRATION_DATES, RISK_FREE_RATE
+from config.settings import get_settings
+from core.scanner_analysis import calculate_call_put_bias, get_oi_matrix
+from core.scanner_greeks import (
+    _HAS_SCIPY,
+    _calcular_greeks,
+    _calcular_greeks_batch,
+    _clasificar_lado,
+    _safe_num,
+)
+from core.scanner_storage import guardar_alerta_csv
 from infrastructure.data.async_fetcher import get_multiple_chains_fast
+from infrastructure.data.provider_runtime import (
+    get_budget_manager,
+    get_provider_metrics,
+    record_scan_metadata,
+    request_channel,
+)
+from infrastructure.platform.health import global_health_status
 from infrastructure.data.yahoo_finance_client import (
     _cached_history,
     _cached_option_chain,
@@ -32,6 +41,7 @@ from infrastructure.data.yahoo_finance_client import (
     fetch_options_dates,
     fetch_single_chain,
     get_cached_chain,
+    get_active_provider,
     limpiar_cache_ticker,
     obtener_historial_contrato,
     obtener_precio_actual,
@@ -39,121 +49,106 @@ from infrastructure.data.yahoo_finance_client import (
 
 # Compatibilidad hacia atrás para imports existentes
 _fetch_single_chain = fetch_single_chain
+_SCAN_METRICS_WINDOW = deque(maxlen=100)
+_SCAN_COUNTER = 0
+_LAST_SCAN_RUNTIME_META: dict[str, float | int | str] = {}
+
+__all__ = [
+    "_cached_history",
+    "_cached_option_chain",
+    "_cached_options_dates",
+    "crear_sesion_nueva",
+    "limpiar_cache_ticker",
+    "obtener_historial_contrato",
+    "obtener_precio_actual",
+    "construir_simbolo_contrato",
+    "fetch_with_cache",
+    "ejecutar_escaneo",
+    "get_oi_matrix",
+    "calculate_call_put_bias",
+    "guardar_alerta_csv",
+    "_safe_num",
+    "_calcular_greeks",
+    "_calcular_greeks_batch",
+    "_clasificar_lado",
+    "get_last_scan_runtime_meta",
+]
 
 
-def _safe_num(value, default=0):
-    """Retorna el valor si no es NaN/None, o el default."""
-    return value if pd.notna(value) else default
+def get_last_scan_runtime_meta() -> dict[str, float | int | str]:
+    return dict(_LAST_SCAN_RUNTIME_META)
 
 
-def _calcular_greeks(S, K, T, r_rate, sigma, tipo="call"):
-    """Calcula Delta, Gamma, Theta y Rho usando OptionGreeks (BSM).
-    Retorna dict {"Delta": .., "Gamma": .., "Theta": .., "Rho": ..} o Nones.
-    """
-    _nones = {"Delta": None, "Gamma": None, "Theta": None, "Rho": None}
-    if not _HAS_SCIPY or T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
-        return _nones
-    try:
-        from core.option_greeks import OptionGreeks
-        opt = OptionGreeks(S=S, K=K, T=T, r=r_rate, sigma=sigma)
-        side = "call" if tipo == "call" else "put"
-        return {
-            "Delta": round(opt.delta()[side], 4),
-            "Gamma": round(opt.gamma(), 6),
-            "Theta": round(opt.theta()[side], 4),
-            "Rho":   round(opt.rho()[side], 4),
-        }
-    except Exception:
-        return _nones
+def _friendly_scan_error(raw_error: str | None, has_cached_snapshot: bool = False) -> str:
+    text = str(raw_error or "").lower()
+    if any(tok in text for tok in ["429", "rate limit", "quota", "too many", "límite"]):
+        base = "datos parciales: el proveedor alcanzó una cuota temporal"
+        if has_cached_snapshot:
+            return f"{base}; mostrando último snapshot en cache; reintentar en 60 segundos"
+        return f"{base}; reintentar en 60 segundos"
+    if "timeout" in text:
+        return "datos parciales: timeout temporal del proveedor; reintentar en 30 segundos"
+    if has_cached_snapshot:
+        return "datos parciales: mostrando último snapshot en cache"
+    return "datos parciales: servicio de datos temporalmente no disponible; reintentar en 30 segundos"
 
 
-# ── Batch vectorizado de Greeks (evita instanciar OptionGreeks por fila) ──
+def _log_periodic_scan_summary() -> None:
+    global _SCAN_COUNTER
+    cfg = get_settings()
+    every_n = max(int(getattr(cfg, "scan_summary_every_n", 10)), 1)
+    if _SCAN_COUNTER <= 0 or _SCAN_COUNTER % every_n != 0:
+        return
 
-def _calcular_greeks_batch(S, strikes, T_arr, r_rate, iv_arr, tipos):
-    """Calcula Greeks para un DataFrame entero en una sola pasada vectorizada.
+    samples = list(_SCAN_METRICS_WINDOW)
+    if not samples:
+        return
 
-    Parámetros
-    ----------
-    S        : float — precio spot del subyacente
-    strikes  : np.ndarray — strikes
-    T_arr    : np.ndarray — tiempo a vencimiento (años) por fila
-    r_rate   : float — tasa libre de riesgo
-    iv_arr   : np.ndarray — IV (decimales, no %) por fila
-    tipos    : np.ndarray de str — "call" o "put" por fila
+    scan_ms = np.array([s["scan_total_time_ms"] for s in samples], dtype=float)
+    hit_ratio = np.array([s["cache_hit_ratio"] for s in samples], dtype=float)
+    p50_ms = float(np.percentile(scan_ms, 50)) if len(scan_ms) > 1 else float(scan_ms[0])
+    p90_ms = float(np.percentile(scan_ms, 90)) if len(scan_ms) > 1 else float(scan_ms[0])
+    p99_ms = float(np.percentile(scan_ms, 99)) if len(scan_ms) > 1 else float(scan_ms[0])
+    avg_hit = float(np.mean(hit_ratio))
+    metrics = get_provider_metrics()
+    m = metrics.snapshot()
+    budget = get_budget_manager().snapshot()
+    recent_429 = metrics.get_429_last_5m()
 
-    Retorna
-    -------
-    dict con arrays: Delta, Gamma, Theta, Rho (floats, NaN donde inválido)
-    """
-    from scipy.stats import norm as _norm_dist
+    logger.info(
+        "slo summary | scans=%d | scan_latency_ms_p50=%.0f | scan_latency_ms_p90=%.0f | scan_latency_ms_p99=%.0f | cache_hit_ratio=%.3f | snapshot_hit_ratio=%.3f | provider_calls_per_min=%d | provider_429_count=%d | provider_429_5m=%d | chain_fetch_failures=%d | degraded_mode_activations=%d",
+        _SCAN_COUNTER,
+        p50_ms,
+        p90_ms,
+        p99_ms,
+        avg_hit,
+        float(m.get("snapshot_hit_ratio", 0.0)),
+        int(budget.get("used_total", 0)),
+        m.get("provider_429_count", 0),
+        recent_429,
+        m.get("chain_fetch_failures", 0),
+        m.get("degraded_mode_activations", 0),
+    )
 
-    n = len(strikes)
-    delta_out = np.full(n, np.nan)
-    gamma_out = np.full(n, np.nan)
-    theta_out = np.full(n, np.nan)
-    rho_out = np.full(n, np.nan)
+    if p90_ms > float(getattr(cfg, "scan_alert_p90_ms", 60000)):
+        logger.error("ALERT scan_p90_high | p90_ms=%.0f | threshold_ms=%s", p90_ms, getattr(cfg, "scan_alert_p90_ms", 60000))
+    if recent_429 > int(getattr(cfg, "scan_alert_429_5m", 25)):
+        logger.error("ALERT provider_429_high | count_5m=%d | threshold=%s", recent_429, getattr(cfg, "scan_alert_429_5m", 25))
+    if avg_hit < float(getattr(cfg, "scan_alert_cache_hit_ratio_min", 0.35)):
+        logger.error(
+            "ALERT cache_hit_ratio_low | ratio=%.3f | threshold=%s",
+            avg_hit,
+            getattr(cfg, "scan_alert_cache_hit_ratio_min", 0.35),
+        )
 
-    # Máscara de valores válidos
-    valid = (T_arr > 0) & (iv_arr > 0) & (strikes > 0) & (S > 0)
-    if not valid.any():
-        return {"Delta": delta_out, "Gamma": gamma_out, "Theta": theta_out, "Rho": rho_out}
-
-    K = strikes[valid]
-    T = T_arr[valid]
-    sig = iv_arr[valid]
-    tp = tipos[valid]
-
-    vol_sqrt_T = sig * np.sqrt(T)
-    d1 = (np.log(S / K) + (r_rate + 0.5 * sig**2) * T) / vol_sqrt_T
-    d2 = d1 - vol_sqrt_T
-
-    disc_r = np.exp(-r_rate * T)
-
-    # — Delta —
-    is_call = (tp == "call")
-    delta_v = np.where(is_call, _norm_dist.cdf(d1), _norm_dist.cdf(d1) - 1)
-
-    # — Gamma (igual para calls y puts) —
-    gamma_v = _norm_dist.pdf(d1) / (S * vol_sqrt_T)
-
-    # — Theta (por día calendario) —
-    decay = -S * _norm_dist.pdf(d1) * sig / (2.0 * np.sqrt(T))
-    theta_call = (decay - r_rate * K * disc_r * _norm_dist.cdf(d2)) / 365.0
-    theta_put = (decay + r_rate * K * disc_r * _norm_dist.cdf(-d2)) / 365.0
-    theta_v = np.where(is_call, theta_call, theta_put)
-
-    # — Rho (por 1%) —
-    rho_call = K * T * disc_r * _norm_dist.cdf(d2) / 100.0
-    rho_put = -K * T * disc_r * _norm_dist.cdf(-d2) / 100.0
-    rho_v = np.where(is_call, rho_call, rho_put)
-
-    delta_out[valid] = np.round(delta_v, 4)
-    gamma_out[valid] = np.round(gamma_v, 6)
-    theta_out[valid] = np.round(theta_v, 4)
-    rho_out[valid] = np.round(rho_v, 4)
-
-    return {"Delta": delta_out, "Gamma": gamma_out, "Theta": theta_out, "Rho": rho_out}
-
-
-def _clasificar_lado(last_price, bid, ask):
-    """Clasifica si la transacción se ejecutó al Bid, Ask o Mid.
-    
-    - Ask  → compra agresiva (el comprador paga el precio del vendedor)
-    - Bid  → venta agresiva  (el vendedor acepta el precio del comprador)
-    - Mid  → ejecutado entre bid y ask
-    - N/A  → sin datos suficientes
-    """
-    if ask <= 0 and bid <= 0:
-        return "N/A"
-    if last_price <= 0:
-        return "N/A"
-    if ask > 0 and last_price >= ask:
-        return "Ask"
-    if bid > 0 and last_price <= bid:
-        return "Bid"
-    if bid > 0 and ask > 0 and bid < last_price < ask:
-        return "Mid"
-    return "N/A"
+    health = global_health_status()
+    logger.info(
+        "platform health summary | overall=%s | provider=%s | cache=%s | repository=%s",
+        health.get("overall", "unknown"),
+        next((c.get("status") for c in health.get("checks", []) if c.get("name") == "provider"), "unknown"),
+        next((c.get("status") for c in health.get("checks", []) if c.get("name") == "cache"), "unknown"),
+        next((c.get("status") for c in health.get("checks", []) if c.get("name") == "repository"), "unknown"),
+    )
 
 
 def construir_simbolo_contrato(ticker_sym, exp_date, opt_type, strike):
@@ -190,39 +185,100 @@ def ejecutar_escaneo(
         paralelo: Si True, procesa múltiples fechas simultáneamente (más rápido)
     """
     _scan_start_ts = time.perf_counter()
+    _provider_before = get_provider_metrics().snapshot()
     _cache_hits = 0
+    _cache_misses = 0
     _async_downloaded = 0
     _fallback_sync_used = 0
+    _expirations_processed = 0
+    _provider = get_active_provider()
 
     def _log_scan_telemetry() -> None:
+        global _SCAN_COUNTER
+        global _LAST_SCAN_RUNTIME_META
         _elapsed = time.perf_counter() - _scan_start_ts
-        logger.info(
-            "scan telemetry | ticker=%s | total_time=%.2fs | cache_chains=%d | async_chains=%d | fallback_sync_chains=%d",
-            ticker_sym,
-            _elapsed,
-            _cache_hits,
-            _async_downloaded,
-            _fallback_sync_used,
+        _elapsed_ms = _elapsed * 1000.0
+        _ratio = _cache_hits / max(_cache_hits + _cache_misses, 1)
+        _provider_metrics = get_provider_metrics().snapshot()
+        _provider_calls_delta = int(_provider_metrics.get("provider_request_count", 0)) - int(
+            _provider_before.get("provider_request_count", 0)
         )
+        _snapshot_hits_delta = int(_provider_metrics.get("snapshot_hits", 0)) - int(
+            _provider_before.get("snapshot_hits", 0)
+        )
+        _snapshot_misses_delta = int(_provider_metrics.get("snapshot_misses", 0)) - int(
+            _provider_before.get("snapshot_misses", 0)
+        )
+        _source = "cache" if _cache_misses == 0 else "live"
+        _market_schema_version = os.getenv("MARKET_SCHEMA_VERSION", "v1").strip() or "v1"
+        _snapshot_schema_version = os.getenv("SNAPSHOT_SCHEMA_VERSION", "v1").strip() or "v1"
+        record_scan_metadata(
+            ticker=ticker_sym,
+            provider=_provider,
+            market_schema_version=_market_schema_version,
+            snapshot_schema_version=_snapshot_schema_version,
+            source=_source,
+            latency_ms=_elapsed_ms,
+        )
+        logger.info(
+            "scan telemetry | provider=%s | ticker=%s | schema_market=%s | schema_snapshot=%s | source=%s | scan_total_time_ms=%.0f | scan_latency_ms=%.0f | cache_hits=%d | cache_misses=%d | cache_hit_ratio=%.3f | async_chains=%d | expirations_processed=%d | fallbacks_used=%d | provider_request_count=%d | provider_429_count=%d | chain_fetch_failures=%d | snapshot_hit_ratio=%.3f | degraded_mode_activations=%d",
+            _provider,
+            ticker_sym,
+            _market_schema_version,
+            _snapshot_schema_version,
+            _source,
+            _elapsed_ms,
+            _elapsed_ms,
+            _cache_hits,
+            _cache_misses,
+            _ratio,
+            _async_downloaded,
+            _expirations_processed,
+            _fallback_sync_used,
+            _provider_metrics.get("provider_request_count", 0),
+            _provider_metrics.get("provider_429_count", 0),
+            _provider_metrics.get("chain_fetch_failures", 0),
+            float(_provider_metrics.get("snapshot_hit_ratio", 0.0)),
+            _provider_metrics.get("degraded_mode_activations", 0),
+        )
+        _SCAN_COUNTER += 1
+        _LAST_SCAN_RUNTIME_META = {
+            "provider_calls": max(_provider_calls_delta, 0),
+            "cache_hits": max(_snapshot_hits_delta, 0),
+            "cache_misses": max(_snapshot_misses_delta, 0),
+            "cpu_seconds": round(_elapsed, 4),
+            "source": _source,
+            "provider": _provider,
+            "latency_ms": round(_elapsed_ms, 2),
+        }
+        _SCAN_METRICS_WINDOW.append(
+            {
+                "scan_total_time_ms": _elapsed_ms,
+                "cache_hit_ratio": _ratio,
+            }
+        )
+        _log_periodic_scan_summary()
 
     alertas = []
     datos = []
     perfil = "cached"
 
     # Obtener precio subyacente una vez para cálculo de delta
-    _precio_sub, _ = obtener_precio_actual(ticker_sym)
+    with request_channel("live_scanning"):
+        _precio_sub, _ = obtener_precio_actual(ticker_sym)
     _today = datetime.now()
 
     # Obtener fechas de expiracion via capa de infraestructura
     try:
-        options_dates = fetch_options_dates(ticker_sym)
+        with request_channel("live_scanning"):
+            options_dates = fetch_options_dates(ticker_sym)
     except Exception as e:
         _log_scan_telemetry()
-        return [], [], str(e), perfil, []
+        return [], [], _friendly_scan_error(str(e)), perfil, []
 
     if not options_dates:
         _log_scan_telemetry()
-        return [], [], "No se encontraron fechas de vencimiento", perfil, []
+        return [], [], _friendly_scan_error("no expiration dates"), perfil, []
 
     # Limitar fechas para evitar rate-limiting y mejorar performance
     dates_to_scan = list(options_dates)[:MAX_EXPIRATION_DATES]
@@ -237,6 +293,7 @@ def ejecutar_escaneo(
             _cache_hits += 1
         else:
             missing_dates.append(exp_date)
+            _cache_misses += 1
 
     if missing_dates:
         try:
@@ -265,10 +322,12 @@ def ejecutar_escaneo(
     for idx, exp_date in enumerate(still_missing):
         _fallback_sync_used += 1
         # Sleep removido para evitar estrangulamiento pasivo del fallback sync.
-        _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
+        with request_channel("live_scanning"):
+            _, chain_data, error = _fetch_single_chain(ticker_sym, exp_date)
         if chain_data:
             chains_map[exp_date] = chain_data
         elif error:
+            get_provider_metrics().record_chain_failure()
             logger.warning("Error fallback %s: %s", exp_date, error)
     
     # Procesar todas las cadenas obtenidas — VECTORIZADO
@@ -424,188 +483,11 @@ def ejecutar_escaneo(
     # un número mayor al real en el status bar y ocultaba fechas que no llegaron a escanearse
     # por el límite MAX_EXPIRATION_DATES o por fallos de red en modo paralelo.
     fechas_procesadas = [d for d in dates_to_scan if d in chains_map]
+    _expirations_processed = len(fechas_procesadas)
+    if not fechas_procesadas and not datos:
+        _log_scan_telemetry()
+        return alertas, datos, _friendly_scan_error("empty chains", has_cached_snapshot=False), perfil, fechas_procesadas
     _log_scan_telemetry()
     return alertas, datos, None, perfil, fechas_procesadas
 
 
-def get_oi_matrix(
-    datos: list[dict],
-    expiration_filter: str | None = None,
-    min_oi: int = 0,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Construye la matriz OI (Strike × Expiración) para heatmap interactivo.
-
-    Opera sobre los datos ya descargados por ``ejecutar_escaneo`` (almacenados
-    en ``st.session_state.datos_completos``), sin hacer peticiones HTTP extra.
-
-    Cómo ayuda a decisiones de inversión
-    ------------------------------------
-    * **Clusters de OI** → niveles donde creadores de mercado tienen
-      exposición gamma significativa.  Funcionan como imanes de precio.
-    * **Expiración dominante** → identifica dónde vence la mayor parte
-      de la exposición institucional (pin risk).
-    * **Filtro min_oi** → elimina ruido retail y deja solo niveles
-      con liquidez real.
-
-    Args:
-        datos: Lista de dicts del escaneo.
-        expiration_filter: Filtrar por un vencimiento específico (``None`` = todos).
-        min_oi: Umbral mínimo de OI a incluir (contratos con OI < min_oi se descartan).
-
-    Returns:
-        ``(oi_matrix, df_filtered)``
-
-        * ``oi_matrix``   — ``pd.DataFrame`` pivotado (filas = Vencimiento,
-          columnas = Strike, valores = OI sumado).
-        * ``df_filtered`` — ``pd.DataFrame`` plano filtrado con todas las
-          columnas originales (útil para hover data: Volumen, Delta, IV …).
-
-    Example (pytest)::
-
-        >>> datos = [
-        ...     {"Vencimiento": "2026-03-20", "Strike": 590, "OI": 5000,
-        ...      "Volumen": 300, "Delta": 0.55, "Tipo": "CALL", "IV": 18.2,
-        ...      "Prima_Volumen": 150000, "Ask": 5.2, "Bid": 5.0, "Ultimo": 5.1, "Lado": "Ask"},
-        ...     {"Vencimiento": "2026-03-20", "Strike": 600, "OI": 800,
-        ...      "Volumen": 50, "Delta": -0.30, "Tipo": "PUT", "IV": 22.1,
-        ...      "Prima_Volumen": 25000, "Ask": 3.1, "Bid": 2.9, "Ultimo": 3.0, "Lado": "Bid"},
-        ... ]
-        >>> matrix, df_f = get_oi_matrix(datos, min_oi=1000)
-        >>> assert matrix.shape == (1, 1)          # solo el strike 590 pasa el filtro
-        >>> assert df_f.shape[0] == 1
-    """
-    if not datos:
-        return pd.DataFrame(), pd.DataFrame()
-
-    df = pd.DataFrame(datos)
-
-    # Normalizar nombre de prima
-    if "Prima_Volumen" in df.columns and "Prima_Vol" not in df.columns:
-        df = df.rename(columns={"Prima_Volumen": "Prima_Vol"})
-
-    # Filtro por expiración
-    if expiration_filter:
-        df = df[df["Vencimiento"] == expiration_filter]
-
-    # Filtro por OI mínimo
-    if min_oi > 0 and "OI" in df.columns:
-        df = df[df["OI"] >= min_oi]
-
-    if df.empty:
-        return pd.DataFrame(), pd.DataFrame()
-
-    oi_matrix = df.pivot_table(
-        values="OI",
-        index="Vencimiento",
-        columns="Strike",
-        aggfunc="sum",
-    ).fillna(0)
-
-    return oi_matrix, df
-
-
-def calculate_call_put_bias(datos: list[dict]) -> dict:
-    """Calcula el sesgo alcista/bajista basándose en el ratio Call/Put de OI.
-
-    Cómo ayuda a decisiones de inversión
-    ------------------------------------
-    * **Score > 1.2** → Dominio de Calls → el mercado de opciones está
-      posicionado para un movimiento alcista.  Considerar spreads alcistas.
-    * **Score < 0.8** → Dominio de Puts → presión de cobertura/bajista.
-      Precaución con posiciones largas sin protección.
-    * **Score ≈ 1.0** → Equilibrio → sin sesgo claro; esperar confirmación
-      de volumen o precio antes de operar.
-
-    El score usa **Open Interest total** (no volumen) porque el OI
-    refleja posiciones *abiertas* reales, no solo actividad intradía.
-
-    Fórmula:
-        ``bias_score = 2 × (OI_calls / (OI_calls + OI_puts))``
-
-        Escala 0–2: 0=fuertemente bajista, 1=neutral, 2=fuertemente alcista.
-
-    Args:
-        datos: Lista de dicts del escaneo (``st.session_state.datos_completos``).
-
-    Returns:
-        ``dict`` con claves:
-        - ``bias_score`` (float): Valor 0–2.
-        - ``oi_calls`` (int): OI total de Calls.
-        - ``oi_puts`` (int): OI total de Puts.
-        - ``ratio_raw`` (float): OI_calls / OI_puts (o inf si 0 puts).
-        - ``total_oi`` (int): OI total.
-
-    Example (pytest)::
-
-        >>> datos = [
-        ...     {"Tipo": "CALL", "OI": 5000, "Volumen": 300},
-        ...     {"Tipo": "PUT",  "OI": 3000, "Volumen": 200},
-        ... ]
-        >>> r = calculate_call_put_bias(datos)
-        >>> assert 1.0 < r['bias_score'] < 2.0  # calls dominan
-        >>> assert r['oi_calls'] == 5000
-        >>> assert r['oi_puts'] == 3000
-    """
-    result = {
-        "bias_score": 1.0,
-        "oi_calls": 0,
-        "oi_puts": 0,
-        "ratio_raw": 1.0,
-        "total_oi": 0,
-    }
-
-    if not datos:
-        return result
-
-    df = pd.DataFrame(datos)
-    if "Tipo" not in df.columns or "OI" not in df.columns:
-        return result
-
-    df["OI"] = pd.to_numeric(df["OI"], errors="coerce").fillna(0)
-
-    oi_calls = int(df.loc[df["Tipo"] == "CALL", "OI"].sum())
-    oi_puts = int(df.loc[df["Tipo"] == "PUT", "OI"].sum())
-    total = oi_calls + oi_puts
-
-    if total == 0:
-        return result
-
-    ratio = oi_calls / total  # 0–1
-    bias_score = round(2.0 * ratio, 2)  # 0–2
-    raw = round(oi_calls / oi_puts, 3) if oi_puts > 0 else float("inf")
-
-    return {
-        "bias_score": bias_score,
-        "oi_calls": oi_calls,
-        "oi_puts": oi_puts,
-        "ratio_raw": raw,
-        "total_oi": total,
-    }
-
-
-def guardar_alerta_csv(carpeta, ticker_sym, alerta):
-    """Guarda una alerta individual en el archivo CSV diario."""
-    try:
-        os.makedirs(carpeta, exist_ok=True)
-        fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-        csv_path = os.path.join(carpeta, f"alertas_{ticker_sym}_{fecha_hoy}.csv")
-        escribir_header = not os.path.exists(csv_path)
-
-        with open(csv_path, "a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=[
-                    "Fecha_Hora", "Ticker", "Tipo_Alerta", "Tipo_Opcion",
-                    "Vencimiento", "Strike", "Volumen", "OI",
-                    "Prima_Total", "Ask", "Bid", "Ultimo", "Lado",
-                ],
-            )
-            if escribir_header:
-                writer.writeheader()
-            # Renombrar Prima_Volumen a Prima_Total para el CSV (claridad para el usuario)
-            alerta_csv = alerta.copy()
-            if "Prima_Volumen" in alerta_csv:
-                alerta_csv["Prima_Total"] = alerta_csv.pop("Prima_Volumen")
-            writer.writerow(alerta_csv)
-    except Exception as e:
-        logger.error("Error guardando alerta CSV: %s", e)

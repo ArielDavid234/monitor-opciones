@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from config.constants import SCORE_THRESHOLD_ALTA, SCORE_THRESHOLD_MEDIA
-from infrastructure.data.polygon_client import get_price_history, get_ticker_details
+from infrastructure.data.yahoo_finance_client import get_price_history, get_ticker_details
 
 logger = logging.getLogger(__name__)
 

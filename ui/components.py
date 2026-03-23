@@ -7,11 +7,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from random import uniform
-from typing import Optional
 
 from config.constants import ANALYSIS_SLEEP_RANGE
 from core.projections import analizar_proyeccion_empresa
-from ui.plotly_professional_theme import apply_theme, COLORS
+from ui.plotly_professional_theme import COLORS
 
 logger = logging.getLogger(__name__)
 

@@ -13,6 +13,12 @@ from datetime import datetime
 
 import streamlit as st
 
+from infrastructure.platform.business_value import (
+    check_watchlist_limit,
+    get_user_plan,
+    record_product_event,
+)
+
 logger = logging.getLogger(__name__)
 
 _FAVORITOS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "favoritos.json")
@@ -126,6 +132,41 @@ def _agregar_a_watchlist(ticker, nombre=""):
     ticker = ticker.strip().upper()
     if not ticker:
         return False, "El ticker no puede estar vacío"
+
+    user = st.session_state.get("_auth_user") or {}
+    user_id = str(user.get("id") or "")
+    plan = get_user_plan(user)
+    limit_check = check_watchlist_limit(plan, len(watchlist))
+    if not limit_check.get("allowed", True):
+        if user_id:
+            try:
+                from core.auth import SupabaseAuth
+
+                auth = SupabaseAuth()
+                record_product_event(
+                    auth,
+                    user_id,
+                    "user_hit_plan_limit",
+                    {
+                        "reason": "watchlist_limit",
+                        "plan": plan,
+                        "usage": limit_check.get("usage"),
+                        "limit": limit_check.get("limit"),
+                    },
+                )
+                record_product_event(
+                    auth,
+                    user_id,
+                    "user_opened_upgrade_prompt",
+                    {
+                        "reason": "watchlist_limit",
+                        "plan": plan,
+                    },
+                )
+            except Exception as exc:
+                logger.warning("Error registrando evento de watchlist limit: %s", exc)
+        return False, str(limit_check.get("friendly_message") or "Limite de watchlist alcanzado")
+
     if any(w["ticker"] == ticker for w in watchlist):
         return False, f"{ticker} ya está en la Watchlist"
     watchlist.append({

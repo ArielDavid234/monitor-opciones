@@ -18,7 +18,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from config.constants import RISK_FREE_RATE, DAYS_PER_YEAR

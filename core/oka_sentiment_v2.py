@@ -26,7 +26,6 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 from core.option_greeks import quick_delta, quick_gamma
 

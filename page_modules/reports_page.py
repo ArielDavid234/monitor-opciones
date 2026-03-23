@@ -10,6 +10,12 @@ from reports.generators import (
     _generar_reporte_data_analysis,
     _generar_reporte_range,
 )
+from infrastructure.platform.business_value import (
+    aggregate_business_metrics,
+    get_user_plan,
+    has_feature_access,
+    record_product_event,
+)
 
 
 def _track_report_download() -> None:
@@ -26,6 +32,15 @@ def _track_report_download() -> None:
 
 
 def render(ticker_symbol, **kwargs):
+    from core.container import get_container
+
+    _container = get_container()
+    _auth = _container.auth
+    _user = _auth.get_current_user() or {}
+    _user_id = str(_user.get("id") or "")
+    _plan = get_user_plan(_user)
+    _can_extended_reports = has_feature_access(_plan, "extended_reports")
+
     st.markdown("### 📋 Reports")
     st.markdown(
         """
@@ -36,6 +51,27 @@ def render(ticker_symbol, **kwargs):
         """,
         unsafe_allow_html=True,
     )
+
+    metrics = aggregate_business_metrics(_auth, lookback_days=7)
+    col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+    with col_k1:
+        st.metric("ARPU tecnico (USD)", f"{metrics.get('arpu_technical_estimated_usd', 0.0):.2f}")
+    with col_k2:
+        st.metric("Costo por usuario activo", f"{metrics.get('cost_per_active_user_usd', 0.0):.2f}")
+    with col_k3:
+        st.metric("Margen bruto global", f"{metrics.get('gross_margin_global_pct', 0.0):.1f}%")
+    with col_k4:
+        st.metric("Upgrade rate semanal", f"{metrics.get('weekly_upgrade_rate', 0.0) * 100:.2f}%")
+
+    st.caption(
+        f"Cache hit ratio global: {metrics.get('cache_hit_ratio_global', 0.0) * 100:.1f}% | "
+        f"Plan actual: {_plan.title()}"
+    )
+
+    _funnel = metrics.get("funnel", {})
+    if isinstance(_funnel, dict):
+        st.markdown("#### Funnel Tecnico")
+        st.json(_funnel)
 
     # =============================================
     # BOTONES DE DESCARGA
@@ -96,7 +132,7 @@ def render(ticker_symbol, **kwargs):
         st.info("📊 **Reporte Open Interest** — Ejecuta un escaneo primero en 🔍 Live Scanning")
 
     # Botón 3: Important Companies
-    if tiene_analysis:
+    if tiene_analysis and _can_extended_reports:
         with st.spinner("📊 Generando reporte de Important Companies..."):
             try:
                 docx_important = _generar_reporte_important_companies()
@@ -112,11 +148,17 @@ def render(ticker_symbol, **kwargs):
                 )
             except Exception as e:
                 st.error(f"⚠️ Error al generar reporte de Important Companies: {e}")
+    elif tiene_analysis and not _can_extended_reports:
+        st.info("Important Companies DOCX es parte de reportes extendidos (Pro/Enterprise).")
+        if _user_id and not st.session_state.get("_reports_upgrade_prompt_extended"):
+            record_product_event(_auth, _user_id, "user_hit_plan_limit", {"reason": "extended_reports", "plan": _plan})
+            record_product_event(_auth, _user_id, "user_opened_upgrade_prompt", {"reason": "extended_reports", "plan": _plan})
+            st.session_state["_reports_upgrade_prompt_extended"] = True
     else:
         st.info("🏢 **Reporte Important Companies** — Ejecuta el análisis en 🏢 Important Companies primero")
 
     # Botón 4: Data Analysis
-    if tiene_scanning:
+    if tiene_scanning and _can_extended_reports:
         ticker_name = st.session_state.get("ticker_anterior", "ANALYSIS")
         with st.spinner("📊 Generando reporte de Data Analysis..."):
             try:
@@ -133,6 +175,8 @@ def render(ticker_symbol, **kwargs):
                 )
             except Exception as e:
                 st.error(f"⚠️ Error al generar reporte de Data Analysis: {e}")
+    elif tiene_scanning and not _can_extended_reports:
+        st.info("Data Analysis DOCX extendido requiere plan Pro o Enterprise.")
     else:
         st.info("📈 **Reporte Data Analysis** — Ejecuta un escaneo primero en 🔍 Live Scanning")
 

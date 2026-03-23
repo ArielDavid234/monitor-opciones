@@ -108,10 +108,10 @@ def render_footer():
     st.markdown(
         """
         <div class="footer-pro">
-            <div>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics v5.0 — Datos de Yahoo Finance</div>
+            <div>👑 OPTIONS<span style="color: #00ff88;">KING</span> Analytics v5.0 — Market Data Engine</div>
             <div class="footer-badges">
                 <span class="footer-badge">🔒 curl_cffi TLS</span>
-                <span class="footer-badge">📊 Yahoo Finance</span>
+                <span class="footer-badge">📊 Databento / Polygon</span>
                 <span class="footer-badge">📐 Black-Scholes</span>
                 <span class="footer-badge">📰 RSS Feeds</span>
                 <span class="footer-badge">🎨 Streamlit</span>

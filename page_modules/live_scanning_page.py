@@ -9,10 +9,27 @@ from datetime import datetime
 from ui.plotly_professional_theme import apply_theme, COLORS
 
 from config.constants import AUTO_REFRESH_INTERVAL
-from core.scanner import ejecutar_escaneo, obtener_historial_contrato, obtener_precio_actual
+from core.scanner import (
+    ejecutar_escaneo,
+    get_last_scan_runtime_meta,
+    obtener_historial_contrato,
+    obtener_precio_actual,
+)
 from core.clusters import detectar_compras_continuas
 from core.gamma_exposure import calcular_gex_desde_scanner
 from core.oi_tracker import calcular_cambios_oi
+from infrastructure.data.provider_runtime import get_budget_manager, get_refresh_priority_registry
+from infrastructure.platform.business_value import (
+    assign_ab_variant,
+    check_scan_limit,
+    get_plan_policy,
+    get_plan_sla,
+    get_user_plan,
+    record_ab_assignment,
+    record_ab_conversion,
+    record_product_event,
+    record_scan_metering,
+)
 from utils.formatters import (
     _fmt_dolar, _fmt_monto, _fmt_entero, _fmt_iv,
     _fmt_oi, _fmt_oi_chg, _fmt_delta, _fmt_gamma, _fmt_theta, _fmt_rho,
@@ -20,7 +37,7 @@ from utils.formatters import (
 )
 from utils.favorites import _es_favorito, _agregar_favorito
 from utils.helpers import _fetch_barchart_oi, _inyectar_oi_chg_barchart, _enriquecer_datos_opcion
-from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, hedge_alert_badge, detect_hedge_bulk
+from core.flow_classifier import classify_flow_type, flow_badge, detect_institutional_hedge, detect_hedge_bulk
 from ui.components import (
     render_metric_card, render_metric_row,
     render_pro_table, _sentiment_badge, _type_badge, _priority_badge,
@@ -31,6 +48,16 @@ logger = logging.getLogger(__name__)
 
 
 def render(ticker_symbol, **kwargs):
+    from core.container import get_container
+
+    _container = get_container()
+    _auth = _container.auth
+    _current_user = _auth.get_current_user() or {}
+    _user_id = str(_current_user.get("id") or "")
+    _user_plan = get_user_plan(_current_user)
+    _plan_policy = get_plan_policy(_user_plan)
+    _plan_sla = get_plan_sla(_user_plan)
+
     csv_carpeta = "alertas"
     guardar_csv = True
 
@@ -151,21 +178,94 @@ def render(ticker_symbol, **kwargs):
         st.session_state.trigger_scan = False
 
     cooldown_segundos = 75
+    cooldown_segundos = max(cooldown_segundos, int(_plan_policy.min_seconds_between_scans))
+
+    if _user_id:
+        _usage_stats = _auth.load_user_data(_user_id, "usage_stats") or {}
+        _today = datetime.utcnow().strftime("%Y-%m-%d")
+        _scans_today = int(_usage_stats.get("scans_today", 0)) if _usage_stats.get("scans_today_date") == _today else 0
+        st.caption(
+            f"Plan {str(_plan_policy.name).title()} | uso diario: {_scans_today}/{_plan_policy.scans_per_day} scans "
+            f"| intervalo minimo: {_plan_policy.min_seconds_between_scans}s "
+            f"| cola: {_plan_sla.get('queue')} | SLA latencia objetivo: {_plan_sla.get('latency_target_ms')} ms"
+        )
+        if _user_plan == "free":
+            st.caption("Plan Free usa cola compartida. Alertas avanzadas disponibles en Pro/Enterprise.")
 
     # Solo escanear si el usuario pulsa el botón o si hay un auto-trigger
     # (del countdown timer). NO escanear por mero rerun de widgets.
     if scan_btn or auto_trigger:
+        if _user_id:
+            record_product_event(
+                _auth,
+                _user_id,
+                "user_scan_started",
+                {
+                    "ticker": ticker_symbol,
+                    "plan": _user_plan,
+                    "trigger": "auto" if auto_trigger else "manual",
+                },
+            )
+            get_refresh_priority_registry().register_demand(ticker_symbol, _user_plan)
+
         ahora = datetime.now()
 
         # Cooldown: previene saturar Yahoo Finance — usa flag en lugar de
         # st.stop() para que los datos previos sigan renderizándose abajo.
         _can_scan = True
+
+        if _user_plan == "free":
+            _budget_ratio = float(get_budget_manager().snapshot().get("usage_ratio", 0.0))
+            if _budget_ratio >= 0.75:
+                time.sleep(min(2.0, _budget_ratio))
+
+        if _user_id:
+            _limit = check_scan_limit(_auth, _user_id, _user_plan)
+            if not _limit.get("allowed", True):
+                st.session_state.scan_error = _limit.get("friendly_message")
+                _can_scan = False
+                record_product_event(
+                    _auth,
+                    _user_id,
+                    "user_hit_plan_limit",
+                    {
+                        "reason": _limit.get("reason"),
+                        "usage": _limit.get("usage"),
+                        "limit": _limit.get("limit"),
+                        "plan": _user_plan,
+                    },
+                )
+                record_product_event(
+                    _auth,
+                    _user_id,
+                    "user_opened_upgrade_prompt",
+                    {
+                        "reason": _limit.get("reason"),
+                        "plan": _user_plan,
+                    },
+                )
+                _ab_exp = "upgrade_prompt_copy_v1"
+                _variant = assign_ab_variant(_user_id, _ab_exp)
+                record_ab_assignment(_auth, _user_id, _ab_exp, _variant)
+                _copy = (
+                    "Upgrade sugerido: Pro reduce esperas y habilita reportes extendidos."
+                    if _variant == "A"
+                    else "Escala a Pro/Enterprise para mas velocidad, stress tests y mayor capacidad diaria."
+                )
+                st.info(_copy)
+                if st.button("Ver opciones de upgrade", key=f"upgrade_cta_{ticker_symbol}", use_container_width=False):
+                    record_ab_conversion(_auth, _user_id, _ab_exp, converted=True)
+                    st.session_state["_page_override"] = "📋 Reports"
+                    st.rerun()
+
         if st.session_state.get("last_full_scan") is not None:
             try:
                 transcurrido = (ahora - st.session_state.last_full_scan).total_seconds()
                 if transcurrido < cooldown_segundos:
                     segundos_faltan = int(cooldown_segundos - transcurrido)
-                    st.warning(f"⏳ Espera {segundos_faltan} segundos entre escaneos completos para evitar el rate-limit de Yahoo.")
+                    st.warning(
+                        f"⏳ Espera {segundos_faltan} segundos entre escaneos completos para controlar cuota de proveedor."
+                    )
                     _can_scan = False
             except TypeError:
                 # last_full_scan tiene tipo inesperado; ignorar cooldown y resetear
@@ -200,7 +300,7 @@ def render(ticker_symbol, **kwargs):
                     # mostrar advertencia leve en lugar de bloquear la UI completamente
                     _is_rl = any(
                         kw in str(error).lower()
-                        for kw in ["429", "rate limit", "too many requests"]
+                        for kw in ["429", "rate limit", "too many requests", "cuota", "quota", "límite"]
                     )
                     if _is_rl:
                         if auto_trigger:
@@ -208,16 +308,25 @@ def render(ticker_symbol, **kwargs):
                             logger.info("Auto-trigger rate-limited — omitiendo sin error visible")
                         elif st.session_state.get("datos_completos"):
                             st.session_state.scan_error = (
-                                "⚠️ Límite de solicitudes de Yahoo Finance alcanzado. "
-                                "Mostrando datos del escáner anterior. Intenta de nuevo en 1-2 minutos."
+                                "⚠️ datos parciales: cuota temporal alta del proveedor. "
+                                "mostrando último snapshot en cache. reintentar en 60 segundos."
                             )
                         else:
                             st.session_state.scan_error = (
-                                "⚠️ Yahoo Finance está limitando las solicitudes. "
-                                "Espera 1-2 minutos antes de escanear."
+                                "⚠️ datos parciales: cuota temporal alta del proveedor. "
+                                "reintentar en 60 segundos."
                             )
                     else:
-                        st.session_state.scan_error = error
+                        if st.session_state.get("datos_completos"):
+                            st.session_state.scan_error = (
+                                "⚠️ datos parciales: mostrando último snapshot en cache. "
+                                "reintentar en 30 segundos."
+                            )
+                        else:
+                            st.session_state.scan_error = (
+                                "⚠️ datos parciales: servicio temporalmente no disponible. "
+                                "reintentar en 30 segundos."
+                            )
                     st.session_state.scanning_active = False
                 else:
                     st.session_state.alertas_actuales = alertas
@@ -227,12 +336,34 @@ def render(ticker_symbol, **kwargs):
 
                     # ── Registrar scan en estadísticas de usuario ──────────
                     try:
-                        from core.container import get_container as _gc
-                        _cu = _gc().auth.get_current_user()
-                        if _cu:
-                            _gc().user_service.increment_scan_count(_cu["id"])
+                        if _user_id:
+                            _container.user_service.increment_scan_count(_user_id)
                     except Exception as _track_err:
                         logger.warning("Error tracking scan: %s", _track_err)
+
+                    try:
+                        if _user_id:
+                            _runtime = get_last_scan_runtime_meta()
+                            _metering = record_scan_metering(
+                                _auth,
+                                _user_id,
+                                _user_plan,
+                                _runtime,
+                            )
+                            st.session_state["last_scan_cost_usd"] = float(_metering.get("scan_cost_usd", 0.0))
+                            record_product_event(
+                                _auth,
+                                _user_id,
+                                "user_scan_completed",
+                                {
+                                    "ticker": ticker_symbol,
+                                    "plan": _user_plan,
+                                    "cost_usd": _metering.get("scan_cost_usd", 0.0),
+                                    "provider_calls": _metering.get("provider_calls", 0),
+                                },
+                            )
+                    except Exception as _meter_err:
+                        logger.warning("Error metering scan: %s", _meter_err)
 
                     precio, _err_precio = obtener_precio_actual(ticker_symbol)
                     if precio is not None:
@@ -273,12 +404,12 @@ def render(ticker_symbol, **kwargs):
         _scan_err = st.session_state.scan_error
         _err_is_rl = any(
             kw in str(_scan_err).lower()
-            for kw in ["429", "rate limit", "too many", "límite de solicitudes", "espera"]
+            for kw in ["429", "rate limit", "too many", "límite", "espera", "cuota", "quota", "datos parciales"]
         )
         if _err_is_rl:
             st.warning(f"{_scan_err}")
         else:
-            st.error(f"❌ Error en el escaneo: {_scan_err}")
+            st.warning(f"{_scan_err}")
         if st.button("✖ Descartar error", key="dismiss_scan_error"):
             st.session_state.scan_error = None
             st.rerun()

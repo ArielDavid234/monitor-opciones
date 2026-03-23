@@ -20,8 +20,7 @@ except ImportError:
     _HAS_CURL_CFFI = False
 
 from utils.retry_utils import (
-    cb_barchart, RateLimitError, CircuitOpenError,
-    notify_retry_exhausted, notify_circuit_open,
+    cb_barchart, CircuitOpenError,
 )
 
 logger = logging.getLogger(__name__)

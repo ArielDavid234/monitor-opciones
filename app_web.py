@@ -39,6 +39,13 @@ from page_modules import (
 )
 from presentation.components import render_sidebar_user_block
 from presentation.layouts import build_sidebar_nav, render_main_header
+from infrastructure.data.yahoo_finance_client import start_snapshot_services
+from infrastructure.platform.security import (
+    audit_critical_config_change,
+    configure_secure_logging,
+    fail_fast_if_missing_secrets,
+    sanitize_error_for_user,
+)
 from ui.shared import inject_all_css, render_footer, render_sidebar_logo
 from utils.state import initialize_session_state, persist_shared_state
 
@@ -178,11 +185,15 @@ def _render_page(page_name: str, ticker_symbol: str, page_kwargs: dict) -> None:
                 page_exc,
                 exc_info=True,
             )
-            st.error(f"\u274c Error inesperado: {page_exc}", icon="\u274c")
+            st.warning(sanitize_error_for_user(page_exc), icon="\u26a0\ufe0f")
 
 
 def main() -> None:
     """Pipeline principal de la app."""
+    configure_secure_logging()
+    fail_fast_if_missing_secrets()
+    audit_critical_config_change()
+
     inject_all_css()
     initialize_session_state()
 
@@ -194,6 +205,13 @@ def main() -> None:
         show_welcome_splash(auth.get_current_user())
 
     _sync_user_lists_once(current_user.id, container.user_service)
+
+    hot = []
+    hot.extend(st.session_state.get("favoritos", []) or [])
+    hot.extend(st.session_state.get("watchlist", []) or [])
+    if st.session_state.get("ticker_anterior"):
+        hot.append(st.session_state.get("ticker_anterior"))
+    start_snapshot_services(hot_tickers=hot)
 
     effective_page = _render_sidebar(current_user, auth)
     st.session_state["current_page"] = effective_page

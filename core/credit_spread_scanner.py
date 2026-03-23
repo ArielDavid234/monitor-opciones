@@ -1639,10 +1639,10 @@ def generate_alerts(
         return pd.DataFrame()
 
     alerts_df = pd.DataFrame(alerts)
-    # Ordenar por Score Oportunidad descendente
-    if "Score Oportunidad" in alerts_df.columns:
-        alerts_df = alerts_df.sort_values(
-            "Score Oportunidad", ascending=False
-        ).reset_index(drop=True)
+    # Ordenar por Score Unificado cuando existe, si no por Score Oportunidad.
+    if "Score Unificado" in alerts_df.columns:
+        alerts_df = alerts_df.sort_values("Score Unificado", ascending=False).reset_index(drop=True)
+    elif "Score Oportunidad" in alerts_df.columns:
+        alerts_df = alerts_df.sort_values("Score Oportunidad", ascending=False).reset_index(drop=True)
 
     return alerts_df

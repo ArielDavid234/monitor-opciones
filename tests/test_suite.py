@@ -7,7 +7,6 @@ import ast
 import os
 import sys
 import importlib
-import inspect
 
 sys.path.insert(0, ".")
 

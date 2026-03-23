@@ -19,6 +19,10 @@ from typing import Any
 import streamlit as st
 from supabase import create_client, Client
 
+from config.settings import get_settings
+from infrastructure.platform.tenant import assert_tenant_access, normalize_tenant_id
+from infrastructure.platform.security import sanitize_error_for_user
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,12 +33,23 @@ def _get_supabase_client() -> Client:
     """
     if "_sb_client" not in st.session_state:
         try:
-            url = st.secrets["supabase"]["url"]
-            key = st.secrets["supabase"]["anon_key"]
+            cfg = get_settings()
+            url = str(getattr(cfg, "supabase_url", "")).strip()
+            key = str(getattr(cfg, "supabase_anon_key", "")).strip()
+
+            if not url or not key:
+                try:
+                    url = st.secrets["supabase"]["url"]
+                    key = st.secrets["supabase"]["anon_key"]
+                except Exception:
+                    pass
+
+            if not url or not key:
+                raise RuntimeError("SUPABASE_URL/SUPABASE_ANON_KEY no configuradas")
             st.session_state["_sb_client"] = create_client(url, key)
         except Exception as exc:
             logger.error("Error creando cliente Supabase: %s", exc)
-            st.error("⚠️ Error al conectar con el servicio de autenticación. Recarga la página.")
+            st.error("⚠️ Error de configuración de autenticación. Revisa secretos críticos y reinicia.")
             st.stop()
     return st.session_state["_sb_client"]
 
@@ -150,6 +165,7 @@ class SupabaseAuth:
             "email": res.user.email,
             "name": profile.get("name", display_name) if profile else display_name,
             "role": profile.get("role", "user") if profile else "user",
+            "tenant_id": normalize_tenant_id((profile or {}).get("tenant_id", "default")),
             "is_active": profile.get("is_active", True) if profile else True,
             "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
             "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
@@ -188,7 +204,12 @@ class SupabaseAuth:
             # aterrice directamente en la app.
             # IMPORTANTE: esta URL debe estar en Supabase Dashboard >
             # Authentication > URL Configuration > Redirect URLs.
-            site_url = st.secrets["supabase"].get("site_url", "")
+            site_url = str(getattr(get_settings(), "supabase_url", "")).strip()
+            if not site_url:
+                try:
+                    site_url = st.secrets["supabase"].get("site_url", "")
+                except Exception:
+                    site_url = ""
             sign_up_opts: dict[str, Any] = {
                 "data": {"display_name": name},
             }
@@ -225,8 +246,7 @@ class SupabaseAuth:
             if "signup" in msg and "disabled" in msg:
                 return False, "El registro de nuevos usuarios está deshabilitado temporalmente."
             # Mostrar detalle real para diagnóstico
-            detail = str(exc)[:200]
-            return False, f"Error al crear la cuenta: {detail}"
+            return False, sanitize_error_for_user(exc)
 
     # ────────────────────────────────────────────────────────────────────
     #  Login
@@ -267,6 +287,7 @@ class SupabaseAuth:
                     "email": res.user.email,
                     "name": profile.get("name", display_name) if profile else display_name,
                     "role": profile.get("role", "user") if profile else "user",
+                    "tenant_id": normalize_tenant_id((profile or {}).get("tenant_id", "default")),
                     "is_active": profile.get("is_active", True) if profile else True,
                     "last_login_at": datetime.utcnow().isoformat(),
                     "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
@@ -304,8 +325,7 @@ class SupabaseAuth:
             if "email not confirmed" in msg or "not confirmed" in msg:
                 return False, "Tu correo aún no ha sido confirmado. Revisa tu bandeja de entrada."
             # Mostrar detalle real para diagnóstico
-            detail = str(exc)[:200]
-            return False, f"Error al iniciar sesión: {detail}"
+            return False, sanitize_error_for_user(exc)
 
     # ────────────────────────────────────────────────────────────────────
     #  Restaurar sesión (refresh token)
@@ -337,6 +357,7 @@ class SupabaseAuth:
                     "email": res.user.email,
                     "name": profile.get("name", display_name) if profile else display_name,
                     "role": profile.get("role", "user") if profile else "user",
+                    "tenant_id": normalize_tenant_id((profile or {}).get("tenant_id", "default")),
                     "is_active": profile.get("is_active", True) if profile else True,
                     "last_login_at": (res.user.last_sign_in_at.isoformat() if hasattr(res.user.last_sign_in_at, "isoformat") else str(res.user.last_sign_in_at)) if res.user.last_sign_in_at else "",
                     "registered_at": (res.user.created_at.isoformat() if hasattr(res.user.created_at, "isoformat") else str(res.user.created_at)) if res.user.created_at else "",
@@ -539,6 +560,17 @@ class SupabaseAuth:
             logger.error("Error guardando datos de usuario (%s/%s): %s", user_id, key, exc)
             return False
 
+    def save_user_data_tenant(self, user_id: str, tenant_id: str, key: str, value: Any) -> bool:
+        """Guarda dato aislado por tenant en user_data usando data_key namespaced."""
+        safe_tenant = normalize_tenant_id(tenant_id)
+        current = self.get_current_user() or {}
+        if str(current.get("id") or "") == str(user_id):
+            assert_tenant_access(
+                actor_tenant_id=str(current.get("tenant_id") or "default"),
+                requested_tenant_id=safe_tenant,
+            )
+        return self.save_user_data(user_id, f"tenant:{safe_tenant}:{key}", value)
+
     def load_user_data(self, user_id: str, key: str) -> Any | None:
         """Carga un dato del usuario desde Supabase. Retorna None si no existe."""
         try:
@@ -554,6 +586,17 @@ class SupabaseAuth:
         except Exception as exc:
             logger.warning("Error cargando datos de usuario (%s/%s): %s", user_id, key, exc)
         return None
+
+    def load_user_data_tenant(self, user_id: str, tenant_id: str, key: str) -> Any | None:
+        """Carga dato aislado por tenant en user_data usando data_key namespaced."""
+        safe_tenant = normalize_tenant_id(tenant_id)
+        current = self.get_current_user() or {}
+        if str(current.get("id") or "") == str(user_id):
+            assert_tenant_access(
+                actor_tenant_id=str(current.get("tenant_id") or "default"),
+                requested_tenant_id=safe_tenant,
+            )
+        return self.load_user_data(user_id, f"tenant:{safe_tenant}:{key}")
 
     # ────────────────────────────────────────────────────────────────────
     #  Migración de favoritos globales (JSON → Supabase)

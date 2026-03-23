@@ -98,6 +98,7 @@ _GLOBAL_DEFAULTS: dict[str, Any] = {
     # Background updater (arranque una sola vez por sesión)
     "background_running": False,
     "background_started_at": None,
+    "last_scan_cost_usd": 0.0,
 }
 
 

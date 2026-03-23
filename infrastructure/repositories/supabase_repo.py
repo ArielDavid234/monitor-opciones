@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from core.protocols import AuthProvider
 
+from infrastructure.platform.security import anonymize_user_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,7 +57,7 @@ class SupabaseRepository:
         try:
             return self._auth.load_user_data(user_id, key)
         except Exception as exc:
-            logger.error("SupabaseRepository.load(%s, %s): %s", user_id, key, exc)
+            logger.error("SupabaseRepository.load(%s, %s): %s", anonymize_user_id(user_id), key, exc)
             return None
 
     def save(self, user_id: str, key: str, value: Any) -> bool:
@@ -71,10 +73,10 @@ class SupabaseRepository:
         """
         try:
             self._auth.save_user_data(user_id, key, value)
-            logger.debug("SupabaseRepository.save(%s, %s) OK", user_id, key)
+            logger.debug("SupabaseRepository.save(%s, %s) OK", anonymize_user_id(user_id), key)
             return True
         except Exception as exc:
-            logger.error("SupabaseRepository.save(%s, %s): %s", user_id, key, exc)
+            logger.error("SupabaseRepository.save(%s, %s): %s", anonymize_user_id(user_id), key, exc)
             return False
 
     # ── Convenience methods ────────────────────────────────────────────
