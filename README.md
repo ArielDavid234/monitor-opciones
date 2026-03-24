@@ -1,4 +1,4 @@
-﻿# Ernesto Platform Runbook
+# Ernesto Platform Runbook
 
 ## Variables de Entorno Obligatorias
 
@@ -33,6 +33,7 @@ Desde codigo:
 ```python
 from infrastructure.data.yahoo_finance_client import limpiar_cache_ticker
 limpiar_cache_ticker("SPY")
+
 ```
 
 Prefijos de cache estandarizados:
@@ -73,6 +74,7 @@ Comando:
 
 ```bash
 python scripts/healthcheck.py
+
 ```
 
 Checks publicados:
@@ -97,4 +99,3 @@ Controles principales:
 - redaccion de secretos en logs
 - anonimizacion de identificadores de usuario
 - auditoria de cambios en configuracion critica
-

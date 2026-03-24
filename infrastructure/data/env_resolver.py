@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 
 
 def get_env_value(key: str, default: str = "") -> str:
@@ -23,14 +24,17 @@ def get_env_value(key: str, default: str = "") -> str:
         # [supabase]
         # url = "..."
         # anon_key = "..."
-        if key == "SUPABASE_URL" and "supabase" in st.secrets:
+        if key in {"SUPABASE_URL", "SUPABASE_ANON_KEY"} and "supabase" in st.secrets:
             nested = st.secrets["supabase"]
-            if isinstance(nested, dict) and "url" in nested:
-                return str(nested["url"]).strip()
-        if key == "SUPABASE_ANON_KEY" and "supabase" in st.secrets:
-            nested = st.secrets["supabase"]
-            if isinstance(nested, dict) and "anon_key" in nested:
-                return str(nested["anon_key"]).strip()
+            if isinstance(nested, Mapping):
+                if key == "SUPABASE_URL":
+                    for candidate in ("url", "SUPABASE_URL"):
+                        if candidate in nested and str(nested[candidate]).strip():
+                            return str(nested[candidate]).strip()
+                if key == "SUPABASE_ANON_KEY":
+                    for candidate in ("anon_key", "SUPABASE_ANON_KEY"):
+                        if candidate in nested and str(nested[candidate]).strip():
+                            return str(nested[candidate]).strip()
     except Exception:
         pass
 
