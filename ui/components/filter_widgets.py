@@ -1,0 +1,2 @@
+"""Filter widgets placeholder."""
+pass

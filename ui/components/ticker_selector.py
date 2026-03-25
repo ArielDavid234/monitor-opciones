@@ -1,0 +1,2 @@
+"""Ticker selector placeholder."""
+pass

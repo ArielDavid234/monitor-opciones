@@ -14,7 +14,7 @@ Modelos incluidos:
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -183,7 +183,7 @@ class ScanResult(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     iv_percentile: Optional[float] = None
     trend: Trend = Trend.UNKNOWN
     avg_volume: Optional[float] = None
-    scan_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    scan_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class CreditSpread(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
@@ -206,7 +206,7 @@ class CreditSpread(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc
     bid_ask_spread: Optional[float] = None
     opportunity_score: Optional[int] = None   # 0-100
     trend: Trend = Trend.UNKNOWN
-    scan_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    scan_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def return_on_risk(self) -> float:
@@ -232,7 +232,7 @@ class Alert(BaseModel if _USE_PYDANTIC else object):  # type: ignore[misc]
     rules_passed: int          # cuántas de las 10 reglas pasó
     rules_total: int = 10
     notes: list[str] = Field(default_factory=list)
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def is_actionable(self) -> bool:
