@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from infrastructure.data import databento_client
 from infrastructure.data import yahoo_finance_client as facade
 
 
@@ -20,7 +19,7 @@ class TestDataProviderContract(unittest.TestCase):
             ]
         )
 
-        out = databento_client._normalize_chain_df(raw_df)
+        out = facade._normalize_chain_df(raw_df)
         expected = [
             "strike",
             "lastPrice",
@@ -33,23 +32,23 @@ class TestDataProviderContract(unittest.TestCase):
         self.assertEqual(list(out.columns), expected)
 
     def test_chain_field_fallback_defaults(self):
-        out = databento_client._normalize_chain_df(pd.DataFrame([{"strike": None}]))
+        out = facade._normalize_chain_df(pd.DataFrame([{"strike": None}]))
         row = out.iloc[0]
         self.assertEqual(float(row["lastPrice"]), 0.0)
         self.assertEqual(float(row["impliedVolatility"]), 0.0)
         self.assertEqual(int(row["openInterest"]), 0)
         self.assertEqual(int(row["volume"]), 0)
 
-    def test_provider_selection_by_env_default_only_databento(self):
+    def test_provider_selection_by_env_default_only_yfinance(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("DATA_PROVIDER", None)
-            self.assertEqual(facade.get_active_provider(), "databento")
+            self.assertEqual(facade.get_active_provider(), "yfinance")
 
         with patch.dict(os.environ, {"DATA_PROVIDER": "legacy_provider"}, clear=False):
-            self.assertEqual(facade.get_active_provider(), "databento")
+            self.assertEqual(facade.get_active_provider(), "yfinance")
 
         with patch.dict(os.environ, {"DATA_PROVIDER": "unknown"}, clear=False):
-            self.assertEqual(facade.get_active_provider(), "databento")
+            self.assertEqual(facade.get_active_provider(), "yfinance")
 
     def test_second_request_hits_cache(self):
         ticker = "TSTCACHE"

@@ -2,18 +2,16 @@
 
 ## Variables de Entorno Obligatorias
 
-- DATA_PROVIDER=databento (produccion por defecto)
-- DATABENTO_API_KEY=<tu_api_key>
 - SUPABASE_URL=<url_supabase>
 - SUPABASE_ANON_KEY=<anon_key>
 
 Variables recomendadas para control operativo:
 
 - CHAIN_FETCH_MAX_WORKERS=6
-- DATABENTO_QUOTA_TOTAL_PER_MIN=240
-- DATABENTO_QUOTA_RESERVED_LIVE_SCANNING=160
-- DATABENTO_QUOTA_BACKGROUND=80
-- DATABENTO_QUOTA_HIGH_WATERMARK=0.85
+- PROVIDER_QUOTA_TOTAL_PER_MIN=240
+- PROVIDER_QUOTA_RESERVED_LIVE_SCANNING=160
+- PROVIDER_QUOTA_BACKGROUND=80
+- PROVIDER_QUOTA_HIGH_WATERMARK=0.85
 - PROVIDER_CIRCUIT_FAILURE_THRESHOLD=5
 - PROVIDER_CIRCUIT_RECOVERY_TIMEOUT_SEC=90
 - LOG_RETENTION_DAYS=30
@@ -21,10 +19,11 @@ Variables recomendadas para control operativo:
 
 ## Proveedor de Datos
 
-1. Mantener variable: DATA_PROVIDER=databento
-2. Verificar DATABENTO_API_KEY presente.
-3. Reiniciar proceso Streamlit.
-4. Confirmar en logs: provider=databento.
+El proveedor de datos es yfinance (unico).
+
+1. Verificar SUPABASE_URL y SUPABASE_ANON_KEY presentes.
+2. Reiniciar proceso Streamlit.
+3. Confirmar en logs: provider=yfinance.
 
 ## Limpieza de Cache por Ticker
 

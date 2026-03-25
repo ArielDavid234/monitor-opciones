@@ -70,13 +70,9 @@ def anonymize_user_id(value: str | None) -> str:
 def _critical_config_snapshot() -> dict[str, str]:
     cfg = get_settings()
     return {
-        "data_provider": str(getattr(cfg, "data_provider", "")),
         "market_cache_version": str(getattr(cfg, "market_cache_version", "")),
         "market_schema_version": str(getattr(cfg, "market_schema_version", "")),
         "snapshot_schema_version": str(getattr(cfg, "snapshot_schema_version", "")),
-        "quota_total": str(getattr(cfg, "databento_quota_total_per_min", "")),
-        "quota_background": str(getattr(cfg, "databento_quota_background", "")),
-        "quota_live": str(getattr(cfg, "databento_quota_reserved_live_scanning", "")),
     }
 
 
@@ -123,17 +119,10 @@ def audit_critical_config_change() -> None:
 
 def validate_startup_secrets() -> list[str]:
     cfg = get_settings()
-    provider = get_env_value("DATA_PROVIDER", str(getattr(cfg, "data_provider", "databento"))).lower()
     errors: list[str] = []
 
-    databento_key = get_env_value("DATABENTO_API_KEY", str(getattr(cfg, "databento_api_key", "")))
     supabase_url = get_env_value("SUPABASE_URL", str(getattr(cfg, "supabase_url", "")))
     supabase_key = get_env_value("SUPABASE_ANON_KEY", str(getattr(cfg, "supabase_anon_key", "")))
-
-    if provider != "databento":
-        errors.append("DATA_PROVIDER invalido: solo se permite databento")
-    if provider == "databento" and not databento_key:
-        errors.append("DATABENTO_API_KEY ausente para DATA_PROVIDER=databento")
 
     if not supabase_url:
         errors.append("SUPABASE_URL ausente")
@@ -157,7 +146,6 @@ def env_by_stage(stage: str) -> dict[str, str]:
     """Expose required variable names by environment stage."""
     stage_key = (stage or "dev").lower().strip()
     common = {
-        "DATA_PROVIDER": "databento",
         "SUPABASE_URL": "required",
         "SUPABASE_ANON_KEY": "required",
         "REDIS_URL": "optional",

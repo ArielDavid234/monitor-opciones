@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 import uuid
 
@@ -28,12 +27,7 @@ def provider_healthcheck() -> dict:
     if str(circuit.get("state", "closed")) == "open":
         return _degraded("provider", {"provider": provider, "circuit": circuit})
 
-    if provider == "databento":
-        if not get_env_value("DATABENTO_API_KEY", ""):
-            return _down("provider", {"provider": provider, "reason": "missing DATABENTO_API_KEY"})
-        return _ok("provider", {"provider": provider, "circuit": circuit})
-
-    return _down("provider", {"provider": provider, "reason": "invalid provider"})
+    return _ok("provider", {"provider": provider, "circuit": circuit})
 
 
 def cache_healthcheck() -> dict:

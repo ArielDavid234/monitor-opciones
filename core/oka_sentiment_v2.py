@@ -11,7 +11,7 @@ Rediseño completo basado en flujo direccional institucional real:
 
 Phase 2 opcional: Gamma Weighting para ajuste de convexidad.
 
-Fuente de datos primaria: Databento (cadena de opciones).
+Fuente de datos primaria: yfinance (cadena de opciones).
 Fallback: mock data (para demos sin API key).
 
 Uso típico:
@@ -307,14 +307,14 @@ def interpret_oka_index(index: float) -> dict:
 
 
 # ---------------------------------------------------------------------------
-#   DATA FETCHING — Databento con fallback mock
+#   DATA FETCHING — proveedor con fallback mock
 # ---------------------------------------------------------------------------
 
-def _fetch_databento_option_flow(
+def _fetch_option_flow(
     symbol: str,
     lookback_minutes: int = 60,
 ) -> list[dict]:
-    """Construye flujo sintético desde cadenas Databento para el índice OKA.
+    """Construye flujo sintético desde cadenas de opciones para el índice OKA.
 
     Convierte opciones con volumen en una lista de trades normalizados
     compatible con el pipeline institucional existente.
@@ -323,7 +323,7 @@ def _fetch_databento_option_flow(
     try:
         expirations = list(fetch_options_dates(symbol))[:2]
     except Exception as exc:
-        logger.error("Error obteniendo expiraciones Databento: %s", exc)
+        logger.error("Error obteniendo expiraciones: %s", exc)
         return trades
 
     if not expirations:
@@ -389,7 +389,7 @@ def _fetch_databento_option_flow(
                         }
                     )
         except Exception as exc:
-            logger.warning("Error construyendo flujo Databento para %s %s: %s", symbol, exp, exc)
+            logger.warning("Error construyendo flujo para %s %s: %s", symbol, exp, exc)
             continue
 
     return trades
@@ -497,7 +497,7 @@ def compute_oka_index(
     """Pipeline completo del OKA Sentiment Index v2.
 
     Pasos:
-        1. Fetch trades (Databento o mock)
+        1. Fetch trades (proveedor o mock)
         2. Enriquecer con greeks si faltan
         3. Classify aggression
         4. Apply institutional filters
@@ -532,7 +532,7 @@ def compute_oka_index(
     if _use_mock:
         raw_trades = _generate_mock_trades(symbol, n=120)
     else:
-        raw_trades = _fetch_databento_option_flow(symbol, lookback_minutes)
+        raw_trades = _fetch_option_flow(symbol, lookback_minutes)
         if not raw_trades:
             raw_trades = _generate_mock_trades(symbol, n=120)
 

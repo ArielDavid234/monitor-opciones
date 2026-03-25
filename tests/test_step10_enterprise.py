@@ -24,7 +24,7 @@ from infrastructure.platform.schema_registry import SchemaRegistry
 class _FakeAuth:
     def __init__(self):
         self._store = {
-            ("u1", "tenant:alpha:latest_scan_opportunities"): [{"Ticker": "SPY", "Spot": 530.0, "provider": "databento"}],
+            ("u1", "tenant:alpha:latest_scan_opportunities"): [{"Ticker": "SPY", "Spot": 530.0, "provider": "yfinance"}],
             ("u1", "tenant:alpha:latest_score_explainability"): {
                 "ticker": "SPY",
                 "score_unificado": 88.5,
@@ -127,7 +127,7 @@ class TestStep10Enterprise(unittest.TestCase):
                 "ticker": "SPY",
                 "spot": 530.0,
                 "timestamp": "2026-03-23T00:00:00Z",
-                "provider": "databento",
+                "provider": "yfinance",
             },
         )
         invalid = registry.validate("market_snapshot", "v1", {"ticker": "SPY", "spot": 530.0})

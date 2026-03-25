@@ -1,7 +1,7 @@
 """Facade de compatibilidad para proveedores de datos.
 
 Este módulo conserva la API pública usada por el resto del sistema
-y enruta al proveedor activo via DATA_PROVIDER.
+y enruta las llamadas al proveedor yfinance.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from infrastructure.caching import get_cache as _get_cache
+from infrastructure.data._chain_utils import CHAIN_REQUIRED_COLUMNS as _CHAIN_REQUIRED_COLUMNS, normalize_chain_df as _normalize_chain_df
 from infrastructure.data.env_resolver import get_env_value
 from infrastructure.data.provider_runtime import (
     CircuitOpenError,
@@ -28,15 +29,6 @@ from infrastructure.data.snapshot_pipeline import get_snapshot_scheduler
 
 logger = logging.getLogger(__name__)
 _cache = _get_cache()
-_CHAIN_REQUIRED_COLUMNS = [
-    "strike",
-    "lastPrice",
-    "bid",
-    "ask",
-    "volume",
-    "openInterest",
-    "impliedVolatility",
-]
 
 
 def _estimate_dynamic_chain_ttl_seconds(chain_payload) -> int:
@@ -129,25 +121,6 @@ def _is_fresh(kind: str, ticker: str, expiration: str | None = None) -> bool:
     return age <= float(_snapshot_fresh_seconds(kind))
 
 
-def _normalize_chain_df(df) -> pd.DataFrame:
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-        return pd.DataFrame(columns=_CHAIN_REQUIRED_COLUMNS)
-
-    out = df.copy()
-    for col in _CHAIN_REQUIRED_COLUMNS:
-        if col not in out.columns:
-            out[col] = 0
-
-    out["strike"] = pd.to_numeric(out["strike"], errors="coerce").fillna(0.0).astype(float)
-    out["lastPrice"] = pd.to_numeric(out["lastPrice"], errors="coerce").fillna(0.0).astype(float)
-    out["bid"] = pd.to_numeric(out["bid"], errors="coerce").fillna(0.0).astype(float)
-    out["ask"] = pd.to_numeric(out["ask"], errors="coerce").fillna(0.0).astype(float)
-    out["volume"] = pd.to_numeric(out["volume"], errors="coerce").fillna(0).astype(int)
-    out["openInterest"] = pd.to_numeric(out["openInterest"], errors="coerce").fillna(0).astype(int)
-    out["impliedVolatility"] = pd.to_numeric(out["impliedVolatility"], errors="coerce").fillna(0.0).astype(float)
-    return out[_CHAIN_REQUIRED_COLUMNS]
-
-
 def _normalize_chain_payload(ticker: str, expiration: str, payload):
     if not isinstance(payload, dict):
         logger.warning(
@@ -176,30 +149,27 @@ def _register_snapshot_access(ticker: str, priority: str = "normal") -> None:
 
 
 def _provider_name() -> str:
-    provider = get_env_value("DATA_PROVIDER", "databento").lower()
-    if provider != "databento":
-        provider = "databento"
-    return provider
+    return "yfinance"
 
 
 def _provider_impls():
-    from infrastructure.data.databento_client import (
-        fetch_options_dates as _databento_fetch_options_dates,
-        fetch_single_chain as _databento_fetch_single_chain,
-        get_contract_history as _databento_get_contract_history,
-        get_ticker_details as _databento_get_ticker_details,
-        get_price_history as _databento_get_price_history,
-        obtener_precio_actual as _databento_obtener_precio_actual,
+    from infrastructure.data.yfinance_provider import (
+        fetch_options_dates as _yf_fetch_options_dates,
+        fetch_single_chain as _yf_fetch_single_chain,
+        get_contract_history as _yf_get_contract_history,
+        get_ticker_details as _yf_get_ticker_details,
+        get_price_history as _yf_get_price_history,
+        obtener_precio_actual as _yf_obtener_precio_actual,
     )
 
     return {
-        "name": "databento",
-        "fetch_options_dates": _databento_fetch_options_dates,
-        "fetch_single_chain": _databento_fetch_single_chain,
-        "get_price_history": _databento_get_price_history,
-        "get_contract_history": _databento_get_contract_history,
-        "get_ticker_details": _databento_get_ticker_details,
-        "obtener_precio_actual": _databento_obtener_precio_actual,
+        "name": "yfinance",
+        "fetch_options_dates": _yf_fetch_options_dates,
+        "fetch_single_chain": _yf_fetch_single_chain,
+        "get_price_history": _yf_get_price_history,
+        "get_contract_history": _yf_get_contract_history,
+        "get_ticker_details": _yf_get_ticker_details,
+        "obtener_precio_actual": _yf_obtener_precio_actual,
     }
 
 

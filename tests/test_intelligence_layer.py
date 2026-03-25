@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from core.credit_spread_scanner import generate_alerts
+from core.credit_spread_alerts import generate_alerts
 from core.intelligence_layer import (
     classify_risk_profile,
     compute_unified_score,

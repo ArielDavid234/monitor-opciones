@@ -213,7 +213,7 @@ def _get_fundamentals_market(ticker: str) -> dict:
             "sector": info.get("sector", "N/A"),
             "industry": info.get("sic_description", "N/A"),
             "description": info.get("description", ""),
-            "source": "Databento",
+            "source": "Yahoo Finance",
         }
     except Exception as e:
         return {"error": f"market fundamentals error: {e}"}

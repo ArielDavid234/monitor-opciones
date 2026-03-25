@@ -109,9 +109,9 @@ def render(ticker_symbol, **kwargs):
                 logger.warning("Range (scan data): error en %s: %s", exp_date, e)
                 continue
 
-    # PRIORIDAD 2: fallback — fetch desde Databento si no hay datos escaneados
+    # PRIORIDAD 2: fallback — fetch desde proveedor si no hay datos escaneados
     if not em_results:
-        with st.spinner("Cargando opciones desde Databento..."):
+        with st.spinner("Cargando opciones..."):
             try:
                 for exp_date in fechas_exp_disponibles:
                     try:
@@ -163,7 +163,7 @@ def render(ticker_symbol, **kwargs):
                         })
 
                     except Exception as e:
-                        logger.warning("Range (databento): error en %s: %s", exp_date, e)
+                        logger.warning("Range (yfinance): error en %s: %s", exp_date, e)
                         continue
 
             except Exception as e:

@@ -29,7 +29,7 @@ class CapabilityMap:
 def default_capability_map() -> list[CapabilityMap]:
     return [
         CapabilityMap(
-            provider="databento",
+            provider="yfinance",
             market="US",
             asset_type="options",
             supports_realtime=True,
@@ -37,7 +37,7 @@ def default_capability_map() -> list[CapabilityMap]:
             supports_options_chain=True,
         ),
         CapabilityMap(
-            provider="databento",
+            provider="yfinance",
             market="US",
             asset_type="equities",
             supports_realtime=True,

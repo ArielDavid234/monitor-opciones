@@ -22,6 +22,10 @@ Módulos principales
     ``monte_carlo``          — simulación GBM de precios
     ``optionkings_analytic`` — EV, Income Score, filtros, Monte Carlo spreads
     ``credit_spread_scanner``— scanner automático de credit spreads
+    ``credit_spread_math``   — helpers BSM y pre-filtros de spreads
+    ``credit_spread_scoring``— Income Score y Opportunity Score
+    ``credit_spread_indicators``— IV rank/percentile y trend
+    ``credit_spread_alerts`` — sistema de alertas 10-reglas
     ``oka_sentiment_v2``     — OKA Sentiment Index v2
 
   Data / scraping:

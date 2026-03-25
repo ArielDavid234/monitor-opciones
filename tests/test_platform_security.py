@@ -19,8 +19,6 @@ class TestPlatformSecurity(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "DATA_PROVIDER": "databento",
-                "DATABENTO_API_KEY": "",
                 "SUPABASE_URL": "",
                 "SUPABASE_ANON_KEY": "",
             },
@@ -28,7 +26,6 @@ class TestPlatformSecurity(unittest.TestCase):
         ):
             errors = validate_startup_secrets()
 
-        self.assertTrue(any("DATABENTO_API_KEY" in e for e in errors))
         self.assertTrue(any("SUPABASE_URL" in e for e in errors))
         self.assertTrue(any("SUPABASE_ANON_KEY" in e for e in errors))
 

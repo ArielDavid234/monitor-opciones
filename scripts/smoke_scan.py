@@ -29,7 +29,7 @@ def _provider_payload(_ticker: str, exp_date: str):
 
 def main() -> int:
     provider = {
-        "name": "databento",
+        "name": "yfinance",
         "fetch_options_dates": lambda _ticker: ("2026-12-18",),
         "fetch_single_chain": _provider_payload,
         "obtener_precio_actual": lambda _ticker: (100.0, None),
@@ -39,7 +39,7 @@ def main() -> int:
     }
 
     with patch("infrastructure.data.yahoo_finance_client._provider_impls", return_value=provider):
-        with patch("infrastructure.data.yahoo_finance_client.get_active_provider", return_value="databento"):
+        with patch("infrastructure.data.yahoo_finance_client.get_active_provider", return_value="yfinance"):
             alertas, datos, error, _perfil, _fechas = ejecutar_escaneo(
                 ticker_sym="SPY",
                 u_vol=1,

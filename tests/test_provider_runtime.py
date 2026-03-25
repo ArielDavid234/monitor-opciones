@@ -1,11 +1,11 @@
 import unittest
 
-from infrastructure.data.provider_runtime import DatabentoBudgetManager
+from infrastructure.data.provider_runtime import BudgetManager
 
 
 class TestProviderRuntime(unittest.TestCase):
     def test_background_quota_blocks_non_critical(self):
-        budget = DatabentoBudgetManager(
+        budget = BudgetManager(
             total_per_minute=5,
             reserved_live_scanning=4,
             background_quota=1,
@@ -20,7 +20,7 @@ class TestProviderRuntime(unittest.TestCase):
         self.assertEqual(d2.reason, "background_quota")
 
     def test_live_scanning_is_not_blocked_by_background_quota(self):
-        budget = DatabentoBudgetManager(
+        budget = BudgetManager(
             total_per_minute=4,
             reserved_live_scanning=3,
             background_quota=1,

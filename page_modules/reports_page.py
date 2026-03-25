@@ -31,6 +31,25 @@ def _track_report_download() -> None:
         logging.getLogger(__name__).warning("Error tracking report: %s", _e)
 
 
+def _download_report(label: str, generator_fn, filename: str, key: str, help_text: str) -> None:
+    """Render a spinner + download-button block for a DOCX report."""
+    with st.spinner(f"📊 Generando reporte de {label}..."):
+        try:
+            docx = generator_fn()
+            st.download_button(
+                f"📊 Descargar Reporte {label} (DOCX)",
+                docx,
+                filename,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+                key=key,
+                on_click=_track_report_download,
+                help=help_text,
+            )
+        except Exception as e:
+            st.error(f"⚠️ Error al generar reporte de {label}: {e}")
+
+
 def render(ticker_symbol, **kwargs):
     from core.container import get_container
 
@@ -92,62 +111,32 @@ def render(ticker_symbol, **kwargs):
     # Botón 1: Live Scanning
     if tiene_scanning:
         ticker_name = st.session_state.get("ticker_anterior", "SCAN")
-        with st.spinner("📊 Generando reporte de Live Scanning..."):
-            try:
-                docx_scanning = _generar_reporte_live_scanning()
-                st.download_button(
-                    "📊 Descargar Reporte Live Scanning (DOCX)",
-                    docx_scanning,
-                    f"reporte_live_scanning_{ticker_name}_{timestamp}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    key="dl_scanning",
-                    on_click=_track_report_download,
-                    help="Descarga todos los datos escaneados: alertas, clusters, y todas las opciones analizadas.",
-                )
-            except Exception as e:
-                st.error(f"⚠️ Error al generar reporte de Live Scanning: {e}")
+        _download_report(
+            "Live Scanning", _generar_reporte_live_scanning,
+            f"reporte_live_scanning_{ticker_name}_{timestamp}.docx", "dl_scanning",
+            "Descarga todos los datos escaneados: alertas, clusters, y todas las opciones analizadas.",
+        )
     else:
         st.info("📊 **Reporte Live Scanning** — Ejecuta un escaneo primero en 🔍 Live Scanning")
 
     # Botón 2: Open Interest
     if tiene_oi:
         ticker_name = st.session_state.get("ticker_anterior", "SCAN")
-        with st.spinner("📊 Generando reporte de Open Interest..."):
-            try:
-                docx_oi = _generar_reporte_open_interest()
-                st.download_button(
-                    "📊 Descargar Reporte Open Interest (DOCX)",
-                    docx_oi,
-                    f"reporte_open_interest_{ticker_name}_{timestamp}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    key="dl_oi",
-                    on_click=_track_report_download,
-                    help="Descarga el análisis completo de cambios en Open Interest (OI positivo y negativo).",
-                )
-            except Exception as e:
-                st.error(f"⚠️ Error al generar reporte de Open Interest: {e}")
+        _download_report(
+            "Open Interest", _generar_reporte_open_interest,
+            f"reporte_open_interest_{ticker_name}_{timestamp}.docx", "dl_oi",
+            "Descarga el análisis completo de cambios en Open Interest (OI positivo y negativo).",
+        )
     else:
         st.info("📊 **Reporte Open Interest** — Ejecuta un escaneo primero en 🔍 Live Scanning")
 
     # Botón 3: Important Companies
     if tiene_analysis and _can_extended_reports:
-        with st.spinner("📊 Generando reporte de Important Companies..."):
-            try:
-                docx_important = _generar_reporte_important_companies()
-                st.download_button(
-                    "🏢 Descargar Reporte Important Companies (DOCX)",
-                    docx_important,
-                    f"reporte_important_companies_{timestamp}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    key="dl_important",
-                    on_click=_track_report_download,
-                    help="Descarga el análisis completo de Important Companies: fundamental, técnico, sentimiento y veredicto.",
-                )
-            except Exception as e:
-                st.error(f"⚠️ Error al generar reporte de Important Companies: {e}")
+        _download_report(
+            "Important Companies", _generar_reporte_important_companies,
+            f"reporte_important_companies_{timestamp}.docx", "dl_important",
+            "Descarga el análisis completo de Important Companies: fundamental, técnico, sentimiento y veredicto.",
+        )
     elif tiene_analysis and not _can_extended_reports:
         st.info("Important Companies DOCX es parte de reportes extendidos (Pro/Enterprise).")
         if _user_id and not st.session_state.get("_reports_upgrade_prompt_extended"):
@@ -160,21 +149,11 @@ def render(ticker_symbol, **kwargs):
     # Botón 4: Data Analysis
     if tiene_scanning and _can_extended_reports:
         ticker_name = st.session_state.get("ticker_anterior", "ANALYSIS")
-        with st.spinner("📊 Generando reporte de Data Analysis..."):
-            try:
-                docx_analysis = _generar_reporte_data_analysis()
-                st.download_button(
-                    "📈 Descargar Reporte Data Analysis (DOCX)",
-                    docx_analysis,
-                    f"reporte_data_analysis_{ticker_name}_{timestamp}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    key="dl_analysis",
-                    on_click=_track_report_download,
-                    help="Descarga el análisis de sentimiento, soportes y resistencias basado en el Live Scanning.",
-                )
-            except Exception as e:
-                st.error(f"⚠️ Error al generar reporte de Data Analysis: {e}")
+        _download_report(
+            "Data Analysis", _generar_reporte_data_analysis,
+            f"reporte_data_analysis_{ticker_name}_{timestamp}.docx", "dl_analysis",
+            "Descarga el análisis de sentimiento, soportes y resistencias basado en el Live Scanning.",
+        )
     elif tiene_scanning and not _can_extended_reports:
         st.info("Data Analysis DOCX extendido requiere plan Pro o Enterprise.")
     else:
@@ -183,21 +162,11 @@ def render(ticker_symbol, **kwargs):
     # Botón 5: Range
     if tiene_range:
         ticker_name = st.session_state.rango_resultado.get("symbol", "RANGE")
-        with st.spinner("📊 Generando reporte de Rango Esperado..."):
-            try:
-                docx_range = _generar_reporte_range()
-                st.download_button(
-                    "📐 Descargar Reporte Rango Esperado (DOCX)",
-                    docx_range,
-                    f"reporte_rango_{ticker_name}_{timestamp}.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                    key="dl_range",
-                    on_click=_track_report_download,
-                    help="Descarga el cálculo detallado del rango esperado con explicación e interpretación.",
-                )
-            except Exception as e:
-                st.error(f"⚠️ Error al generar reporte de Rango: {e}")
+        _download_report(
+            "Rango Esperado", _generar_reporte_range,
+            f"reporte_rango_{ticker_name}_{timestamp}.docx", "dl_range",
+            "Descarga el cálculo detallado del rango esperado con explicación e interpretación.",
+        )
     else:
         st.info("📐 **Reporte Rango Esperado** — Calcula el rango en 📐 Range primero")
 

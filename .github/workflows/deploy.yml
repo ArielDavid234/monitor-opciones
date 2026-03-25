@@ -43,8 +43,6 @@ jobs:
       - name: Staging E2E
         run: python scripts/staging_e2e.py --liquid SPY,QQQ,AAPL --non-liquid IWM,TLT
         env:
-          DATA_PROVIDER: databento
-          DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY_STAGING }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL_STAGING }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY_STAGING }}
 

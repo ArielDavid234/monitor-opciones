@@ -29,8 +29,6 @@ jobs:
       - name: Validate environment shape
         run: python scripts/validate_environment.py --stage dev
         env:
-          DATA_PROVIDER: databento
-          DATABENTO_API_KEY: fake
           SUPABASE_URL: https://example.supabase.co
           SUPABASE_ANON_KEY: fake
 

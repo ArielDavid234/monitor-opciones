@@ -13,7 +13,7 @@
 
 ## Runtime Security Controls
 - [x] Provider circuit breaker to avoid failure cascades.
-- [x] Fallback provider feature flag controlled via DATA_PROVIDER.
+- [x] Single provider (yfinance) — no feature-flag switching needed.
 - [x] Degraded mode via cache snapshots when provider unavailable.
 
 ## Change Governance

@@ -44,8 +44,8 @@ class BudgetDecision:
     retry_in_seconds: int = 0
 
 
-class DatabentoBudgetManager:
-    """Budget manager por minuto para controlar consumo de cuota Databento."""
+class BudgetManager:
+    """Budget manager por minuto para controlar consumo de cuota del proveedor de datos."""
 
     def __init__(
         self,
@@ -55,19 +55,19 @@ class DatabentoBudgetManager:
         high_watermark: float | None = None,
     ) -> None:
         cfg = get_settings()
-        _total_default = int(getattr(cfg, "databento_quota_total_per_min", 240))
-        _live_default = int(getattr(cfg, "databento_quota_reserved_live_scanning", 160))
-        _bg_default = int(getattr(cfg, "databento_quota_background", max(_total_default - _live_default, 1)))
-        _wm_default = float(getattr(cfg, "databento_quota_high_watermark", 0.85))
+        _total_default = int(getattr(cfg, "provider_quota_total_per_min", 240))
+        _live_default = int(getattr(cfg, "provider_quota_reserved_live_scanning", 160))
+        _bg_default = int(getattr(cfg, "provider_quota_background", max(_total_default - _live_default, 1)))
+        _wm_default = float(getattr(cfg, "provider_quota_high_watermark", 0.85))
 
-        self.total_per_minute = total_per_minute or int(os.getenv("DATABENTO_QUOTA_TOTAL_PER_MIN", str(_total_default)))
+        self.total_per_minute = total_per_minute or int(os.getenv("PROVIDER_QUOTA_TOTAL_PER_MIN", str(_total_default)))
         self.reserved_live_scanning = reserved_live_scanning or int(
-            os.getenv("DATABENTO_QUOTA_RESERVED_LIVE_SCANNING", str(_live_default))
+            os.getenv("PROVIDER_QUOTA_RESERVED_LIVE_SCANNING", str(_live_default))
         )
         self.background_quota = background_quota or int(
-            os.getenv("DATABENTO_QUOTA_BACKGROUND", str(_bg_default))
+            os.getenv("PROVIDER_QUOTA_BACKGROUND", str(_bg_default))
         )
-        self.high_watermark = high_watermark or float(os.getenv("DATABENTO_QUOTA_HIGH_WATERMARK", str(_wm_default)))
+        self.high_watermark = high_watermark or float(os.getenv("PROVIDER_QUOTA_HIGH_WATERMARK", str(_wm_default)))
 
         self._lock = threading.Lock()
         self._minute_bucket = int(time.time() // 60)
@@ -95,7 +95,7 @@ class DatabentoBudgetManager:
             if self._total_used >= self.total_per_minute:
                 self._blocked += 1
                 logger.warning(
-                    "budget deny | provider=databento | endpoint=%s | ticker=%s | channel=%s | reason=quota_total | retry_in=%ds",
+                    "budget deny | provider=yfinance | endpoint=%s | ticker=%s | channel=%s | reason=quota_total | retry_in=%ds",
                     endpoint,
                     ticker,
                     req_channel,
@@ -106,7 +106,7 @@ class DatabentoBudgetManager:
             if not critical and usage_ratio >= self.high_watermark:
                 self._blocked += 1
                 logger.warning(
-                    "budget deny | provider=databento | endpoint=%s | ticker=%s | channel=%s | reason=high_watermark | retry_in=%ds",
+                    "budget deny | provider=yfinance | endpoint=%s | ticker=%s | channel=%s | reason=high_watermark | retry_in=%ds",
                     endpoint,
                     ticker,
                     req_channel,
@@ -117,7 +117,7 @@ class DatabentoBudgetManager:
             if req_channel != "live_scanning" and self._background_used >= self.background_quota and not critical:
                 self._blocked += 1
                 logger.warning(
-                    "budget deny | provider=databento | endpoint=%s | ticker=%s | channel=%s | reason=background_quota | retry_in=%ds",
+                    "budget deny | provider=yfinance | endpoint=%s | ticker=%s | channel=%s | reason=background_quota | retry_in=%ds",
                     endpoint,
                     ticker,
                     req_channel,
@@ -132,7 +132,7 @@ class DatabentoBudgetManager:
                 self._background_used += 1
 
             logger.info(
-                "budget consume | provider=databento | endpoint=%s | ticker=%s | channel=%s | total=%d/%d | live=%d/%d | background=%d/%d",
+                "budget consume | provider=yfinance | endpoint=%s | ticker=%s | channel=%s | total=%d/%d | live=%d/%d | background=%d/%d",
                 endpoint,
                 ticker,
                 req_channel,
@@ -530,7 +530,7 @@ class RefreshPriorityRegistry:
         )
 
 
-_BUDGET = DatabentoBudgetManager()
+_BUDGET = BudgetManager()
 _METRICS = ProviderMetrics()
 _CIRCUIT = ProviderCircuitBreaker()
 _SCAN_META = ScanMetadataRegistry()
@@ -539,7 +539,7 @@ _SINGLE_FLIGHT = SingleFlightGroup()
 _REFRESH_PRIORITY = RefreshPriorityRegistry()
 
 
-def get_budget_manager() -> DatabentoBudgetManager:
+def get_budget_manager() -> BudgetManager:
     return _BUDGET
 
 

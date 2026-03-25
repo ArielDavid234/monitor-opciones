@@ -46,16 +46,7 @@ try:
         scanner_auto_refresh_secs: int = Field(default=600, alias="AUTO_REFRESH")
 
         # ── Data providers ─────────────────────────────────────────────────
-        data_provider: str = Field(default="databento", alias="DATA_PROVIDER")
-        databento_api_key: str = Field(default="", alias="DATABENTO_API_KEY")
         chain_fetch_max_workers: int = Field(default=6, alias="CHAIN_FETCH_MAX_WORKERS")
-        databento_quota_total_per_min: int = Field(default=240, alias="DATABENTO_QUOTA_TOTAL_PER_MIN")
-        databento_quota_reserved_live_scanning: int = Field(
-            default=160,
-            alias="DATABENTO_QUOTA_RESERVED_LIVE_SCANNING",
-        )
-        databento_quota_background: int = Field(default=80, alias="DATABENTO_QUOTA_BACKGROUND")
-        databento_quota_high_watermark: float = Field(default=0.85, alias="DATABENTO_QUOTA_HIGH_WATERMARK")
         scan_summary_every_n: int = Field(default=10, alias="SCAN_SUMMARY_EVERY_N")
         scan_alert_p90_ms: int = Field(default=60000, alias="SCAN_ALERT_P90_MS")
         scan_alert_429_5m: int = Field(default=25, alias="SCAN_ALERT_429_5M")
@@ -123,7 +114,6 @@ try:
             populate_by_name = True
 
 except ImportError:  # pydantic-settings no instalado → fallback
-    import os  # noqa: F401
     from dataclasses import dataclass
 
     @dataclass
@@ -137,13 +127,7 @@ except ImportError:  # pydantic-settings no instalado → fallback
         cache_max_memory_entries: int = 512
         scanner_max_expirations: int = 12
         scanner_auto_refresh_secs: int = 600
-        data_provider: str = "databento"
-        databento_api_key: str = ""
         chain_fetch_max_workers: int = 6
-        databento_quota_total_per_min: int = 240
-        databento_quota_reserved_live_scanning: int = 160
-        databento_quota_background: int = 80
-        databento_quota_high_watermark: float = 0.85
         scan_summary_every_n: int = 10
         scan_alert_p90_ms: int = 60000
         scan_alert_429_5m: int = 25
